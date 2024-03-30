@@ -4,7 +4,7 @@ Fork from https://github.com/mit-han-lab/llm-awq
 ## Setup
 
 ```shell
-git clone https://github.com/huweim/meta_flint
+
 conda create -n awq python=3.10 -y
 conda activate awq
 pip install --upgrade pip  # enable PEP 660 support
@@ -31,12 +31,12 @@ CUDA_VISIBLE_DEVICES=3 ./scripts/llama_run_wiki.sh 7 wikitext 0 ant int-flint-fl
 # OliVe
 CUDA_VISIBLE_DEVICES=3 ./scripts/llama_run_wiki.sh 7 wikitext 0 olive int-flint -1 4
 
-# CODE-ANT
+# CODE-ANT Ours
 CUDA_VISIBLE_DEVICES=3 ./scripts/llama_run_wiki.sh 7 wikitext 0 codeant int 128 4
 
+# Change the model_path based on your path.
 ```
 
-output 和 weight 分别代表使用 output MSE 和 weight MSE 来选择 data type；weighted kmeans 对应的是 output MSE，ANT 可以选择 weight or output mode.
 
 ## Setting
 
@@ -50,8 +50,8 @@ quant_mode = [codeant, ant, olive, mokey, gobo, mx, awq]
 
 ## TODO list
 
-+ [ ] add compute encode gen and compute encode mode
-+ [ ] algorithm / method to select the data type
++ [x] add compute encode gen and compute encode mode
++ [ ] ~~algorithm / method to select the data type~~
 + [ ] add KV quantization; 8 data type for kV
-+ [ ] add ANT and OliVe
-+ [ ] For KV, select data type through variance
++ [x] add ANT and OliVe
++ [ ] ~~For KV, select data type through variance~~

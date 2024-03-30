@@ -1,0 +1,57 @@
+
+Fork from https://github.com/mit-han-lab/llm-awq
+
+## Setup
+
+```shell
+git clone https://github.com/huweim/meta_flint
+conda create -n awq python=3.10 -y
+conda activate awq
+pip install --upgrade pip  # enable PEP 660 support
+pip install -e .
+
+# CUDA 11.7，推荐使用 torch=2.0.1；没有测试过 torc=2.1.1
+
+# 构建 kmeans kernel
+cd awq/kmeans_kernel
+python setup.py install
+
+pip install seaborn -i https://pypi.tuna.tsinghua.edu.cn/simple
+pip install matplotlib -i https://pypi.tuna.tsinghua.edu.cn/simple
+```
+
+## Usage
+
+Evaluate LLaMa on multiple tasks with ANT data type (simulated pseudo quantization). Now we only use flint_0 (fp4, e2m1) in meta_flint set. You can select more data type in 4-bit meta_flint. 
+
+```bash
+# ANT
+CUDA_VISIBLE_DEVICES=3 ./scripts/llama_run_wiki.sh 7 wikitext 0 ant int-flint-float-pot -1 4
+
+# OliVe
+CUDA_VISIBLE_DEVICES=3 ./scripts/llama_run_wiki.sh 7 wikitext 0 olive int-flint -1 4
+
+# CODE-ANT
+CUDA_VISIBLE_DEVICES=3 ./scripts/llama_run_wiki.sh 7 wikitext 0 codeant int 128 4
+
+```
+
+output 和 weight 分别代表使用 output MSE 和 weight MSE 来选择 data type；weighted kmeans 对应的是 output MSE，ANT 可以选择 weight or output mode.
+
+## Setting
+
+quant_mode = [codeant, ant, olive, mokey, gobo, mx, awq]
++ codeant: W4A8, W4KV4A8
++ ant: W4A4, W8A8. ant do not quantize the attention, and target CNN and BERT.
++ olive: W4A4, W8A8. olive do not quantize the attention
++ mokey: W4A4. Mokey only evaluate the BERT model
++ GOBO: W8A16. GOBO can not quantize the KV
++ AWQ: W4A16. weight-only
+
+## TODO list
+
++ [ ] add compute encode gen and compute encode mode
++ [ ] algorithm / method to select the data type
++ [ ] add KV quantization; 8 data type for kV
++ [ ] add ANT and OliVe
++ [ ] For KV, select data type through variance

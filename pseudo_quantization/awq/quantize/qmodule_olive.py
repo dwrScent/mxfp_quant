@@ -190,7 +190,7 @@ def olive_quant(self, n_bit, weight, input, ant_config, group_size, layer_id, la
         if n_bit == 8:
             outlier_grid = outlier_value(n_bit, signed=True, exp_bit=4)
         else:
-            outlier_grid = outlier_value(n_bit, signed=True)
+            outlier_grid = outlier_value(n_bit, signed=True, exp_base=exp_base)
         # outlier of each channel
         mean = weight.mean(dim=1, keepdim=True)
         std = weight.std(dim=1, keepdim=True)
@@ -305,11 +305,11 @@ class OliVe_Linear(nn.Module):
 
         # search and set data type and alpha in the first inference
         if self.weight_quant_grid is None:
-            deq_weight = olive_quant(self, self.w_bit, self.weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, is_input=False)
-            if self.layer_name == 'mlp.down_proj' and self.w_bit == 4:
-                deq_input = olive_quant(self, self.w_bit, deq_weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, exp_base=7, is_input=True)
-            else:
-                deq_input = olive_quant(self, self.w_bit, deq_weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, is_input=True)
+            deq_weight = olive_quant(self, self.w_bit, self.weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, exp_base=5, is_input=False)
+            # if self.layer_name == 'mlp.down_proj' and self.w_bit == 4:
+            #     deq_input = olive_quant(self, self.w_bit, deq_weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, exp_base=7, is_input=True)
+            # else:
+            deq_input = olive_quant(self, self.w_bit, deq_weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, exp_base=7, is_input=True)
             self.weight = deq_weight
             
         # quantize input based on the selected data type and alpha

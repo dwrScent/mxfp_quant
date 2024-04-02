@@ -148,10 +148,10 @@ benchlist = [\
             # 'bart_base',
             # 'bert_base',
             # 'bert_large',
-            # 'gpt2_xl',
+            'gpt2_xl',
             # 'bloom3b',
             # 'bloom7b1',
-            'opt6b7',
+            # 'opt6b7',
             ]
 
 

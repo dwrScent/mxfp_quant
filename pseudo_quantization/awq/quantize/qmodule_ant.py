@@ -54,11 +54,19 @@ def get_quant(tensor_value, quant_grid, alpha=1.0, is_input=False):
     # tensor_deq = quant_grid[labels] * scales - zeros
     # argmin, find to index
     if is_input:
-        labels = (((tensor_value + zeros) / scales).unsqueeze(-1) - quant_grid).abs().argmin(dim=-1)
-        tensor_deq = quant_grid[labels] * scales - zeros
+        batch_num = 32
+        assert org_shape[0] % batch_num == 0
+        batch_size = org_shape[0] // batch_num
+        tensor_deq = torch.zeros_like(tensor_value)
+        for idx in range(batch_num):
+            tensor_par = tensor_value[idx*batch_size : (idx+1)*batch_size]
+            labels = (((tensor_par + zeros) / scales).unsqueeze(-1) - quant_grid).abs().argmin(dim=-1)
+            tensor_q_par = quant_grid[labels] * scales - zeros
+            tensor_deq[idx*batch_size : (idx+1)*batch_size] = tensor_q_par
+        # tensor_deq = quant_grid[labels] * scales - zeros
     else:
         # Batch processing to avoid OOM
-        batch_num = 4
+        batch_num = 32
         assert org_shape[0] % batch_num == 0
         batch_size = org_shape[0] // batch_num
         tensor_deq = torch.zeros_like(tensor_value)

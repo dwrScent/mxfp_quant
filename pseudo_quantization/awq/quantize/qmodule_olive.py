@@ -116,7 +116,7 @@ def get_quant(tensor_value, quant_grid, outlier_grid, normal_max, alpha=1.0, is_
 
     # argmin, find to index
     if is_input:
-        batch_num = 64
+        batch_num = 32
         assert org_shape[0] % batch_num == 0
         batch_size = org_shape[0] // batch_num
         tensor_q = torch.zeros_like(tensor_value)
@@ -128,7 +128,7 @@ def get_quant(tensor_value, quant_grid, outlier_grid, normal_max, alpha=1.0, is_
 
     else:
         # Batch processing to avoid OOM
-        batch_num = 64
+        batch_num = 32
         assert org_shape[0] % batch_num == 0
         batch_size = org_shape[0] // batch_num
         tensor_q = torch.zeros_like(tensor_value)

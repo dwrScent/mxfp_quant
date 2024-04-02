@@ -227,13 +227,18 @@ class Simulator(object):
         pmax = self.accelerator.pmax
         pmin = self.accelerator.pmin
         wbuf_size = self.accelerator.sram['wgt'] * 8
+        # Aelf.accelerator.sram['act'] -> Activation SRAM size
+        # x8: Byte -> Bit
         ibuf_size = self.accelerator.sram['act'] * 8
         obuf_size = self.accelerator.sram['out'] * 8
+        # 32 banks per buffer, 32 * 32 banks for output buffer
         wbuf_bank = 32
         ibuf_bank = 32
         obuf_bank = 32 * 32
         # wbuf_bits = (pmax * pmax / pmin) * 32
         # ibuf_bits = (pmax * pmax / pmin) * 32
+
+        # bit width per access
         wbuf_bits = 16 * 32
         ibuf_bits = 16 * 32
         obuf_bits = 32 
@@ -328,6 +333,9 @@ class Simulator(object):
             core_dyn_energy = core_dyn_power / float(core_data['Frequency'])
             core_leak_power = float(core_data['Leakage Power (nW)'])
             core_leak_energy = core_leak_power / float(core_data['Frequency'])
+        # print(core_data['Dynamic Power (nW)'], core_data)
+        # print(core_dyn_energy)
+        # exit(0)
         self.logger.debug('Core :')
         self.logger.debug('\tDimensions              : {0}x{1}-systolic array'.format(N, M))
         self.logger.debug('\tMax-Precision           : {}'.format(pmax))

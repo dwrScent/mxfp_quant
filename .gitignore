@@ -168,3 +168,6 @@ cython_debug/
 **/*.pyc
 # *.json
 __pycache__
+
+# RTL
+rtl_giant/build/**

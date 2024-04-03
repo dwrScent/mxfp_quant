@@ -72,120 +72,6 @@ def scale_activations(module):
         )
         set_op_by_name(module, "mlp.act", act)
 
-
-# core quantization method (simulated quantization)
-def pseudo_quantize_tensor(w, n_bit=8,
-                           zero_point=True, q_group_size=-1,
-                           inplace=False,
-                           get_scale_zp=False
-                           ):
-    org_w_shape = w.shape
-    if q_group_size > 0:
-        assert org_w_shape[-1] % q_group_size == 0
-        w = w.reshape(-1, q_group_size)
-    assert w.dim() == 2
-    if zero_point:
-        max_val = w.amax(dim=1, keepdim=True)
-        min_val = w.amin(dim=1, keepdim=True)
-        max_int = 2 ** n_bit - 1
-        min_int = 0
-        scales = (max_val - min_val).clamp(min=1e-5) / max_int
-        zeros = (-torch.round(min_val / scales)).clamp_(min_int, max_int)
-    else:  # we actually never used this
-        # assert min_val is None
-        max_val = w.abs().amax(dim=1, keepdim=True)
-        max_val = max_val.clamp(min=1e-5)
-
-        # max_val.shape is 4096
-        max_int = 2 ** (n_bit - 1) - 1
-        min_int = - 2 ** (n_bit - 1)
-        scales = max_val / max_int
-        zeros = 0
-
-    assert torch.isnan(scales).sum() == 0
-    assert torch.isnan(w).sum() == 0
-
-    if inplace:
-        ((w.div_(scales).round_().add_(zeros)).clamp_(
-            min_int, max_int).sub_(zeros)).mul_(scales)
-    else:
-        w = (torch.clamp(torch.round(w / scales) +
-                         zeros, min_int, max_int) - zeros) * scales
-    assert torch.isnan(w).sum() == 0
-
-    w = w.reshape(org_w_shape)
-    if get_scale_zp:
-        return w, scales.view(w.shape[0], -1), zeros.view(w.shape[0], -1)
-    else:
-        return w
-
-def print_stats(mode_list, overall_stats, ant_config, mse_stats):
-    print("\n OVERALL STATS \n")
-    overall_select = 0
-    for mode in mode_list:
-        overall_select = overall_select + overall_stats[mode]
-    for mode in mode_list:
-        ratio = overall_stats[mode] / overall_select
-        print(f"{mode} ratio: {ratio * 100:.3f}%")
-    if "kmeans" == ant_config["ant_mode"]:
-        print("USE KMEANS ONLY")
-    elif "kmeans" in ant_config["ant_mode"] and "flint" in ant_config["ant_mode"]:
-        print(f"mse kmeans: {mse_stats['kmeans']:.9f} mse ant: {mse_stats['ant']:.9f} mse overall: {mse_stats['overall']:.9f}")
-        print(f"ant num: {mse_stats['ant_num']} * 1e5 kmeans num: {mse_stats['kmeans_num']} * 1e5")
-        print(f"ant ratio: {mse_stats['ant_num'] / (mse_stats['ant_num'] + mse_stats['kmeans_num'] ) * 100:.3f}% kmeans ratio: {mse_stats['kmeans_num'] / (mse_stats['ant_num'] + mse_stats['kmeans_num']) * 100:.3f}% ")
-    else:
-        print(f"mse overall: {mse_stats['overall']:.9f}")
-
-@torch.no_grad()
-def pseudo_quantize_model_weight(
-    model, w_bit, q_config, model_path, ant_config=None, outlier_config=None
-):   
-    from .pre_quant import get_blocks, get_named_linears
-    layers = get_blocks(model)
-    mse = nn.MSELoss()
-    
-
-    mode_list = ant_config['ant_mode'].split('-')
-    if 'meta_flint' in mode_list:
-        mode_list.remove('meta_flint')
-        mode_list.extend(meta_flint_set.keys())
-    overall_stats = {}
-    for mode in mode_list:
-        overall_stats[mode] = torch.tensor(0.)
-    mse_stats = {key: torch.tensor(0.) for key in ['kmeans', 'ant', 'overall', 'ant_num', 'kmeans_num']}
-    total_entropy = torch.tensor(0.)
-    total_tensor = torch.tensor(0.)
-
-    for i in tqdm(range(len(layers)), desc="pseudo weight quantization..."):
-        named_linears = get_named_linears(layers[i])
-
-        
-        for n, m in named_linears.items():
-            w_init_data = m.weight.data.clone().cpu()
-            
-            if ant_config['ant_mode'] == "int":
-                m.weight.data = pseudo_quantize_tensor(m.weight.data, n_bit=w_bit, **q_config)
-                mse_stats['overall'] += mse(w_init_data.float(), m.weight.data.cpu().float())  
-            elif "kmeans" in ant_config["ant_mode"]:
-                m.weight.data = ant_kmeans_quant(m.weight.data, w_bit, q_config, ant_config, outlier_config, mse_stats, overall_stats, i, n)
-            else:
-                m.weight.data = ant_quantization_search(m.weight.data, w_bit, q_config, ant_config, outlier_config, overall_stats=overall_stats)
-            
-            mse_stats['overall'] += mse(w_init_data.float(), m.weight.data.cpu().float())  
-     
-            # _, counts = np.unique(m.weight.data.flatten(), return_counts=True)
-            # probabilities = counts / counts.sum()
-            # entropy = -np.sum(probabilities * np.log2(probabilities))
-
-            # print(f'Entropy of the distribution: {entropy} bits')
-            # total_entropy += entropy
-            # total_tensor += 1.0
-
-    print_stats(mode_list, overall_stats, ant_config, mse_stats)
-
-    del mse_stats, overall_stats
-    torch.cuda.empty_cache()
-
 @torch.no_grad()
 def pseudo_quant_output_mse(
     model, enc,
@@ -410,12 +296,9 @@ def make_quant_linear(
                     module, w_bit, q_config['q_group_size'], i, name, init_only=False, ant_config=ant_config)
             elif quant_mode_config['quant_method'] == 'codeant':
                 from .qmodule_encode import CODEANT_Linear
-                # module.weight.data = pseudo_quantize_tensor(module.weight.data, n_bit=8, zero_point=q_config['zero_point'], q_group_size=-1)
-
                 q_linear = CODEANT_Linear.from_linear(
-                    module, w_bit, q_config['q_group_size'], i, name, init_only=False, ant_config=ant_config)
-                # quantize weight, channel-wise INT8
-                # module.weight.data = pseudo_quantize_tensor(module.weight.data, n_bit=8, zero_point=q_config['zero_point'], q_group_size=-1)
+                    module, w_bit, q_config['q_group_size'], i, name, quant_mode_config['quant_kv'], init_only=False, ant_config=ant_config)
+
             else:
                 pass
             q_linear.to(next(layer.parameters()).device)

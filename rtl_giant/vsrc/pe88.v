@@ -1,4 +1,4 @@
-module pe (
+module pe88 (
     input clk,
     input rst,
     input [1:0] precision, // 00: 2bit, 01: 4bit, 10: 8bit

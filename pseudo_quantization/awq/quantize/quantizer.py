@@ -285,7 +285,7 @@ def make_quant_linear(
         named_linears = get_named_linears(layer)
         scale_activations(layer)
         for name, module in named_linears.items():
-            module.cuda()
+            # module.cuda()
             if quant_mode_config['quant_method'] == 'ant':
                 from .qmodule_ant import ANT_Linear
                 q_linear = ANT_Linear.from_linear(
@@ -303,7 +303,7 @@ def make_quant_linear(
                 pass
             q_linear.to(next(layer.parameters()).device)
             set_op_by_name(layer, name, q_linear)
-            module.cpu()
+            # module.cpu()
 
 
     torch.cuda.empty_cache()

@@ -12,7 +12,6 @@ from ..utils.make_distribution import group_dist_outlier, group_dist, make_heat_
 import math
 import kmeans_parallel
 from .kmeans import ant_kmeans_quant
-from .compute_encode_gen import encode_gen
 
 from transformers.models.opt.modeling_opt import OPTForCausalLM
 from transformers.models.llama.modeling_llama import LlamaForCausalLM
@@ -144,6 +143,7 @@ def pseudo_quantize_model_weight(
     from .pre_quant import get_blocks, get_named_linears
     layers = get_blocks(model)
     mse = nn.MSELoss()
+    
 
     mode_list = ant_config['ant_mode'].split('-')
     if 'meta_flint' in mode_list:
@@ -200,6 +200,8 @@ def pseudo_quant_output_mse(
     from .pre_quant import get_blocks, get_named_linears
     from .kmeans import use_kmeans_quantization
     from .ant_quant import generate_quant_grid, get_quant_weight
+    from .qmodule_encode import encode_gen, encode_gen_no_zero
+
     
     layers = get_blocks(model)
 
@@ -242,7 +244,12 @@ def pseudo_quant_output_mse(
     #     mode_list.remove('meta_flint')
     #     mode_list.extend(meta_flint_set.keys())
 
-    quant_grid_set = encode_gen(w_bit)
+    # quant_grid_set = encode_gen(w_bit)
+    quant_grid_set = encode_gen_no_zero(w_bit)
+    # print(quant_grid_set, quant_grid_set_v)
+    # print(quant_grid_set_v)
+    # exit(0)
+
     # quant_grid_set = generate_quant_grid(n_bit=w_bit, signed=True, ant_mode=ant_config['ant_mode'])
 
     mode_list = []
@@ -392,6 +399,7 @@ def make_quant_linear(
         named_linears = get_named_linears(layer)
         scale_activations(layer)
         for name, module in named_linears.items():
+            module.cuda()
             if quant_mode_config['quant_method'] == 'ant':
                 from .qmodule_ant import ANT_Linear
                 q_linear = ANT_Linear.from_linear(
@@ -410,9 +418,10 @@ def make_quant_linear(
                 # module.weight.data = pseudo_quantize_tensor(module.weight.data, n_bit=8, zero_point=q_config['zero_point'], q_group_size=-1)
             else:
                 pass
-
             q_linear.to(next(layer.parameters()).device)
             set_op_by_name(layer, name, q_linear)
+            module.cpu()
+
 
     torch.cuda.empty_cache()
     gc.collect()

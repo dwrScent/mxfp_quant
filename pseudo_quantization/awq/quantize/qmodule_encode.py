@@ -4,6 +4,48 @@ import torch.nn as nn
 from .ant_quant import generate_quant_grid
 import torch.nn.functional as F
 
+def encode_gen_no_zero(w_bit, return_list=False):
+    """
+    Generate the computable codebook from the index list
+    Computable codebook: a*index + 2^index * b
+    """
+    coefficient_list = []
+    # 选定系数 a
+    for coefficient in range(0, 128, 10):
+        coefficient_list.append(coefficient)
+    # supply some specific data type, merge them after removing duplicates
+    supply_list = [0, 5, 17, 20]
+    merged_list = list(set(coefficient_list + supply_list))
+
+    codebook_dict = {}
+    b = 1
+    for coefficient in merged_list:
+    # for coefficient in coefficient_list:
+        codebook_list = []
+        # for item in range((2 ** w_bit) // 2 - 1):
+        for item in range(2 ** w_bit):
+            # 0~15 -> -8~7
+            index = item - (2 ** (w_bit-1))
+            if index < 0:
+                index = (-index) - 1
+                codebook_list.append(-(coefficient * index + (2 ** index * b)))
+            elif index >= 0:
+                assert index < (2 ** w_bit // 2)
+                codebook_list.append(coefficient * index + (2 ** index * b))
+            else:
+                raise ValueError(f"Index {index} out of range")
+
+        codebook_list = torch.tensor(codebook_list).to(dtype=torch.half)
+        codebook_list, _ = codebook_list.sort()
+        # Normalization
+        codebook_list = codebook_list / codebook_list.max()
+        # to list if need
+        if return_list:
+            codebook_list = codebook_list.tolist()
+
+        codebook_dict[f"coefficient_{coefficient}"] = codebook_list
+    return codebook_dict
+
 def encode_gen(w_bit, return_list=False):
     """
     Generate the computable codebook from the index list
@@ -37,7 +79,7 @@ def encode_gen(w_bit, return_list=False):
                 codebook_list.append(-0.)
 
         codebook_list = torch.tensor(codebook_list).to(dtype=torch.half)
-        codebook_list.sort()
+        codebook_list, _ = codebook_list.sort()
         
         # Normalization
         codebook_list = codebook_list / codebook_list.max()
@@ -50,7 +92,7 @@ def encode_gen(w_bit, return_list=False):
     return codebook_dict
 
 # core quantization method (simulated quantization)
-def pseudo_quantize_int(tensor, n_bit=8, zero_point=True, q_group_size=-1):
+def pseudo_quantize_int(tensor, n_bit=8, zero_point=False, q_group_size=-1):
     org_shape = tensor.shape
     if q_group_size > 0:
         assert org_shape[-1] % q_group_size == 0
@@ -164,6 +206,7 @@ def codeant_quant(self, n_bit, weight, input, ant_config, group_size, layer_id, 
         final_tensor[ : ,group_id * group_size: (group_id + 1) * group_size ] = deq_w
 
     return final_tensor
+
 class CODEANT_Linear(nn.Module):
     def __init__(self, w_bit, group_size, in_features, out_features, bias, dev, ant_config, layer_id, layer_name):
         super().__init__()
@@ -217,20 +260,8 @@ class CODEANT_Linear(nn.Module):
         # print(input, self.weight)
 
         # quantize activation to INT8
-        input = pseudo_quantize_int(input, n_bit=8, zero_point=True, q_group_size=64)
+        input = pseudo_quantize_int(input, n_bit=8, zero_point=False, q_group_size=64)
         
-        # print(self.weight_quant_grid, self.weight_alpha, self.input_quant_grid, self.input_alpha)
-        # if self.weight_quant_grid is None:
-
-        #     deq_weight = codeant_quant(self, self.w_bit, self.weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, is_input=False)
-
-        #     self.weight = deq_weight
-        # else:
-        #     # deq_weight = get_quant(self.weight, self.weight_quant_grid, alpha=self.weight_alpha, is_input=False)
-        #     org_shape = input.shape
-        #     deq_input = get_quant(input.view(-1), self.input_quant_grid, alpha=self.input_alpha, is_input=True)
-        #     deq_input = deq_input.reshape(org_shape)
-
         # # quant KV
         # if self.name == 'self_attn.k_proj' or self.name == 'self_attn.v_proj':
         #     pass

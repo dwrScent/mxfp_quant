@@ -16,7 +16,7 @@ OUTPUT_DIR=output/output_opt
 
 mkdir -p $OUTPUT_DIR
 
-python -m awq.entry_wikitext --model_path $MODEL \
+python -m awq.entry --model_path $MODEL \
     --tasks $TASKS \
     --num_fewshot $SHOTS \
     --w_bit $WEIGHT_BIT  \

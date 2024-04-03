@@ -201,6 +201,7 @@ class ANT_Linear(nn.Module):
             
             # quantize weight only once
             self.weight = deq_weight
+            print("ant search data type and alpha.")
 
         # quantize input based on the selected data type and alpha
         else:

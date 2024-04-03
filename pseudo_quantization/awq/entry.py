@@ -12,7 +12,7 @@ from accelerate import (
     load_checkpoint_in_model,
 )
 from awq.utils.parallel import auto_parallel
-from awq.quantize.quantizer import pseudo_quantize_model_weight, pseudo_quant_output_mse
+from awq.quantize.quantizer import pseudo_quantize_model_weight, pseudo_quant_output_mse, make_quant_linear
 from awq.utils.lm_eval_adaptor import LMEvalAdaptor
 from awq.utils.utils import simple_dispatch_model
 
@@ -51,12 +51,13 @@ parser.add_argument(
     + "mode details here: "
     + "https://huggingface.co/docs/accelerate/usage_guides/big_modeling",
 )
+parser.add_argument('--quant_mode', type=str, default="compute_encode")
 parser.add_argument('--ant_mode', type=str, default="int")
 parser.add_argument('--mse_type', type=str, default="weight")
 parser.add_argument('--ant_search_granularity', type=int, default=1)
 parser.add_argument('--ant_asym', type=int, default=0)
-parser.add_argument('--w_low', type=int, default=100)
-parser.add_argument('--w_high', type=int, default=105)
+parser.add_argument('--w_low', type=int, default=75)
+parser.add_argument('--w_high', type=int, default=150)
 
 parser.add_argument('--outlier_type', type=str, default="none")
 parser.add_argument('--outlier_ratio', type=float, default=-1.0)
@@ -79,6 +80,9 @@ q_config = {
     "zero_point": not args.no_zero_point,  # by default True
     "q_group_size": args.q_group_size,  # whether to use group quantization
 
+}
+quant_mode_config = {
+    "quant_method": args.quant_mode,
 }
 ant_config = {
     "ant_mode": args.ant_mode,  
@@ -154,17 +158,32 @@ def build_model_and_enc(model_path):
             if args.q_backend == "fake":
                 # assert args.dump_quant is None, \
                 #     "Need to use real quantization to dump quantized weights"
+                quant_mode = quant_mode_config['quant_method']
                 print_time('Start pseudo quantize')
-                if args.mse_type == "output":
+                if quant_mode == 'ant' or quant_mode == 'olive':
+                    make_quant_linear(
+                        model, args.w_bit, q_config, ant_config=ant_config, quant_mode_config=quant_mode_config
+                    )
+
+                elif quant_mode =='codeant':
+                    # quantize weight to 4-bit
                     pseudo_quant_output_mse(
                         model, enc, w_bit=args.w_bit, q_config=q_config, ant_config=ant_config, n_samples=512, seqlen=512, max_iter=args.max_iter
                     )
-                elif args.mse_type == "weight":
-                    pseudo_quantize_model_weight(
-                        model, w_bit=args.w_bit, q_config=q_config, model_path=args.model_path, ant_config=ant_config, outlier_config=outlier_config
+                    make_quant_linear(
+                        model, args.w_bit, q_config, ant_config=ant_config, quant_mode_config=quant_mode_config
                     )
                 else:
-                    raise NotImplementedError(f"{args.mse_type} not supported yet!")
+                    if args.mse_type == "output":
+                        pseudo_quant_output_mse(
+                            model, enc, w_bit=args.w_bit, q_config=q_config, ant_config=ant_config, n_samples=512, seqlen=512, max_iter=args.max_iter
+                        )
+                    elif args.mse_type == "weight":
+                        pseudo_quantize_model_weight(
+                            model, w_bit=args.w_bit, q_config=q_config, model_path=args.model_path, ant_config=ant_config, outlier_config=outlier_config
+                        )
+                    else:
+                        raise NotImplementedError(f"{args.mse_type} not supported yet!")
                 print_time('Finish pseudo quantize')
                 if args.dump_quant:
                     # model.save_pretrained(f'quant_cache/{args.dump_quant}')

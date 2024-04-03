@@ -116,7 +116,7 @@ def get_quant(tensor_value, quant_grid, outlier_grid, normal_max, alpha=1.0, is_
 
     # argmin, find to index
     if is_input:
-        batch_num = 64
+        batch_num = 32
         assert org_shape[0] % batch_num == 0
         batch_size = org_shape[0] // batch_num
         tensor_q = torch.zeros_like(tensor_value)
@@ -128,7 +128,7 @@ def get_quant(tensor_value, quant_grid, outlier_grid, normal_max, alpha=1.0, is_
 
     else:
         # Batch processing to avoid OOM
-        batch_num = 64
+        batch_num = 32
         assert org_shape[0] % batch_num == 0
         batch_size = org_shape[0] // batch_num
         tensor_q = torch.zeros_like(tensor_value)
@@ -190,7 +190,7 @@ def olive_quant(self, n_bit, weight, input, ant_config, group_size, layer_id, la
         if n_bit == 8:
             outlier_grid = outlier_value(n_bit, signed=True, exp_bit=4)
         else:
-            outlier_grid = outlier_value(n_bit, signed=True)
+            outlier_grid = outlier_value(n_bit, signed=True, exp_base=exp_base)
         # outlier of each channel
         mean = weight.mean(dim=1, keepdim=True)
         std = weight.std(dim=1, keepdim=True)
@@ -250,6 +250,8 @@ def olive_quant(self, n_bit, weight, input, ant_config, group_size, layer_id, la
     print(f"layer: {layer_id}, tensor: {layer_name}, {quant_obj} quant, best mode: {best_mode}, mse: {min_mse}, alpha: {best_alpha}")
     if is_input:
         print(f"normal_max: {normal_max}, max: {input.max()}, deq_max: {final_tensor.max()}, deq_max  /normal_max: {final_tensor.max() / normal_max}, exp_base: {exp_base}")
+    else:
+        print(f"normal_max.max(): {normal_max.max()}, max: {weight.max()}, deq_max: {final_tensor.max()}, deq_max  /normal_max.max(): {final_tensor.max() / normal_max.max()}, exp_base: {exp_base}")
 
     return final_tensor
 
@@ -305,12 +307,13 @@ class OliVe_Linear(nn.Module):
 
         # search and set data type and alpha in the first inference
         if self.weight_quant_grid is None:
-            deq_weight = olive_quant(self, self.w_bit, self.weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, is_input=False)
-            if self.layer_name == 'mlp.down_proj' and self.w_bit == 4:
-                deq_input = olive_quant(self, self.w_bit, deq_weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, exp_base=7, is_input=True)
-            else:
-                deq_input = olive_quant(self, self.w_bit, deq_weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, is_input=True)
+            deq_weight = olive_quant(self, self.w_bit, self.weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, exp_base=5, is_input=False)
+            # if self.layer_name == 'mlp.down_proj' and self.w_bit == 4:
+            #     deq_input = olive_quant(self, self.w_bit, deq_weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, exp_base=7, is_input=True)
+            # else:
+            deq_input = olive_quant(self, self.w_bit, deq_weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, exp_base=5, is_input=True)
             self.weight = deq_weight
+            print("olive search data type and alpha.")
             
         # quantize input based on the selected data type and alpha
         else:

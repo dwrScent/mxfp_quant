@@ -37,7 +37,8 @@ sim_sweep_columns = ['N', 'M',
         'WBUF Size (bits)', 'OBUF Size (bits)', 'IBUF Size (bits)',
         'Batch size']
 
-batch_size = 64
+# batch_size = 64
+batch_size = 1
 
 # directory to store the .csv
 results_dir = './results'
@@ -70,27 +71,28 @@ def run_sim(bench_type):
     print(f"{bench_type} cycle", bf_e_cycles[bench_type])
     print(f"{bench_type} energy", bf_e_energy[bench_type])
 
-model_name_dict = {'vgg16':'VGG16', 
-                   'resnet18':'ResNet18',
-                   'resnet50':'ResNet50',
-                   'inceptionv3':'InceptionV3',
-                   'vit':'ViT',
-                   'mnli':'BERT-MNLI',
-                   'cola':'BERT-CoLA',
-                   'sst_2':'BERT-SST-2',
-                    'bart_base':'bart_base',
-                    'bert_base':'bert_base',
-                    'bert_large':'bert_large',
+model_name_dict = {
+                #     'vgg16':'VGG16', 
+                #    'resnet18':'ResNet18',
+                #    'resnet50':'ResNet50',
+                #    'inceptionv3':'InceptionV3',
+                #    'vit':'ViT',
+                #    'mnli':'BERT-MNLI',
+                #    'cola':'BERT-CoLA',
+                #    'sst_2':'BERT-SST-2',
+                #     'bart_base':'bart_base',
+                #     'bert_base':'bert_base',
+                #     'bert_large':'bert_large',
                     'gpt2_xl':'gpt2_xl',
-                    'bloom3b':'bloom3b',
-                    'bloom7b1':'bloom7b1',
+                    # 'bloom3b':'bloom3b',
+                    # 'bloom7b1':'bloom7b1',
                     'opt6b7':'opt6b7',}
 def process_result():
     with open(os.path.join(os.getcwd(), 'results', 'olive_res.csv'), "a") as ff:
         wr_stats_line = "Time, "
         wr_bench_name = ", "
         wr_model_name = ", "
-        normalized_bench = 'ada'
+        normalized_bench = 'ant'
 
         bf_e_cycles_length = len(bf_e_cycles[normalized_bench])
         tmp_cycle = {}
@@ -167,7 +169,7 @@ def process_result():
 
 
 # bench_type_list = ['olive', 'ant', 'ola', 'ada']
-bench_type_list = ['ant', 'ada']
+bench_type_list = ['ant', 'olive']
 
 for item in bench_type_list:
     run_sim(item)

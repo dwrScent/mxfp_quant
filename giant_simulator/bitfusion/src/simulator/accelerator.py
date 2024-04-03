@@ -11,6 +11,8 @@ class Accelerator(object):
         self.sram = sram
         self.mem_if_width = mem_if_width
         self.frequency = frequency
+
+        # define the precision range
         self.pmax = pmax
         self.pmin = pmin
 

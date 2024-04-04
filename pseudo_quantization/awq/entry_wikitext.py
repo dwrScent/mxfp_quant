@@ -169,7 +169,7 @@ def build_model_and_enc(model_path):
                     )
 
                 elif quant_mode =='codeant':
-                    quant_mode_config['quant_kv'] = True
+                    # quant_mode_config['quant_kv'] = True
                     if quant_mode_config['quant_kv']:
                         print('quant KV Cache')
                     # quantize weight to 4-bit
@@ -180,7 +180,7 @@ def build_model_and_enc(model_path):
                         model, args.w_bit, q_config, ant_config=ant_config, quant_mode_config=quant_mode_config
                     )
                 elif quant_mode == 'int':
-                    quant_mode_config['quant_kv'] = True
+                    # quant_mode_config['quant_kv'] = True
                     if quant_mode_config['quant_kv']:
                         print('quant KV Cache')
                     pseudo_quantize_model_weight(model, w_bit=args.w_bit, q_config=q_config)

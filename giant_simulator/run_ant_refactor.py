@@ -83,16 +83,18 @@ model_name_dict = {
                 #     'bart_base':'bart_base',
                 #     'bert_base':'bert_base',
                 #     'bert_large':'bert_large',
-                    'gpt2_xl':'gpt2_xl',
+                    # 'gpt2_xl':'gpt2_xl',
                     # 'bloom3b':'bloom3b',
                     # 'bloom7b1':'bloom7b1',
-                    'opt6b7':'opt6b7',}
+                    # 'opt6b7':'opt6b7',
+                    'llama_7b':'llama_7b',
+                    }
 def process_result():
     with open(os.path.join(os.getcwd(), 'results', 'olive_res.csv'), "a") as ff:
         wr_stats_line = "Time, "
         wr_bench_name = ", "
         wr_model_name = ", "
-        normalized_bench = 'ant'
+        normalized_bench = 'bit'
 
         bf_e_cycles_length = len(bf_e_cycles[normalized_bench])
         tmp_cycle = {}
@@ -112,14 +114,14 @@ def process_result():
 
                 all_cyc.append(tmp_cycle[bench_type])
                 wr_bench_name += f"{bench_type}, "
-                wr_stats_line += "%0.2f, " %(tmp_cycle[bench_type])
+                wr_stats_line += "%0.5f, " %(tmp_cycle[bench_type])
             wr_model_name += f"{model_name_dict[model_name]}, , , , , , "
 
         # 处理并写入 Geomean 的数据
         for bench_type, cycles in bf_e_cycles.items():
             tmp_cycle_mean[bench_type] /= bf_e_cycles_length
             wr_bench_name += f"{bench_type}, "
-            wr_stats_line += "%0.2f, " %(tmp_cycle_mean[bench_type])
+            wr_stats_line += "%0.5f, " %(tmp_cycle_mean[bench_type])
         
         wr_model_name += "Geomean, , , , , \n"
         wr_bench_name += "\n"
@@ -160,16 +162,17 @@ def process_result():
             wr_stats_line = f"{item}, "
             for value in all_energy[item].values():
                 for idx, bench_type in enumerate(bench_type_list):
-                    wr_stats_line += "%0.2f, " %(value[idx])
+                    wr_stats_line += "%0.5f, " %(value[idx])
                     tmp_energy_mean[bench_type] += value[idx]
             for idx, bench_type in enumerate(bench_type_list):
-                wr_stats_line += "%0.2f, " %(np.mean(tmp_energy_mean[bench_type]))
-            wr_stats_line += "\n\n"
+                wr_stats_line += "%0.5f, " %(np.mean(tmp_energy_mean[bench_type]))
+            wr_stats_line += "\n"
             ff.write(wr_stats_line)
 
 
 # bench_type_list = ['olive', 'ant', 'ola', 'ada']
-bench_type_list = ['ant', 'olive']
+bench_type_list = ['codeant', 'olive', 'ant', 'bit']
+# bench_type_list = ['bit']
 
 for item in bench_type_list:
     run_sim(item)

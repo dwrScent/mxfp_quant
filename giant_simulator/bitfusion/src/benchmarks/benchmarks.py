@@ -9,13 +9,16 @@ from dnnweaver2.scalar.dtypes import FQDtype, FixedPoint
 
 import bitfusion.src.benchmarks.ant_bench as ant
 import bitfusion.src.benchmarks.adafloat_bench as ada
-# import bitfusion.src.benchmarks.bitfusion_bench as bit
+import bitfusion.src.benchmarks.bitfusion_bench as bit
 
 import bitfusion.src.benchmarks.olaccel_bench as ola
 # import bitfusion.src.benchmarks.ant_weight_bench as ant_weight
 # import bitfusion.src.benchmarks.biscaled_bench as biscaled
 
 import bitfusion.src.benchmarks.olive_bench as olive
+
+import bitfusion.src.benchmarks.bitfusion_bench as bf
+import bitfusion.src.benchmarks.codeant_bench as codeant
 
 import os
 
@@ -81,7 +84,7 @@ def get_precision(precision):
     if precision == 6:
         return FQDtype.FXP6
 
-def create_net(net_name, net_list, batch_size):
+def create_net(net_name, net_list, batch_size, asymmetry=False):
     g = Graph(net_name, dataset='imagenet', log_level=logging.INFO)
     with g.as_default():
         for idx, op in enumerate(net_list):
@@ -100,7 +103,7 @@ def create_net(net_name, net_list, batch_size):
                     assert out.shape[3] == output_size[1]
             else:
                 with g.name_scope('fc'+str(idx)):
-                    out = create_fc(input_size, kernel_size, c_dtype=precision, w_dtype=precision)
+                    out = create_fc(input_size, kernel_size, c_dtype=precision, w_dtype=precision, asymmetry=asymmetry)
                     # print(idx, op, out.shape)
                     assert out.shape[0] == output_size[0]
                     assert out.shape[1] == output_size[1]
@@ -124,12 +127,17 @@ def create_conv(input_size, weight_size, stride_size=None, pad=None, c_dtype=Non
     _conv = conv2D(input, weights, biases, stride=stride, pad=pad, dtype=c_dtype)
     return _conv
 
-def create_fc(input_size, weight_size, c_dtype=None, w_dtype=None):
+def create_fc(input_size, weight_size, c_dtype=None, w_dtype=None, asymmetry=False):
     batch_size = input_size[0]
     output_channels = weight_size[0]
     input_channels = weight_size[1]
 
-    input = get_tensor(shape=(batch_size, input_size[1]), name='data', dtype=w_dtype, trainable=False)
+    # add by wmhu. codeant w4a8
+    if asymmetry:
+        input_dtype = FQDtype.FXP8
+    else:
+        input_dtype = w_dtype
+    input = get_tensor(shape=(batch_size, input_size[1]), name='data', dtype=input_dtype, trainable=False)
     weights = get_tensor(shape=(output_channels, input_channels), name='weights', dtype=w_dtype)
     biases = get_tensor(shape=(output_channels,), name='biases', dtype=c_dtype)
     _fc = matmul(input, weights, biases, dtype=c_dtype)
@@ -148,10 +156,11 @@ benchlist = [\
             # 'bart_base',
             # 'bert_base',
             # 'bert_large',
-            'gpt2_xl',
+            # 'gpt2_xl',
             # 'bloom3b',
             # 'bloom7b1',
             # 'opt6b7',
+            'llama_7b',
             ]
 
 
@@ -196,7 +205,9 @@ def get_bench_nn_ant(bench_name, batch_size):
         return create_net(bench_name, ant.bloom7b1, batch_size)
     elif bench_name == 'opt6b7':
         return create_net(bench_name, ant.opt6b7, batch_size)
-
+    elif bench_name == 'llama_7b':
+        return create_net(bench_name, ant.llama_7b, batch_size)
+    
 def get_bench_nn_olive(bench_name, batch_size):
     if bench_name == 'vgg16':
         return create_net(bench_name, olive.vgg16, batch_size)
@@ -238,41 +249,11 @@ def get_bench_nn_olive(bench_name, batch_size):
         return create_net(bench_name, olive.bloom7b1, batch_size)
     elif bench_name == 'opt6b7':
         return create_net(bench_name, olive.opt6b7, batch_size)
-
+    elif bench_name == 'llama_7b':
+        return create_net(bench_name, olive.llama_7b, batch_size)
+    
 def get_bench_nn_bit(bench_name, batch_size):
-    if bench_name == 'vgg16':
-        return create_net(bench_name, bit.vgg16, batch_size)
-    elif bench_name == 'resnet18':
-        return create_net(bench_name, bit.resnet18, batch_size)
-    elif bench_name == 'resnet50':
-        return create_net(bench_name, bit.resnet50, batch_size)
-    elif bench_name == 'inceptionv3':
-        return create_net(bench_name, bit.inceptionv3, batch_size)
-    elif bench_name == 'vit':
-        return create_net(bench_name, bit.vit, batch_size)
-    elif bench_name == 'rte':
-        return create_net(bench_name, bit.rte, batch_size)
-    elif bench_name == 'wnli':
-        return create_net(bench_name, bit.wnli, batch_size)
-    elif bench_name == 'mrpc':
-        return create_net(bench_name, bit.mrpc, batch_size)
-    elif bench_name == 'cola':
-        return create_net(bench_name, bit.cola, batch_size)
-    elif bench_name == 'sst_2':
-        return create_net(bench_name, bit.sst_2, batch_size)
-    elif bench_name == 'qnli':
-        return create_net(bench_name, bit.qnli, batch_size)
-    elif bench_name == 'qqp':
-        return create_net(bench_name, bit.qqp, batch_size)
-    elif bench_name == 'mnli':
-        return create_net(bench_name, bit.mnli, batch_size)
-    elif bench_name == 'bart_base':
-        return create_net(bench_name, bit.bart_base, batch_size)
-    elif bench_name == 'bert_base':
-        return create_net(bench_name, bit.bert_base, batch_size)
-    elif bench_name == 'bert_large':
-        return create_net(bench_name, bit.bert_large, batch_size)
-    elif bench_name == 'gpt2_xl':
+    if bench_name == 'gpt2_xl':
         return create_net(bench_name, bit.gpt2_xl, batch_size)
     elif bench_name == 'bloom3b':
         return create_net(bench_name, bit.bloom3b, batch_size)
@@ -280,8 +261,21 @@ def get_bench_nn_bit(bench_name, batch_size):
         return create_net(bench_name, bit.bloom7b1, batch_size)
     elif bench_name == 'opt6b7':
         return create_net(bench_name, bit.opt6b7, batch_size)
+    elif bench_name == 'llama_7b':
+        return create_net(bench_name, bit.llama_7b, batch_size)
 
-
+def get_bench_nn_codeant(bench_name, batch_size):
+    if bench_name == 'gpt2_xl':
+        return create_net(bench_name, codeant.gpt2_xl, batch_size, asymmetry=True)
+    elif bench_name == 'bloom3b':
+        return create_net(bench_name, codeant.bloom3b, batch_size, asymmetry=True)
+    elif bench_name == 'bloom7b1':
+        return create_net(bench_name, codeant.bloom7b1, batch_size, asymmetry=True)
+    elif bench_name == 'opt6b7':
+        return create_net(bench_name, codeant.opt6b7, batch_size, asymmetry=True)
+    elif bench_name == 'llama_7b':
+        return create_net(bench_name, codeant.llama_7b, batch_size, asymmetry=True)
+    
 def get_bench_nn_ada(bench_name, batch_size):
     if bench_name == 'vgg16':
         return create_net(bench_name, ada.vgg16, batch_size)
@@ -409,6 +403,7 @@ def get_bench_nn_bis(bench_name, batch_size):
     elif bench_name == 'opt6b7':
         return create_net(bench_name, biscaled.opt6b7, batch_size)
 
+    
 def write_to_csv(csv_name, fields, stats, graph, csv_path='./'):
     if not os.path.exists(csv_path):
         os.makedirs(csv_path)

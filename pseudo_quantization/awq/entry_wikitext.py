@@ -382,13 +382,19 @@ def main():
         attention_mask = cache['attention_mask']
         position_ids = cache['position_ids']
 
+        inps_for_search = inps.clone().detach()
+        outs_for_search = outs.clone().detach()
+
         for i in tqdm(range(len(layers)), desc="data type search..."):
+            # if i == 26:
+            #     continue
             layer = layers[i]
-            inps = inps.to(layer.self_attn.q_proj.weight.data.device)
+            inps_for_search = inps_for_search.to(layer.self_attn.q_proj.weight.data.device)
             # 用第一个 sample 进行 search，确定 data type
-            outs[0] = layer(inps[0].unsqueeze(0), attention_mask=attention_mask, position_ids=position_ids)[0]
-            inps, outs = outs, inps
-            dev = inps.device
+            outs_for_search[0] = layer(inps_for_search[0].unsqueeze(0), attention_mask=attention_mask, position_ids=position_ids)[0]
+            inps_for_search, outs_for_search = outs_for_search, inps_for_search
+            dev = inps_for_search.device
+        
 
         for i in tqdm(range(len(layers)), desc="forwarding..."):
             # print(i)

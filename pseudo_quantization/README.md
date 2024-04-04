@@ -31,13 +31,11 @@ CUDA_VISIBLE_DEVICES=3 ./scripts/llama_run_wiki.sh 7 wikitext 0 ant int-flint-fl
 CUDA_VISIBLE_DEVICES=3 ./scripts/llama_run_wiki.sh 65 wikitext 0 ant int-flint-float-pot -1 4
 # 运行 OPT 模型
 CUDA_VISIBLE_DEVICES=4 ./scripts/opt_run.sh 6.7 wikitext 0 ant int-flint-float-pot -1 4
-
+# 测试 c4 数据集
+CUDA_VISIBLE_DEVICES=3 ./scripts/llama_run_wiki.sh 7 c4 0 ant int-flint-float-pot -1 4
 
 # OliVe
 CUDA_VISIBLE_DEVICES=3 ./scripts/llama_run_wiki.sh 7 wikitext 0 olive int-flint -1 4
-
-CUDA_VISIBLE_DEVICES=4 ./scripts/opt_run.sh 6.7 wikitext 0 olive int-flint -1 4 bias_w5a5
-
 
 # CODE-ANT Ours
 CUDA_VISIBLE_DEVICES=3 ./scripts/llama_run_wiki.sh 7 wikitext 0 codeant int 64 4

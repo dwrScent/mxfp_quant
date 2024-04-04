@@ -169,7 +169,7 @@ def build_model_and_enc(model_path):
                     )
 
                 elif quant_mode =='codeant':
-                    # quant_mode_config['quant_kv'] = True
+                    quant_mode_config['quant_kv'] = True
                     if quant_mode_config['quant_kv']:
                         print('quant KV Cache')
                     # quantize weight to 4-bit
@@ -261,13 +261,14 @@ def get_ptb(nsamples, seed, seqlen, model):
 
 def get_c4(nsamples, seed, seqlen, model):
     from datasets import load_dataset
-    traindata = load_dataset(
-        'allenai/c4', 'allenai--c4', data_files={'train': 'en/c4-train.00000-of-01024.json.gz'}, split='train'
-    )
-    valdata = load_dataset(
-        'allenai/c4', 'allenai--c4', data_files={'validation': 'en/c4-validation.00000-of-00008.json.gz'}, split='validation'
-    )
-
+    # traindata = load_dataset(
+    #     'allenai/c4', 'allenai--c4', data_files={'train': 'en/c4-train.00000-of-01024.json.gz'}, split='train'
+    # )
+    traindata = load_dataset('allenai/c4', data_files={'train': 'en/c4-train.00000-of-01024.json.gz'}, split='train')
+    # valdata = load_dataset(
+    #     'allenai/c4', 'allenai--c4', data_files={'validation': 'en/c4-validation.00000-of-00008.json.gz'}, split='validation'
+    # )
+    valdata = load_dataset('allenai/c4', data_files={'validation': 'en/c4-validation.00000-of-00008.json.gz'}, split='validation')
     from transformers import AutoTokenizer
     tokenizer = AutoTokenizer.from_pretrained(model, use_fast=False)
 

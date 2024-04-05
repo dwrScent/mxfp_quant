@@ -99,7 +99,7 @@ class SimulatorSweep(object):
                                                 results = lookup_pandas_dataframe(self.sweep_df, lookup_dict)
                                                 if bench_type == 'ant': 
                                                     nn = benchmarks.get_bench_nn_ant(b, batch_size)
-                                                if bench_type == 'olive':
+                                                elif bench_type == 'olive':
                                                     nn = benchmarks.get_bench_nn_olive(b, batch_size)
                                                 elif bench_type == 'bit':
                                                     nn = benchmarks.get_bench_nn_bit(b, batch_size)
@@ -109,6 +109,8 @@ class SimulatorSweep(object):
                                                     nn = benchmarks.get_bench_nn_ola(b, batch_size)
                                                 elif bench_type == 'bis':
                                                     nn = benchmarks.get_bench_nn_bis(b, batch_size)
+                                                elif bench_type == 'codeant':
+                                                    nn = benchmarks.get_bench_nn_codeant(b, batch_size)
 
                                                 if len(results) == 0:
                                                     self.logger.info('Simulating Benchmark: {}'.format(b))

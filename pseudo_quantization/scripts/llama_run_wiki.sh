@@ -10,8 +10,9 @@ WEIGHT_BIT=${7:-"4"}
 # OUTLIER_RATIO=${8:-"-1"}
 DESC=${8:-""}
 
-MODEL=/localdata_ssd/model/llama-${MODEL_SIZE}b-hf-transformers-4.29
-OUTPUT_NAME=llama-${MODEL_SIZE}b
+# MODEL=/localdata_ssd/model/llama-${MODEL_SIZE}b-hf-transformers-4.29
+MODEL=/state/partition/wmhu/model/llama-2-${MODEL_SIZE}b-hf
+OUTPUT_NAME=llama-2-${MODEL_SIZE}b
 OUTPUT_DIR=output/output_test_0325
 
 mkdir -p $OUTPUT_DIR

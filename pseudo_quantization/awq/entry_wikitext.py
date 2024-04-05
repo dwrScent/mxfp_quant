@@ -12,7 +12,7 @@ from accelerate import (
     load_checkpoint_in_model,
 )
 from awq.utils.parallel import auto_parallel
-from awq.quantize.quantizer import pseudo_quant_output_mse, make_quant_linear
+from awq.quantize.quantizer import pseudo_quant_output_mse, make_quant_linear, pseudo_quantize_model_weight
 from awq.utils.lm_eval_adaptor import LMEvalAdaptor
 from awq.utils.utils import simple_dispatch_model
 import torch.nn as nn
@@ -179,7 +179,16 @@ def build_model_and_enc(model_path):
                     make_quant_linear(
                         model, args.w_bit, q_config, ant_config=ant_config, quant_mode_config=quant_mode_config
                     )
-
+                elif quant_mode == 'int':
+                    # quant_mode_config['quant_kv'] = True
+                    if quant_mode_config['quant_kv']:
+                        print('quant KV Cache')
+                    pseudo_quantize_model_weight(model, w_bit=args.w_bit, q_config=q_config)
+                    make_quant_linear(
+                        model, args.w_bit, q_config, ant_config=ant_config, quant_mode_config=quant_mode_config
+                    )
+                elif quant_mode == 'mokey':
+                    make_quant_linear(model, w_bit=8, q_config=q_config, quant_mode_config=quant_mode_config, init_only=False)
                 else:
                     raise NotImplementedError(f"{args.mse_type} not supported yet!")
                 print_time('Finish pseudo quantize')
@@ -254,13 +263,14 @@ def get_ptb(nsamples, seed, seqlen, model):
 
 def get_c4(nsamples, seed, seqlen, model):
     from datasets import load_dataset
-    traindata = load_dataset(
-        'allenai/c4', 'allenai--c4', data_files={'train': 'en/c4-train.00000-of-01024.json.gz'}, split='train'
-    )
-    valdata = load_dataset(
-        'allenai/c4', 'allenai--c4', data_files={'validation': 'en/c4-validation.00000-of-00008.json.gz'}, split='validation'
-    )
-
+    # traindata = load_dataset(
+    #     'allenai/c4', 'allenai--c4', data_files={'train': 'en/c4-train.00000-of-01024.json.gz'}, split='train'
+    # )
+    traindata = load_dataset('allenai/c4', data_files={'train': 'en/c4-train.00000-of-01024.json.gz'}, split='train')
+    # valdata = load_dataset(
+    #     'allenai/c4', 'allenai--c4', data_files={'validation': 'en/c4-validation.00000-of-00008.json.gz'}, split='validation'
+    # )
+    valdata = load_dataset('allenai/c4', data_files={'validation': 'en/c4-validation.00000-of-00008.json.gz'}, split='validation')
     from transformers import AutoTokenizer
     tokenizer = AutoTokenizer.from_pretrained(model, use_fast=False)
 
@@ -382,13 +392,21 @@ def main():
         attention_mask = cache['attention_mask']
         position_ids = cache['position_ids']
 
+        inps_for_search = inps.clone().detach()
+        outs_for_search = outs.clone().detach()
+
         for i in tqdm(range(len(layers)), desc="data type search..."):
+            # if i == 26:
+            #     continue
             layer = layers[i]
-            inps = inps.to(layer.self_attn.q_proj.weight.data.device)
+            # if i==1:
+            #     print(inps_for_search[0])
+            inps_for_search = inps_for_search.to(layer.self_attn.q_proj.weight.data.device)
             # 用第一个 sample 进行 search，确定 data type
-            outs[0] = layer(inps[0].unsqueeze(0), attention_mask=attention_mask, position_ids=position_ids)[0]
-            inps, outs = outs, inps
-            dev = inps.device
+            outs_for_search[0] = layer(inps_for_search[0].unsqueeze(0), attention_mask=attention_mask, position_ids=position_ids)[0]
+            inps_for_search, outs_for_search = outs_for_search, inps_for_search
+            dev = inps_for_search.device
+        
 
         for i in tqdm(range(len(layers)), desc="forwarding..."):
             # print(i)

@@ -72,6 +72,67 @@ def scale_activations(module):
         )
         set_op_by_name(module, "mlp.act", act)
 
+def pseudo_quantize_tensor(
+    w, n_bit=8, zero_point=True, q_group_size=-1, inplace=False, get_scale_zp=False
+):
+    org_w_shape = w.shape
+    if q_group_size > 0:
+        assert org_w_shape[-1] % q_group_size == 0
+        w = w.reshape(-1, q_group_size)
+    assert w.dim() == 2
+    if zero_point:
+        max_val = w.amax(dim=1, keepdim=True)
+        min_val = w.amin(dim=1, keepdim=True)
+        max_int = 2**n_bit - 1
+        min_int = 0
+        scales = (max_val - min_val).clamp(min=1e-5) / max_int
+        zeros = (-torch.round(min_val / scales)).clamp_(min_int, max_int)
+    else:  # we actually never used this
+        # assert min_val is None
+        max_val = w.abs().amax(dim=1, keepdim=True)
+        max_val = max_val.clamp(min=1e-5)
+        max_int = 2 ** (n_bit - 1) - 1
+        min_int = -(2 ** (n_bit - 1))
+        scales = max_val / max_int
+        zeros = 0
+
+    assert torch.isnan(scales).sum() == 0
+    assert torch.isnan(w).sum() == 0
+
+    if inplace:
+        (
+            (w.div_(scales).round_().add_(zeros)).clamp_(min_int, max_int).sub_(zeros)
+        ).mul_(scales)
+    else:
+        w = (
+            torch.clamp(torch.round(w / scales) + zeros, min_int, max_int) - zeros
+        ) * scales
+    assert torch.isnan(w).sum() == 0
+
+    w = w.reshape(org_w_shape)
+
+    if get_scale_zp:
+        return w, scales.view(w.shape[0], -1), zeros.view(w.shape[0], -1)
+    else:
+        return w
+@torch.no_grad()
+def pseudo_quantize_model_weight(
+    model,
+    w_bit,
+    q_config,
+):
+    from .pre_quant import get_blocks, get_named_linears
+
+    layers = get_blocks(model)
+    for i in tqdm(range(len(layers)), desc="pseudo weight quantization..."):
+        named_linears = get_named_linears(layers[i])
+        for n, m in named_linears.items():
+            # m.cuda()
+            m.weight.data = pseudo_quantize_tensor(
+                m.weight.data, n_bit=w_bit, **q_config
+            )
+            # m.cpu()
+
 @torch.no_grad()
 def pseudo_quant_output_mse(
     model, enc,
@@ -285,7 +346,7 @@ def make_quant_linear(
         named_linears = get_named_linears(layer)
         scale_activations(layer)
         for name, module in named_linears.items():
-            module.cuda()
+            # module.cuda()
             if quant_mode_config['quant_method'] == 'ant':
                 from .qmodule_ant import ANT_Linear
                 q_linear = ANT_Linear.from_linear(
@@ -298,12 +359,18 @@ def make_quant_linear(
                 from .qmodule_encode import CODEANT_Linear
                 q_linear = CODEANT_Linear.from_linear(
                     module, w_bit, q_config['q_group_size'], i, name, quant_mode_config['quant_kv'], init_only=False, ant_config=ant_config)
-
+            elif quant_mode_config['quant_method'] == 'int':
+                from .qmodule_encode import CODEANT_Linear
+                q_linear = CODEANT_Linear.from_linear(
+                    module, w_bit, q_config['q_group_size'], i, name, quant_mode_config['quant_kv'], init_only=False, ant_config=ant_config)
+            elif quant_mode_config['quant_method'] == 'mokey':
+                from .qmodule_mokey import Mokey_Linear
+                q_linear = Mokey_Linear.from_linear(module, layer_id=i, layer_name=name)
             else:
                 pass
             q_linear.to(next(layer.parameters()).device)
             set_op_by_name(layer, name, q_linear)
-            module.cpu()
+            # module.cpu()
 
 
     torch.cuda.empty_cache()

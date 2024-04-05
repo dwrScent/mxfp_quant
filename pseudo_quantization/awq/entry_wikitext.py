@@ -187,6 +187,8 @@ def build_model_and_enc(model_path):
                     make_quant_linear(
                         model, args.w_bit, q_config, ant_config=ant_config, quant_mode_config=quant_mode_config
                     )
+                elif quant_mode == 'mokey':
+                    make_quant_linear(model, w_bit=8, q_config=q_config, quant_mode_config=quant_mode_config, init_only=False)
                 else:
                     raise NotImplementedError(f"{args.mse_type} not supported yet!")
                 print_time('Finish pseudo quantize')
@@ -397,6 +399,8 @@ def main():
             # if i == 26:
             #     continue
             layer = layers[i]
+            # if i==1:
+            #     print(inps_for_search[0])
             inps_for_search = inps_for_search.to(layer.self_attn.q_proj.weight.data.device)
             # 用第一个 sample 进行 search，确定 data type
             outs_for_search[0] = layer(inps_for_search[0].unsqueeze(0), attention_mask=attention_mask, position_ids=position_ids)[0]

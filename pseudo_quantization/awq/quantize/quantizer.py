@@ -363,6 +363,9 @@ def make_quant_linear(
                 from .qmodule_encode import CODEANT_Linear
                 q_linear = CODEANT_Linear.from_linear(
                     module, w_bit, q_config['q_group_size'], i, name, quant_mode_config['quant_kv'], init_only=False, ant_config=ant_config)
+            elif quant_mode_config['quant_method'] == 'mokey':
+                from .qmodule_mokey import Mokey_Linear
+                q_linear = Mokey_Linear.from_linear(module, layer_id=i, layer_name=name)
             else:
                 pass
             q_linear.to(next(layer.parameters()).device)

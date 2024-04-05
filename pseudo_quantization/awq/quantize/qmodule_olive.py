@@ -309,9 +309,10 @@ class OliVe_Linear(nn.Module):
         if self.weight_quant_grid is None:
             deq_weight = olive_quant(self, self.w_bit, self.weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, exp_base=5, is_input=False)
             # if self.layer_name == 'mlp.down_proj' and self.w_bit == 4:
-            #     deq_input = olive_quant(self, self.w_bit, deq_weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, exp_base=7, is_input=True)
-            # else:
-            deq_input = olive_quant(self, self.w_bit, deq_weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, exp_base=5, is_input=True)
+            if self.w_bit == 4:
+                deq_input = olive_quant(self, self.w_bit, deq_weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, exp_base=7, is_input=True)
+            else:
+                deq_input = olive_quant(self, self.w_bit, deq_weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, exp_base=5, is_input=True)
             self.weight = deq_weight
             print("olive search data type and alpha.")
             

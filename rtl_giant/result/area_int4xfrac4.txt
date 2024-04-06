@@ -1,0 +1,29 @@
+****************************************
+Report : area
+Design : fixed_point_multiplier
+Version: O-2018.06-SP1
+Date   : Sat Apr  6 15:54:31 2024
+****************************************
+
+Information: Updating design information... (UID-85)
+Library(s) Used:
+
+    NangateOpenCellLibrary (File: /home/design/Desktop/NangateOpenCellLibrary.db)
+
+Number of ports:                           29
+Number of nets:                            84
+Number of cells:                           59
+Number of combinational cells:             57
+Number of sequential cells:                 1
+Number of macros/black boxes:               0
+Number of buf/inv:                         11
+Number of references:                       7
+
+Combinational area:                 75.012000
+Buf/Inv area:                        5.852000
+Noncombinational area:               0.000000
+Macro/Black Box area:                0.000000
+Net Interconnect area:      undefined  (Wire load has zero net area)
+
+Total cell area:                    75.012000
+Total area:                 undefined

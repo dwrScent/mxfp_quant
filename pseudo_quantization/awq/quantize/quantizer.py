@@ -197,11 +197,12 @@ def pseudo_quant_output_mse(
     # print(quant_grid_set_v)
     # exit(0)
 
-    # quant_grid_set = generate_quant_grid(n_bit=w_bit, signed=True, ant_mode=ant_config['ant_mode'])
-
+    int_grid_set = generate_quant_grid(n_bit=w_bit, signed=True, ant_mode='int')
     mode_list = []
     # mode_list = ant_config['ant_mode'].split('-')
     mode_list.extend(quant_grid_set.keys())
+    mode_list.append('int')
+    quant_grid_set['int'] = int_grid_set['int']    
 
     d_type_stats = {}
     tensor_stats = {}

@@ -12,7 +12,7 @@ from accelerate import (
     load_checkpoint_in_model,
 )
 from awq.utils.parallel import auto_parallel
-from awq.quantize.quantizer import pseudo_quant_output_mse, make_quant_linear
+from awq.quantize.quantizer import pseudo_quant_output_mse, make_quant_linear,pseudo_quantize_model_weight
 from awq.utils.lm_eval_adaptor import LMEvalAdaptor
 from awq.utils.utils import simple_dispatch_model
 
@@ -174,6 +174,14 @@ def build_model_and_enc(model_path):
                     pseudo_quant_output_mse(
                         model, enc, w_bit=args.w_bit, q_config=q_config, ant_config=ant_config, n_samples=512, seqlen=512, max_iter=args.max_iter
                     )
+                    make_quant_linear(
+                        model, args.w_bit, q_config, ant_config=ant_config, quant_mode_config=quant_mode_config
+                    )
+                elif quant_mode == 'int':
+                    # quant_mode_config['quant_kv'] = True
+                    if quant_mode_config['quant_kv']:
+                        print('quant KV Cache')
+                    pseudo_quantize_model_weight(model, w_bit=args.w_bit, q_config=q_config)
                     make_quant_linear(
                         model, args.w_bit, q_config, ant_config=ant_config, quant_mode_config=quant_mode_config
                     )

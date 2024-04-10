@@ -1,9 +1,14 @@
+Loading db file '/home/design/Desktop/NangateOpenCellLibrary.db'
+Information: Propagating switching activity (low effort zero delay simulation). (PWR-6)
+Warning: There is no defined clock in the design. (PWR-80)
+Warning: Design has unannotated primary inputs. (PWR-414)
+ 
 ****************************************
 Report : power
         -analysis_effort low
 Design : fixed_point_multiplier
 Version: O-2018.06-SP1
-Date   : Sat Apr  6 15:55:31 2024
+Date   : Wed Apr 10 22:30:03 2024
 ****************************************
 
 

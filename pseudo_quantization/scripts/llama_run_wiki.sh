@@ -11,8 +11,8 @@ WEIGHT_BIT=${7:-"4"}
 DESC=${8:-""}
 
 # MODEL=/localdata_ssd/model/llama-${MODEL_SIZE}b-hf-transformers-4.29
-MODEL=/state/partition/wmhu/model/llama-2-${MODEL_SIZE}b-hf
-OUTPUT_NAME=llama-2-${MODEL_SIZE}b
+MODEL=/state/partition/wmhu/model/llama-${MODEL_SIZE}b-hf
+OUTPUT_NAME=llama-${MODEL_SIZE}b
 OUTPUT_DIR=output/output_test_0325
 
 mkdir -p $OUTPUT_DIR

@@ -1,4 +1,4 @@
-TOPNAME = pe88_no_fusion
+TOPNAME = pe88
 # NXDC_FILES = constr/$(TOPNAME).nxdc
 INC_PATH ?=
 

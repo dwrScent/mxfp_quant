@@ -41,6 +41,6 @@ Our Component
 | 8x8 PE with bit fusion (MAC and SAC) | 2000  | 1024   | 473   |
 | 8x2 PE (MAC and SAC)                 | 495   | 1024   | 90    |
 | Comparator, 16 bit float point       | 202   | 32     | 43    |
-| Fixed Point Multiplier 4-bit         | 75    | 32     | 40    |
-| Fixed Point Multiplier 8-bit         |       | 32     |       |
+| Fixed Point Multiplier 4-bit         | 100   | 32     | 45    |
+| Fixed Point Multiplier 8-bit         | 380   | 32     | 262   |
 

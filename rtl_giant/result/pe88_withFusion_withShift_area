@@ -1,0 +1,30 @@
+ 
+****************************************
+Report : area
+Design : pe88
+Version: O-2018.06-SP1
+Date   : Wed Apr 10 22:36:54 2024
+****************************************
+
+Information: Updating design information... (UID-85)
+Library(s) Used:
+
+    NangateOpenCellLibrary (File: /home/design/Desktop/NangateOpenCellLibrary.db)
+
+Number of ports:                          705
+Number of nets:                          2041
+Number of cells:                         1276
+Number of combinational cells:           1193
+Number of sequential cells:                67
+Number of macros/black boxes:               0
+Number of buf/inv:                        185
+Number of references:                      35
+
+Combinational area:               1844.975999
+Buf/Inv area:                      100.016001
+Noncombinational area:             217.055992
+Macro/Black Box area:                0.000000
+Net Interconnect area:      undefined  (Wire load has zero net area)
+
+Total cell area:                  2062.031992
+Total area:                 undefined

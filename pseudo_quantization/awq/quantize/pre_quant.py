@@ -11,6 +11,7 @@ from transformers.models.gpt2.modeling_gpt2 import GPT2LMHeadModel
 from transformers.models.bloom.modeling_bloom import BloomForCausalLM
 from transformers.models.opt.modeling_opt import OPTForCausalLM
 from transformers.models.llama.modeling_llama import LlamaForCausalLM
+from transformers.models.bert.modeling_bert import BertForSequenceClassification
 
 def get_named_linears(module):
     return {name: m for name, m in module.named_modules() if isinstance(m, nn.Linear)}
@@ -25,6 +26,8 @@ def get_blocks(model):
         layers = model.transformer.h
     elif isinstance(model, BloomForCausalLM):
         layers = model.transformer.h
+    elif isinstance(model, BertForSequenceClassification):
+        layers = model.bert.encoder.layer
     else:
         raise NotImplementedError(type(model))
 

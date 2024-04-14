@@ -10,10 +10,10 @@ WEIGHT_BIT=${7:-"4"}
 # OUTLIER_RATIO=${8:-"-1"}
 DESC=${8:-""}
 
-# MODEL=/localdata_ssd/model/llama-${MODEL_SIZE}b-hf-transformers-4.29
-MODEL=/state/partition/wmhu/model/llama-${MODEL_SIZE}b-hf
+MODEL=/localdata_ssd/model/llama-${MODEL_SIZE}b-hf-transformers-4.29
+# MODEL=/state/partition/wmhu/model/llama-${MODEL_SIZE}b-hf
 OUTPUT_NAME=llama-${MODEL_SIZE}b
-OUTPUT_DIR=output/output_test_0325
+OUTPUT_DIR=output/output_test_0414_mmlu
 
 mkdir -p $OUTPUT_DIR
 # --dump_quant $OUTPUT_NAME \
@@ -28,4 +28,4 @@ python -m awq.entry_wikitext --model_path $MODEL \
     --quant_mode $QUANT_MODE \
     --ant_mode $ANT_MODE \
     --q_group_size $GROUP_SIZE \
-    | tee $OUTPUT_DIR/${OUTPUT_NAME}_${TASKS}_${WEIGHT_BIT}bit_${SHOTS}shots_${QUANT_MODE}_${ANT_MODE}_g${GROUP_SIZE}_${DESC}.log 2>&1
+    | tee $OUTPUT_DIR/${OUTPUT_NAME}_${TASKS}_${WEIGHT_BIT}bit_${SHOTS}shots_${QUANT_MODE}_${ANT_MODE}_g${GROUP_SIZE}_${DESC}_$(date +%m%d%H%M).log 2>&1

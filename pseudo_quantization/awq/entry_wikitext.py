@@ -19,6 +19,9 @@ import torch.nn as nn
 from tqdm import tqdm
 
 import datetime
+
+from awq.models.llama_giant import LlamaForCausalLM_giant
+
 def print_time(print_str):
     timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     print(f'{timestamp} - {print_str}')
@@ -152,9 +155,15 @@ def build_model_and_enc(model_path):
         model.eval()
     else:
         kwargs = {"device_map": "balanced", "torch_dtype": torch.float16}
-        model = AutoModelForCausalLM.from_pretrained(
-            model_path, config=config, **kwargs)
 
+        if quant_mode_config['quant_method'] =='codeant':
+            model = LlamaForCausalLM_giant.from_pretrained(
+                model_path, config=config, **kwargs)
+        else:
+            model = AutoModelForCausalLM.from_pretrained(
+                model_path, config=config, **kwargs)
+        # print(model)
+        # exit(0)
         # weight quantization
         if args.w_bit is not None and args.w_bit != -1:
             if args.q_backend == "fake":

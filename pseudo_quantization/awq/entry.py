@@ -16,9 +16,12 @@ from awq.quantize.quantizer import pseudo_quant_output_mse, make_quant_linear,ps
 from awq.utils.lm_eval_adaptor import LMEvalAdaptor
 from awq.utils.utils import simple_dispatch_model
 
-
-
 import datetime
+
+from awq.models.opt_giant import OPTForCausalLM_giant
+from awq.models.bloom_giant import BloomForCausalLM_giant
+from transformers import OPTConfig, BloomConfig
+
 def print_time(print_str):
     timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     print(f'{timestamp} - {print_str}')
@@ -118,9 +121,20 @@ def build_model_and_enc(model_path):
     if args.load_quant:  # directly load quantized weights
         print("Loading pre-computed quantized weights...")
         with init_empty_weights():
-            model = AutoModelForCausalLM.from_config(
-                config=config, torch_dtype=torch.float16, trust_remote_code=True
-            )
+            kwargs_init = {"device_map": "balanced", "torch_dtype": torch.float16}
+            if quant_mode_config['quant_method'] =='codeant' and isinstance(config, OPTConfig):
+                model = OPTForCausalLM_giant.from_pretrained(
+                    model_path, config=config, **kwargs_init)
+            elif quant_mode_config['quant_method'] =='codeant' and isinstance(config, BloomConfig):
+                model = BloomForCausalLM_giant.from_pretrained(
+                    model_path, config=config, **kwargs_init)
+            else:
+                model = AutoModelForCausalLM.from_config(
+                        config=config, torch_dtype=torch.float16, trust_remote_code=True
+                    )
+            # model = AutoModelForCausalLM.from_config(
+            #     config=config, torch_dtype=torch.float16, trust_remote_code=True
+            # )
 
         model.tie_weights()
 
@@ -147,13 +161,25 @@ def build_model_and_enc(model_path):
         # Dispatch model
         model = simple_dispatch_model(model, device_map=device_map)
 
+        if quant_mode_config['quant_method'] in ['ant', 'olive', 'int', 'mokey', 'codeant']:
+            make_quant_linear(
+                model, args.w_bit, q_config, ant_config=ant_config, quant_mode_config=quant_mode_config
+            )
+
         model.eval()
     else:  # fp16 to quantized
         kwargs = {"device_map": "balanced", "torch_dtype": torch.float16}
 
-
-        model = AutoModelForCausalLM.from_pretrained(
-            model_path, config=config, **kwargs)
+        # modify the attention layer
+        if quant_mode_config['quant_method'] =='codeant' and isinstance(config, OPTConfig):
+            model = OPTForCausalLM_giant.from_pretrained(
+                model_path, config=config, **kwargs)
+        elif quant_mode_config['quant_method'] =='codeant' and isinstance(config, BloomConfig):
+            model = BloomForCausalLM_giant.from_pretrained(
+                model_path, config=config, **kwargs)
+        else:
+            model = AutoModelForCausalLM.from_pretrained(
+                model_path, config=config, **kwargs)
 
         # weight quantization
         if args.w_bit is not None and args.w_bit != -1:
@@ -189,11 +215,11 @@ def build_model_and_enc(model_path):
                     raise NotImplementedError(f"{args.mse_type} not supported yet!")
                 print_time('Finish pseudo quantize')
                 if args.dump_quant:
-                    # model.save_pretrained(f'quant_cache/{args.dump_quant}')
-                    # enc.save_pretrained(f'quant_cache/{args.dump_quant}')
+                    model.save_pretrained(f'quant_cache/{args.dump_quant}')
+                    enc.save_pretrained(f'quant_cache/{args.dump_quant}')
                     print(
                         f"Saving the quantized model at {args.dump_quant}...")
-                    torch.save(model.cpu().state_dict(), args.dump_quant)
+                    # torch.save(model.cpu().state_dict(), args.dump_quant)
                     exit(0)
             else:
                 raise NotImplementedError

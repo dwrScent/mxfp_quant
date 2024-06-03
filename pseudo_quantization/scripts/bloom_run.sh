@@ -10,7 +10,7 @@ WEIGHT_BIT=${7:-"4"}
 # OUTLIER_RATIO=${8:-"-1"}
 DESC=${8:-""}
 
-MODEL=/localdata_ssd/model/bloom-7b1/snapshots/e83e90ba86f87f74aa2731cdab25ccf33976bd66
+MODEL=/cephfs/shared/model/bloom-7b1/snapshots/e83e90ba86f87f74aa2731cdab25ccf33976bd66
 OUTPUT_NAME=bloom-7b1
 OUTPUT_DIR=output/output_bloom
 

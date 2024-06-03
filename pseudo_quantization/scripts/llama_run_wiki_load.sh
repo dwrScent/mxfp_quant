@@ -26,6 +26,7 @@ python -m awq.entry_wikitext --model_path $MODEL \
     --q_backend fake \
     --no_zero_point \
     --quant_mode $QUANT_MODE \
+    --load_quant quant_cache/llama-7b-w4-g64-giant \
     --ant_mode $ANT_MODE \
     --q_group_size $GROUP_SIZE \
     | tee $OUTPUT_DIR/${OUTPUT_NAME}_${TASKS}_${WEIGHT_BIT}bit_${SHOTS}shots_${QUANT_MODE}_${ANT_MODE}_g${GROUP_SIZE}_${DESC}_$(date +%m%d%H%M).log 2>&1

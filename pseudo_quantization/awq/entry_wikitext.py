@@ -122,10 +122,17 @@ def build_model_and_enc(model_path):
 
     if args.load_quant:  # directly load quantized weights
         print("Loading pre-computed quantized weights...")
+
         with init_empty_weights():
-            model = AutoModelForCausalLM.from_config(
-                config=config, torch_dtype=torch.float16, trust_remote_code=True
-            )
+            if quant_mode_config['quant_method'] =='codeant':
+                kwargs_init = {"device_map": "balanced", "torch_dtype": torch.float16}
+                model = LlamaForCausalLM_giant.from_pretrained(
+                    model_path, config=config, **kwargs_init)
+            else:
+                model = AutoModelForCausalLM.from_config(
+                    config=config, torch_dtype=torch.float16, trust_remote_code=True
+                )
+
 
         model.tie_weights()
 
@@ -152,18 +159,23 @@ def build_model_and_enc(model_path):
         # Dispatch model
         model = simple_dispatch_model(model, device_map=device_map)
 
+        if quant_mode_config['quant_method'] in ['ant', 'olive', 'int', 'mokey', 'codeant']:
+            make_quant_linear(
+                model, args.w_bit, q_config, ant_config=ant_config, quant_mode_config=quant_mode_config
+            )
+
         model.eval()
     else:
         kwargs = {"device_map": "balanced", "torch_dtype": torch.float16}
 
+        # modify the attention layer
         if quant_mode_config['quant_method'] =='codeant':
             model = LlamaForCausalLM_giant.from_pretrained(
                 model_path, config=config, **kwargs)
         else:
             model = AutoModelForCausalLM.from_pretrained(
                 model_path, config=config, **kwargs)
-        # print(model)
-        # exit(0)
+
         # weight quantization
         if args.w_bit is not None and args.w_bit != -1:
             if args.q_backend == "fake":
@@ -202,11 +214,11 @@ def build_model_and_enc(model_path):
                     raise NotImplementedError(f"{args.mse_type} not supported yet!")
                 print_time('Finish pseudo quantize')
                 if args.dump_quant:
-                    # model.save_pretrained(f'quant_cache/{args.dump_quant}')
-                    # enc.save_pretrained(f'quant_cache/{args.dump_quant}')
+                    model.save_pretrained(f'quant_cache/{args.dump_quant}')
+                    enc.save_pretrained(f'quant_cache/{args.dump_quant}')
                     print(
                         f"Saving the quantized model at {args.dump_quant}...")
-                    torch.save(model.cpu().state_dict(), args.dump_quant)
+                    # torch.save(model.cpu().state_dict(), args.dump_quant)
                     # exit(0)
             else:
                 raise NotImplementedError

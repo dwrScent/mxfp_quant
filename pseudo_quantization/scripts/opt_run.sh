@@ -10,7 +10,7 @@ WEIGHT_BIT=${7:-"4"}
 # OUTLIER_RATIO=${8:-"-1"}
 DESC=${8:-""}
 
-MODEL=/localdata_ssd/model/opt-${MODEL_SIZE}b
+MODEL=/cephfs/shared/model/opt-${MODEL_SIZE}b
 OUTPUT_NAME=opt-${MODEL_SIZE}b
 OUTPUT_DIR=output/output_opt
 

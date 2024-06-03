@@ -39,8 +39,8 @@ CUDA_VISIBLE_DEVICES=3 ./scripts/llama_run_wiki.sh 7 wikitext 0 olive int-flint 
 
 # CODE-ANT Ours
 CUDA_VISIBLE_DEVICES=3 ./scripts/llama_run_wiki.sh 7 wikitext 0 codeant int 64 4
-
 CUDA_VISIBLE_DEVICES=4 ./scripts/opt_run.sh 6.7 wikitext 0 codeant int 64 4
+CUDA_VISIBLE_DEVICES=0 ./scripts/bloom_run.sh 7 wikitext 0 codeant int 64 4
 
 # Change the model_path based on your path.
 ```

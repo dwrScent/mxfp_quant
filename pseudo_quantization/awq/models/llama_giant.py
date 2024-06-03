@@ -12,6 +12,36 @@ from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_m
 
 _CONFIG_FOR_DOC = "LlamaConfig"
 
+def pseudo_quantize_int(tensor, n_bit=8, zero_point=False, q_group_size=-1):
+    org_shape = tensor.shape
+    if q_group_size > 0:
+        assert org_shape[-1] % q_group_size == 0
+        tensor = tensor.reshape(-1, q_group_size)
+    assert tensor.dim() == 2
+    if zero_point:
+        max_val = tensor.amax(dim=1, keepdim=True)
+        min_val = tensor.amin(dim=1, keepdim=True)
+        max_int = 2 ** n_bit - 1
+        min_int = 0
+        scales = (max_val - min_val).clamp(min=1e-5) / max_int
+        zeros = (-torch.round(min_val / scales)).clamp_(min_int, max_int)
+    else:
+        max_val = tensor.abs().amax(dim=1, keepdim=True)
+        max_val = max_val.clamp(min=1e-5)
+
+        max_int = 2 ** (n_bit - 1) - 1
+        min_int = - 2 ** (n_bit - 1)
+        scales = max_val / max_int
+        zeros = 0
+
+    assert torch.isnan(scales).sum() == 0
+    assert torch.isnan(tensor).sum() == 0
+
+    tensor = (torch.clamp(torch.round(tensor / scales) +
+                         zeros, min_int, max_int) - zeros) * scales
+    assert torch.isnan(tensor).sum() == 0
+    tensor = tensor.reshape(org_shape)
+    return tensor
 
 class LlamaAttention_giant(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
@@ -110,7 +140,39 @@ class LlamaAttention_giant(nn.Module):
             query_states = self.q_proj(hidden_states)
             key_states = self.k_proj(hidden_states)
             value_states = self.v_proj(hidden_states)
+        # (1, seq_len, head * head_dim), (1, 2048, 4096)
+        # quant qkv
+        quant_attention = True
+        if quant_attention == True:
+            print('quant_llama_attention')
+            org_q_shape = query_states.shape
+            org_k_shape = key_states.shape
+            org_v_shape = value_states.shape
 
+            mse = nn.MSELoss()
+            org_q = query_states.clone()
+            org_k = key_states.clone()
+            org_v = value_states.clone()
+
+            k_bit = 4
+            v_bit = 6
+
+            query_states = query_states.reshape(query_states.shape[1], -1)
+            key_states = key_states.reshape(key_states.shape[1], -1)
+            value_states = value_states.reshape(value_states.shape[1], -1)
+            query_states = pseudo_quantize_int(query_states, n_bit=8, zero_point=False, q_group_size=64)
+            key_states = pseudo_quantize_int(key_states, n_bit=k_bit, zero_point=False, q_group_size=64)
+            value_trans = value_states.t()
+            value_trans = pseudo_quantize_int(value_trans, n_bit=v_bit, zero_point=False, q_group_size=64)
+            value_states = value_trans.t()
+            # value_states = pseudo_quantize_int(value_states, n_bit=8, zero_point=False, q_group_size=64)
+
+
+            query_states = query_states.reshape(org_q_shape)
+            key_states = key_states.reshape(org_k_shape)
+            value_states = value_states.reshape(org_v_shape)
+
+            print(f"mse q: {mse(org_q, query_states)} mse k: {mse(org_k, key_states)} mse v: {mse(org_v, value_states)} k_bit: {k_bit} v_bit: {v_bit}")
         query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
         key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
         value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
@@ -136,7 +198,25 @@ class LlamaAttention_giant(nn.Module):
         # upcast attention to fp32
         attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
         attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
+        # quantize attention weights
+        if quant_attention == True:
+            org_weight_shape = attn_weights.shape
+            org_weights = attn_weights.clone()
+            attn_weights = attn_weights.reshape(attn_weights.shape[1], -1)
+            attn_weights = pseudo_quantize_int(attn_weights, n_bit=8, zero_point=False, q_group_size=64)
+            attn_weights = attn_weights.reshape(org_weight_shape)
+
+            print(f"mse atten_weights: {mse(org_weights, attn_weights)}")
         attn_output = torch.matmul(attn_weights, value_states)
+        # quantize attention output
+        if quant_attention == True:
+            org_outputs_shape = attn_output.shape
+            org_outputs = attn_output.clone()
+            attn_output = attn_output.reshape(attn_output.shape[1], -1)
+            attn_output = pseudo_quantize_int(attn_output, n_bit=8, zero_point=False, q_group_size=64)
+            attn_output = attn_output.reshape(org_outputs_shape)
+
+            print(f"mse atten_weights: {mse(org_outputs, attn_output)}")
 
         if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
             raise ValueError(

@@ -18,6 +18,7 @@ from transformers.models.llama.modeling_llama import LlamaForCausalLM
 import functools
 from collections import defaultdict
 import numpy as np
+import copy
 
 EMBEDDING_KEYWORDS = ["embed"]
 LM_HEAD_KEYWORDS = ["lm_head", "embed_out", "output"]
@@ -141,7 +142,8 @@ def pseudo_quant_output_mse(
     n_samples=512, seqlen=512,
     # some configs for ablation study
     calib_data="pileval",
-    max_iter=600
+    max_iter=600,
+    a_stride=5
 ):
     from ..utils.calib_data import get_calib_dataset
     from .pre_quant import get_blocks, get_named_linears
@@ -192,9 +194,9 @@ def pseudo_quant_output_mse(
     #     mode_list.extend(meta_flint_set.keys())
 
     # quant_grid_set = encode_gen(w_bit)
-    quant_grid_set = encode_gen_no_zero(w_bit)
+    quant_grid_set = encode_gen_no_zero(w_bit, a_stride=a_stride)
     # print(quant_grid_set, quant_grid_set_v)
-    # print(quant_grid_set_v)
+    # print(quant_grid_set)
     # exit(0)
 
     int_grid_set = generate_quant_grid(n_bit=w_bit, signed=True, ant_mode='int')
@@ -231,7 +233,9 @@ def pseudo_quant_output_mse(
                                   feat_dict=input_feat)))
         inps = inps.to(next(layer.parameters()).device)  # in case multi-gpu
         # get output as next layer's input
-        inps = layer(inps, **layer_kwargs)[0]
+        layer_kwargs_copy = copy.deepcopy(layer_kwargs)
+        # inps = layer(inps, **layer_kwargs)[0]
+        layer(inps, **layer_kwargs)
         for h in handles:
             h.remove()
 
@@ -315,7 +319,7 @@ def pseudo_quant_output_mse(
             overall_mse = overall_mse.to(tensor_mse.device)
             overall_mse += tensor_mse
             # exit(0)
-        
+        inps = layer(inps, **layer_kwargs_copy)[0]
         del input_feat
         gc.collect()
         torch.cuda.empty_cache()
@@ -333,7 +337,7 @@ def pseudo_quant_output_mse(
 
 @torch.no_grad()
 def make_quant_linear(
-    model, w_bit, q_config, ant_config=None, outlier_config=None, quant_mode_config=None,
+    model, w_bit, a_bit, q_config, ant_config=None, outlier_config=None, quant_mode_config=None,
     init_only=False
 ):
     from .qmodule import WQLinear
@@ -351,19 +355,19 @@ def make_quant_linear(
             if quant_mode_config['quant_method'] == 'ant':
                 from .qmodule_ant import ANT_Linear
                 q_linear = ANT_Linear.from_linear(
-                    module, w_bit, q_config['q_group_size'], i, name, init_only=False, ant_config=ant_config)
+                    module, w_bit, a_bit, q_config['q_group_size'], i, name, init_only=False, ant_config=ant_config)
             elif quant_mode_config['quant_method'] == 'olive':
                 from .qmodule_olive import OliVe_Linear
                 q_linear = OliVe_Linear.from_linear(
-                    module, w_bit, q_config['q_group_size'], i, name, init_only=False, ant_config=ant_config)
+                    module, w_bit, a_bit, q_config['q_group_size'], i, name, init_only=False, ant_config=ant_config)
             elif quant_mode_config['quant_method'] == 'codeant':
                 from .qmodule_encode import CODEANT_Linear
                 q_linear = CODEANT_Linear.from_linear(
-                    module, w_bit, q_config['q_group_size'], i, name, quant_mode_config['quant_kv'], init_only=False, ant_config=ant_config)
+                    module, w_bit, a_bit, q_config['q_group_size'], i, name, quant_mode_config['quant_kv'], init_only=False, ant_config=ant_config)
             elif quant_mode_config['quant_method'] == 'int':
                 from .qmodule_encode import CODEANT_Linear
                 q_linear = CODEANT_Linear.from_linear(
-                    module, w_bit, q_config['q_group_size'], i, name, quant_mode_config['quant_kv'], init_only=False, ant_config=ant_config)
+                    module, w_bit, a_bit, q_config['q_group_size'], i, name, quant_mode_config['quant_kv'], init_only=False, ant_config=ant_config)
             elif quant_mode_config['quant_method'] == 'mokey':
                 from .qmodule_mokey import Mokey_Linear
                 q_linear = Mokey_Linear.from_linear(module, layer_id=i, layer_name=name)

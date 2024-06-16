@@ -8,7 +8,7 @@ from torch import nn
 
 from transformers.models.opt.configuration_opt import *
 from transformers.models.opt.modeling_opt import *
-from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
+# from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
 
 def pseudo_quantize_int(tensor, n_bit=8, zero_point=False, q_group_size=-1):
     org_shape = tensor.shape

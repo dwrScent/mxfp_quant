@@ -147,12 +147,13 @@ def ant_quant(self, n_bit, weight, input, ant_config, group_size, layer_id, laye
 
     return final_tensor
 class ANT_Linear(nn.Module):
-    def __init__(self, w_bit, group_size, in_features, out_features, bias, dev, ant_config, layer_id, layer_name):
+    def __init__(self, w_bit, a_bit, group_size, in_features, out_features, bias, dev, ant_config, layer_id, layer_name):
         super().__init__()
         
         self.in_features = in_features
         self.out_features = out_features
         self.w_bit = w_bit
+        self.a_bit = a_bit
         self.group_size = group_size 
         self.ant_config = ant_config
 
@@ -175,9 +176,9 @@ class ANT_Linear(nn.Module):
             self.bias = None
 
     @classmethod
-    def from_linear(cls, linear, w_bit, group_size, layer_id, layer_name, init_only=False, ant_config=None):
+    def from_linear(cls, linear, w_bit, a_bit, group_size, layer_id, layer_name, init_only=False, ant_config=None):
 
-        awq_linear = cls(w_bit, group_size, linear.in_features, linear.out_features, linear.bias is not None, linear.weight.device, ant_config, layer_id, layer_name)
+        awq_linear = cls(w_bit, a_bit, group_size, linear.in_features, linear.out_features, linear.bias is not None, linear.weight.device, ant_config, layer_id, layer_name)
         if init_only:  # just prepare for loading sd
             return awq_linear
 
@@ -194,10 +195,11 @@ class ANT_Linear(nn.Module):
         out_shape = x.shape[:-1] + (self.out_features, )
         input = x.reshape(-1, x.shape[-1])
 
+        # TODO: quantize or not based on a_bit
         # search and set data type and alpha in the first inference
         if self.weight_quant_grid is None:
             deq_weight = ant_quant(self, self.w_bit, self.weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, is_input=False)
-            deq_input = ant_quant(self, self.w_bit, deq_weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, is_input=True)
+            deq_input = ant_quant(self, self.a_bit, deq_weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, is_input=True)
             
             # quantize weight only once
             self.weight = deq_weight
@@ -206,8 +208,8 @@ class ANT_Linear(nn.Module):
         # quantize input based on the selected data type and alpha
         else:
             org_shape = input.shape
-            if self.w_bit > 6:
-                deq_input = pseudo_quantize_int(input.view(-1), n_bit=self.w_bit, zero_point=False, q_group_size=self.group_size, alpha=self.input_alpha, is_input=True)
+            if self.a_bit > 6:
+                deq_input = pseudo_quantize_int(input.view(-1), n_bit=self.a_bit, zero_point=False, q_group_size=self.group_size, alpha=self.input_alpha, is_input=True)
             else:
                 deq_input = get_quant(input.view(-1), self.input_quant_grid, alpha=self.input_alpha, is_input=True)
             deq_input = deq_input.reshape(org_shape)

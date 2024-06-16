@@ -39,6 +39,7 @@ parser.add_argument('--auto_parallel', action='store_true',
                     help="automatically set parallel and batch_size")
 # quantization config
 parser.add_argument('--w_bit', type=int, default=None)
+parser.add_argument('--a_bit', type=int, default=16)
 parser.add_argument('--q_group_size', type=int, default=-1)
 parser.add_argument('--no_zero_point', action='store_true',
                     help="disable zero_point")
@@ -55,7 +56,7 @@ parser.add_argument(
     + "https://huggingface.co/docs/accelerate/usage_guides/big_modeling",
 )
 parser.add_argument('--quant_mode', type=str, default="compute_encode")
-parser.add_argument('--quant_kv', type=bool, default=False)
+parser.add_argument('--quant_kv', type=int, default=0)
 parser.add_argument('--ant_mode', type=str, default="int")
 parser.add_argument('--mse_type', type=str, default="weight")
 parser.add_argument('--ant_search_granularity', type=int, default=1)
@@ -65,6 +66,7 @@ parser.add_argument('--w_high', type=int, default=150)
 
 parser.add_argument('--outlier_type', type=str, default="none")
 parser.add_argument('--outlier_ratio', type=float, default=-1.0)
+parser.add_argument('--a_stride', type=int, default=5)
 
 # save/load real quantized weights
 parser.add_argument('--dump_quant', type=str, default=None,
@@ -161,7 +163,7 @@ def build_model_and_enc(model_path):
 
         if quant_mode_config['quant_method'] in ['ant', 'olive', 'int', 'mokey', 'codeant']:
             make_quant_linear(
-                model, args.w_bit, q_config, ant_config=ant_config, quant_mode_config=quant_mode_config
+                model, args.w_bit, args.a_bit, q_config, ant_config=ant_config, quant_mode_config=quant_mode_config
             )
 
         model.eval()
@@ -169,7 +171,8 @@ def build_model_and_enc(model_path):
         kwargs = {"device_map": "balanced", "torch_dtype": torch.float16}
 
         # modify the attention layer
-        if quant_mode_config['quant_method'] =='codeant':
+        if quant_mode_config['quant_method'] =='codeant' and quant_mode_config['quant_kv']:
+            print('quant KV Cache')
             model = LlamaForCausalLM_giant.from_pretrained(
                 model_path, config=config, **kwargs)
         else:
@@ -186,19 +189,20 @@ def build_model_and_enc(model_path):
 
                 if quant_mode == 'ant' or quant_mode == 'olive':
                     make_quant_linear(
-                        model, args.w_bit, q_config, ant_config=ant_config, quant_mode_config=quant_mode_config
+                        model, args.w_bit, args.a_bit, q_config, ant_config=ant_config, quant_mode_config=quant_mode_config
                     )
 
                 elif quant_mode =='codeant':
                     # quant_mode_config['quant_kv'] = True
-                    if quant_mode_config['quant_kv']:
-                        print('quant KV Cache')
+                    # if quant_mode_config['quant_kv']:
+                    #     print('quant KV Cache')
+                    
                     # quantize weight to 4-bit
                     pseudo_quant_output_mse(
-                        model, enc, w_bit=args.w_bit, q_config=q_config, ant_config=ant_config, n_samples=512, seqlen=512, max_iter=args.max_iter
+                        model, enc, w_bit=args.w_bit, q_config=q_config, ant_config=ant_config, n_samples=512, seqlen=512, max_iter=args.max_iter, a_stride=args.a_stride
                     )
                     make_quant_linear(
-                        model, args.w_bit, q_config, ant_config=ant_config, quant_mode_config=quant_mode_config
+                        model, args.w_bit, args.a_bit, q_config, ant_config=ant_config, quant_mode_config=quant_mode_config
                     )
                 elif quant_mode == 'int':
                     # quant_mode_config['quant_kv'] = True
@@ -206,10 +210,10 @@ def build_model_and_enc(model_path):
                         print('quant KV Cache')
                     pseudo_quantize_model_weight(model, w_bit=args.w_bit, q_config=q_config)
                     make_quant_linear(
-                        model, args.w_bit, q_config, ant_config=ant_config, quant_mode_config=quant_mode_config
+                        model, args.w_bit, args.a_bit, q_config, ant_config=ant_config, quant_mode_config=quant_mode_config
                     )
                 elif quant_mode == 'mokey':
-                    make_quant_linear(model, w_bit=8, q_config=q_config, quant_mode_config=quant_mode_config, init_only=False)
+                    make_quant_linear(model, 8, args.a_bit, q_config=q_config, quant_mode_config=quant_mode_config, init_only=False)
                 else:
                     raise NotImplementedError(f"{args.mse_type} not supported yet!")
                 print_time('Finish pseudo quantize')

@@ -4,17 +4,18 @@ import torch.nn as nn
 from .ant_quant import generate_quant_grid
 import torch.nn.functional as F
 
-def encode_gen_no_zero(w_bit, return_list=False):
+def encode_gen_no_zero(w_bit, return_list=False, a_stride=5):
     """
     Generate the computable codebook from the index list
     Computable codebook: a*index + 2^index * b
     """
     coefficient_list = []
     # 选定系数 a
-    for coefficient in range(0, 128, 10):
+    for coefficient in range(0, 128, a_stride):
         coefficient_list.append(coefficient)
     # supply some specific data type, merge them after removing duplicates
-    supply_list = [0, 5, 17, 20]
+    # supply_list = [0, 5, 17, 20]
+    supply_list = [0, 17]
     merged_list = list(set(coefficient_list + supply_list))
 
     codebook_dict = {}
@@ -124,12 +125,13 @@ def pseudo_quantize_int(tensor, n_bit=8, zero_point=False, q_group_size=-1):
     return tensor
     
 class CODEANT_Linear(nn.Module):
-    def __init__(self, w_bit, group_size, in_features, out_features, bias, dev, ant_config, layer_id, layer_name, quant_kv):
+    def __init__(self, w_bit, a_bit, group_size, in_features, out_features, bias, dev, ant_config, layer_id, layer_name, quant_kv):
         super().__init__()
         
         self.in_features = in_features
         self.out_features = out_features
         self.w_bit = w_bit
+        self.a_bit = a_bit
         self.group_size = group_size if group_size != -1 else in_features
         self.ant_config = ant_config
 
@@ -155,9 +157,9 @@ class CODEANT_Linear(nn.Module):
             self.bias = None
 
     @classmethod
-    def from_linear(cls, linear, w_bit, group_size, layer_id, layer_name, quant_kv, init_only=False, ant_config=None):
+    def from_linear(cls, linear, w_bit, a_bit, group_size, layer_id, layer_name, quant_kv, init_only=False, ant_config=None):
 
-        awq_linear = cls(w_bit, group_size, linear.in_features, linear.out_features, linear.bias is not None, linear.weight.device, ant_config, layer_id, layer_name, quant_kv)
+        awq_linear = cls(w_bit, a_bit, group_size, linear.in_features, linear.out_features, linear.bias is not None, linear.weight.device, ant_config, layer_id, layer_name, quant_kv)
         if init_only:  # just prepare for loading sd
             return awq_linear
 
@@ -176,15 +178,14 @@ class CODEANT_Linear(nn.Module):
         # print(input, self.weight)
 
         # quantize activation to INT8
-        input = pseudo_quantize_int(input, n_bit=8, zero_point=False, q_group_size=self.group_size)
+        if self.a_bit < 16 and self.a_bit != -1:
+            # input = pseudo_quantize_int(input, n_bit=8, zero_point=False, q_group_size=self.group_size)
+            input = pseudo_quantize_int(input, n_bit=self.a_bit, zero_point=False, q_group_size=self.group_size)
         
-        # # quant KV
-
- 
         out = F.linear(input, self.weight)
-        if self.quant_kv:
-            if self.layer_name == 'self_attn.k_proj' or self.layer_name == 'self_attn.v_proj':
-                out = pseudo_quantize_int(out, n_bit=self.w_bit, zero_point=False, q_group_size=self.group_size)
+        # if self.quant_kv:
+        #     if self.layer_name == 'self_attn.k_proj' or self.layer_name == 'self_attn.v_proj':
+        #         out = pseudo_quantize_int(out, n_bit=self.w_bit, zero_point=False, q_group_size=self.group_size)
 
         out = out + self.bias if self.bias is not None else out
         return out.reshape(out_shape)

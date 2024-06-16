@@ -8,7 +8,7 @@ from torch import nn
 
 from transformers.models.bloom.configuration_bloom import *
 from transformers.models.bloom.modeling_bloom import *
-from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
+# from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
 
 _CHECKPOINT_FOR_DOC = "bigscience/bloom-560m"
 _CONFIG_FOR_DOC = "BloomConfig"

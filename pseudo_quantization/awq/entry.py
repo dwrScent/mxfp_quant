@@ -39,6 +39,7 @@ parser.add_argument('--auto_parallel', action='store_true',
                     help="automatically set parallel and batch_size")
 # quantization config
 parser.add_argument('--w_bit', type=int, default=None)
+parser.add_argument('--a_bit', type=int, default=16)
 parser.add_argument('--q_group_size', type=int, default=-1)
 parser.add_argument('--no_zero_point', action='store_true',
                     help="disable zero_point")
@@ -190,7 +191,7 @@ def build_model_and_enc(model_path):
                 print_time('Start pseudo quantize')
                 if quant_mode == 'ant' or quant_mode == 'olive':
                     make_quant_linear(
-                        model, args.w_bit, q_config, ant_config=ant_config, quant_mode_config=quant_mode_config
+                        model, args.w_bit, args.a_bit, q_config, ant_config=ant_config, quant_mode_config=quant_mode_config
                     )
 
                 elif quant_mode =='codeant':
@@ -201,7 +202,7 @@ def build_model_and_enc(model_path):
                         model, enc, w_bit=args.w_bit, q_config=q_config, ant_config=ant_config, n_samples=512, seqlen=512, max_iter=args.max_iter
                     )
                     make_quant_linear(
-                        model, args.w_bit, q_config, ant_config=ant_config, quant_mode_config=quant_mode_config
+                        model, args.w_bit, args.a_bit, q_config, ant_config=ant_config, quant_mode_config=quant_mode_config
                     )
                 elif quant_mode == 'int':
                     # quant_mode_config['quant_kv'] = True
@@ -209,7 +210,7 @@ def build_model_and_enc(model_path):
                         print('quant KV Cache')
                     pseudo_quantize_model_weight(model, w_bit=args.w_bit, q_config=q_config)
                     make_quant_linear(
-                        model, args.w_bit, q_config, ant_config=ant_config, quant_mode_config=quant_mode_config
+                        model, args.w_bit, args.a_bit, q_config, ant_config=ant_config, quant_mode_config=quant_mode_config
                     )
                 else:
                     raise NotImplementedError(f"{args.mse_type} not supported yet!")

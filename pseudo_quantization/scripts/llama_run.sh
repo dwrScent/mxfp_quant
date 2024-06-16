@@ -5,10 +5,11 @@ QUANT_MODE=${4:-"ant"}
 ANT_MODE=${5:-"int"}
 GROUP_SIZE=${6:-"-1"}
 WEIGHT_BIT=${7:-"4"}
+ACT_BIT=${8:-"16"}
 # MSE_TYPE=${8:-"weight"}
 # OUTLIER_TYPE=${7:-"none"}
 # OUTLIER_RATIO=${8:-"-1"}
-DESC=${8:-""}
+DESC=${9:-""}
 
 MODEL=/cephfs/shared/model/llama-${MODEL_SIZE}b-hf-transformers-4.29
 OUTPUT_NAME=llama-${MODEL_SIZE}b
@@ -20,6 +21,7 @@ python -m awq.entry --model_path $MODEL \
     --tasks $TASKS \
     --num_fewshot $SHOTS \
     --w_bit $WEIGHT_BIT  \
+    --a_bit $ACT_BIT  \
     --q_backend fake \
     --no_zero_point \
     --quant_mode $QUANT_MODE \

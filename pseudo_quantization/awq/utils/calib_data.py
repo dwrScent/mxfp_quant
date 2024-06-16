@@ -5,7 +5,8 @@ from datasets import load_dataset
 def get_calib_dataset(data="pileval", tokenizer=None, n_samples=512, block_size=512):
     if data == "pileval":
         # dataset = load_dataset("json", data_files="https://the-eye.eu/public/AI/pile/val.jsonl.zst", split="train")
-        dataset = load_dataset("json", data_files="/localdata_ssd/dataset/val.jsonl.zst",
+        # dataset = load_dataset("json", data_files="/localdata_ssd/dataset/val.jsonl.zst",
+        dataset = load_dataset("json", data_files="/cephfs/shared/model/val.jsonl.zst",
         # dataset = load_dataset("json", data_files="/state/partition/wmhu/val.jsonl.zst",
         split="train")
     else:

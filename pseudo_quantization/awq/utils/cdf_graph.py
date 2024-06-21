@@ -4,6 +4,10 @@ import matplotlib.pyplot as plt
 import torch
 from scipy.signal import savgol_filter
 
+from scipy.interpolate import UnivariateSpline
+
+
+
 cumulative_data = {}
 
 def compute_cdf(data):
@@ -16,6 +20,12 @@ def smooth_curve(x, y, num_points=1000, window_length=175, polyorder=2):
         window_length = len(x) // 2 * 2 + 1  # Make sure window_length is odd and less than data length
     x_new = np.linspace(x.min(), x.max(), num_points)
     y_smooth = savgol_filter(np.interp(x_new, x, y), window_length, polyorder)
+    return x_new, y_smooth
+
+def smooth_curve_group(x, y, num_points=1000, s=0.1):
+    x_new = np.linspace(x.min(), x.max(), num_points)
+    spline = UnivariateSpline(x, y, s=s)
+    y_smooth = spline(x_new)
     return x_new, y_smooth
 
 def normalize_data(data):
@@ -47,45 +57,62 @@ def group_cdf(w_data, group_size=-1, layer_idx=0, layer_name="", max_fig=1000, d
     os.makedirs(save_path, exist_ok=True)
 
     plt.figure(figsize=(8, 6))  # Adjusted figure size
-    plt.title("CDF of Weights")
-    plt.ylabel('CDF')
-    plt.xlabel('Value')
+
+    # plt.title("CDF of Weights")
+    # plt.ylabel('CDF')
+    # plt.xlabel('Value')
+    plt.rcParams['font.family'] = 'sans-serif'
+    plt.rcParams['font.weight'] = 'bold'
+    plt.xticks(np.arange(-1, 1.5, step=0.5), fontsize=24, fontweight='bold')
+    plt.yticks(fontsize=24, fontweight='bold')
 
     if group_size == -2:
         data_list = w_data.view(-1).tolist()
         data_list = normalize_data(data_list)  # Normalize data
+        assert np.max(data_list) <= 1 and np.min(data_list) >= -1
+
         sorted_data, yvals = compute_cdf(data_list)
-        x_smooth, y_smooth = smooth_curve(sorted_data, yvals, window_length=10)
+        x_smooth, y_smooth = smooth_curve(sorted_data, yvals, window_length=5)
         if accumulate:
             cumulative_data[layer_name][desc].append((x_smooth, y_smooth, f"Tensor-level CDF {layer_idx}"))
         else:
-            plt.plot(x_smooth, y_smooth, label=f"Tensor-level CDF {layer_idx}", alpha=0.7, linewidth=2)  # Adjusted line width
+            plt.plot(x_smooth, y_smooth, label=f"Tensor-level CDF {layer_idx}", alpha=0.7, linewidth=1.5)  # Adjusted line width
     else:
         for idx in range(0, len(w_data_group), stride):
-            if idx >= max_fig:
-                print(f"Up to the max number of figures: {max_fig}")
-                break
+            # if idx >= max_fig:
+            #     print(f"Up to the max number of figures: {max_fig}")
+            #     break
             group = w_data_group[idx]
             data_list = group.view(-1).tolist()
             data_list = normalize_data(data_list)  # Normalize data
+            # print(np.max(data_list), np.min(data_list))
+            assert np.max(data_list) <= 1 and np.min(data_list) >= -1
             sorted_data, yvals = compute_cdf(data_list)
-            if group_size > 0 and w_data.shape[-1] % group_size != 0:
-                x_smooth, y_smooth = smooth_curve(sorted_data, yvals, num_points=2000, window_length=150)
+            # print(group_size, )
+            if group_size > 0:
+                x_smooth, y_smooth = smooth_curve(sorted_data, yvals, num_points=1000, window_length=101, polyorder=3)
+                # x_smooth, y_smooth = smooth_curve_group(sorted_data, yvals, num_points=1000, s=10)
             else:
-                x_smooth, y_smooth = smooth_curve(sorted_data, yvals, window_length=20)
+                x_smooth, y_smooth = smooth_curve(sorted_data, yvals, window_length=21)
             
             if accumulate:
                 cumulative_data[layer_name][desc].append((x_smooth, y_smooth, f"Group {idx} {layer_idx}"))
             else:
-                plt.plot(x_smooth, y_smooth, alpha=0.7, linewidth=2, label=f"Group {idx}")  # Adjusted line width
+                plt.plot(x_smooth, y_smooth, alpha=0.7, linewidth=1.5, label=f"Group {idx}")  # Adjusted line width
 
+    # plt.gca().xaxis.set_ticklabels([])  # Hide x-axis labels
+    # plt.gca().yaxis.set_ticklabels([])  # Hide y-axis labels
+
+    plt.tight_layout(pad=0.1)
     if not accumulate:
         plt.savefig(f'{save_path}/layer{layer_idx}_{layer_name}_{desc}.png')
+        # plt.savefig(f'{save_path}/layer_{layer_name}_{desc}.pdf', format='pdf', dpi=600)
         plt.show()
     elif plot_final:
         for x_smooth, y_smooth, label in cumulative_data[layer_name][desc]:
-            plt.plot(x_smooth, y_smooth, alpha=0.7, linewidth=2, label=label)  # Adjusted line width
-        plt.savefig(f'{save_path}/layer_{layer_name}_{desc}.png')
+            plt.plot(x_smooth, y_smooth, alpha=0.7, linewidth=1.5, label=label)  # Adjusted line width
+        # plt.savefig(f'{save_path}/layer_{layer_name}_{desc}.png')
+        plt.savefig(f'{save_path}/layer_{layer_name}_{desc}.pdf', format='pdf', dpi=600)
         plt.show()
         # Clear data after plotting
         cumulative_data[layer_name][desc] = []

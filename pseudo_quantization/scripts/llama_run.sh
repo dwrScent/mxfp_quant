@@ -6,10 +6,12 @@ ANT_MODE=${5:-"int"}
 GROUP_SIZE=${6:-"-1"}
 WEIGHT_BIT=${7:-"4"}
 ACT_BIT=${8:-"16"}
-# MSE_TYPE=${8:-"weight"}
+QUANT_KV=${9:-"0"}
+A_STRIDE=${10:-"5"}
+# MSE_TYPE=${11:-"weight"}
 # OUTLIER_TYPE=${7:-"none"}
 # OUTLIER_RATIO=${8:-"-1"}
-DESC=${9:-""}
+DESC=${11:-""}
 
 MODEL=/cephfs/shared/model/llama-${MODEL_SIZE}b-hf-transformers-4.29
 OUTPUT_NAME=llama-${MODEL_SIZE}b

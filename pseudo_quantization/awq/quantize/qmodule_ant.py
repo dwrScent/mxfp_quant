@@ -4,6 +4,8 @@ import torch.nn as nn
 from .ant_quant import generate_quant_grid
 import torch.nn.functional as F
 
+from .ant_quant import ant_quantization
+
 def pseudo_quantize_int(tensor, n_bit=8, zero_point=True, q_group_size=-1, alpha=1.0, is_input=False):
     org_shape = tensor.shape
     assert q_group_size == -1
@@ -84,11 +86,13 @@ def get_quant(tensor_value, quant_grid, alpha=1.0, is_input=False):
 def ant_quant(self, n_bit, weight, input, ant_config, group_size, layer_id, layer_name, is_input=False):
     # channel-wise quantization for weight, tensor-wise for activation
     assert group_size == -1, "ANT use per-channel quantization for weight and per-tensor for activation"
+    assert torch.isnan(weight).sum() == 0
+    assert torch.isnan(input).sum() == 0
     mode_list = ant_config['ant_mode'].split('-')
     quant_grid_set = generate_quant_grid(n_bit=n_bit, signed=True, ant_mode=ant_config['ant_mode'])
 
     # transform to float to avoid overflow in MSE compute
-    org_output = torch.mm(input, weight.T).to(torch.float)
+    org_output = torch.mm(input, weight.T).to(torch.float64)
 
     min_mse = float('inf')
     best_mode = 'null'
@@ -118,13 +122,13 @@ def ant_quant(self, n_bit, weight, input, ant_config, group_size, layer_id, laye
                 # reshape from (-1) to (seq_len, hidden), for mm operation
                 tensor_deq = tensor_deq.reshape(org_shape)
                 # transform to float to avoid overflow in MSE compute
-                deq_output = torch.mm(tensor_deq, weight.T).to(torch.float)
+                deq_output = torch.mm(tensor_deq, weight.T).to(torch.float64)
             else:
                 if n_bit > 6:
                     tensor_deq = pseudo_quantize_int(weight, n_bit=n_bit, zero_point=False, q_group_size=group_size, is_input=False)
                 else:
                     tensor_deq = get_quant(weight, quant_grid, alpha=search_alpha, is_input=False)
-                deq_output = torch.mm(input, tensor_deq.T).to(torch.float)
+                deq_output = torch.mm(input, tensor_deq.T).to(torch.float64)
 
             mse = (deq_output - org_output).pow(2).mean()
 
@@ -137,10 +141,12 @@ def ant_quant(self, n_bit, weight, input, ant_config, group_size, layer_id, laye
     if is_input:
         self.input_quant_grid = quant_grid_set[best_mode]
         self.input_alpha = best_alpha
+        self.input_mode = best_mode
         quant_obj = 'input'
     else:
         self.weight_quant_grid = quant_grid_set[best_mode]
         self.weight_alpha = best_alpha
+        self.weight_mode = best_mode
         quant_obj = 'weight'
 
     print(f"layer: {layer_id}, tensor: {layer_name}, {quant_obj} quant, best mode: {best_mode}, mse: {min_mse}, alpha: {best_alpha}")
@@ -162,10 +168,11 @@ class ANT_Linear(nn.Module):
 
         # ANT param
         self.weight_quant_grid = None
+        self.weight_mode = None
         self.weight_alpha = -1
         self.input_quant_grid = None
+        self.input_mode = None
         self.input_alpha = -1
-
         assert self.in_features % self.group_size == 0
 
         self.register_buffer('weight', torch.zeros((out_features, in_features), dtype=torch.float16, device=dev))
@@ -196,13 +203,26 @@ class ANT_Linear(nn.Module):
         input = x.reshape(-1, x.shape[-1])
 
         # TODO: quantize or not based on a_bit
+        outlier_config = {
+            "method": "none",  
+            "keep_ratio": "-1",  
+            "keep_num": 1, 
+        }
         # search and set data type and alpha in the first inference
         if self.weight_quant_grid is None:
-            deq_weight = ant_quant(self, self.w_bit, self.weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, is_input=False)
-            deq_input = ant_quant(self, self.a_bit, deq_weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, is_input=True)
-            
+            # deq_weight = ant_quant(self, self.w_bit, self.weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, is_input=False)
+            # deq_input = ant_quant(self, self.a_bit, deq_weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, is_input=True)
+
+            deq_weight = ant_quant(self, self.w_bit, self.weight, input, self.ant_config, -1, self.layer_id, self.layer_name, is_input=False)
+            deq_input = ant_quant(self, self.a_bit, deq_weight, input, self.ant_config, -1, self.layer_id, self.layer_name, is_input=True)
+
             # quantize weight only once
-            self.weight = deq_weight
+            if self.group_size > 0:
+                deq_weight = ant_quantization(self.weight, n_bit=self.w_bit, q_group_size=self.group_size, ant_mode=self.weight_mode, outlier_config=outlier_config, display=False)
+                self.weight = deq_weight
+            else:
+                self.weight = deq_weight
+            
             print("ant search data type and alpha.")
 
         # quantize input based on the selected data type and alpha
@@ -211,7 +231,10 @@ class ANT_Linear(nn.Module):
             if self.a_bit > 6:
                 deq_input = pseudo_quantize_int(input.view(-1), n_bit=self.a_bit, zero_point=False, q_group_size=self.group_size, alpha=self.input_alpha, is_input=True)
             else:
-                deq_input = get_quant(input.view(-1), self.input_quant_grid, alpha=self.input_alpha, is_input=True)
+                if self.group_size > 0:
+                    deq_input = ant_quantization(input, n_bit=self.a_bit, q_group_size=self.group_size, ant_mode=self.input_mode, outlier_config=outlier_config, display=False)
+                else:
+                    deq_input = get_quant(input.view(-1), self.input_quant_grid, alpha=self.input_alpha, is_input=True)
             deq_input = deq_input.reshape(org_shape)
 
         out = F.linear(deq_input, self.weight)

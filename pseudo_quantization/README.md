@@ -25,25 +25,38 @@ pip install matplotlib -i https://pypi.tuna.tsinghua.edu.cn/simple
 Evaluate LLaMa on multiple tasks with ANT data type (simulated pseudo quantization). Now we only use flint_0 (fp4, e2m1) in meta_flint set. You can select more data type in 4-bit meta_flint. 
 
 ```bash
-# ANT
-CUDA_VISIBLE_DEVICES=0 ./scripts/llama_run_wiki.sh 7 wikitext 0 ant int-flint-float-pot -1 4
+# ANT W4A4
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama_run_wiki.sh 7 wikitext 0 ant int-flint-float-pot -1 4 4
+# ANT W8A8
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama_run_wiki.sh 7 wikitext 0 ant int-flint-float-pot -1 8 81
 # 运行 65B 模型
-CUDA_VISIBLE_DEVICES=0 ./scripts/llama_run_wiki.sh 65 wikitext 0 ant int-flint-float-pot -1 4
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama_run_wiki.sh 65 wikitext 0 ant int-flint-float-pot -1 4 4
 # 运行 OPT 模型
-CUDA_VISIBLE_DEVICES=0 ./scripts/opt_run.sh 6.7 wikitext 0 ant int-flint-float-pot -1 4
+CUDA_VISIBLE_DEVICES=0 ./scripts/opt_run.sh 6.7 wikitext 0 ant int-flint-float-pot -1 4 4
 # 测试 c4 数据集
-CUDA_VISIBLE_DEVICES=0 ./scripts/llama_run_wiki.sh 7 c4 0 ant int-flint-float-pot -1 4
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama_run_wiki.sh 7 c4 0 ant int-flint-float-pot -1 4 4
+
 
 # OliVe
-CUDA_VISIBLE_DEVICES=0 ./scripts/llama_run_wiki.sh 7 wikitext 0 olive int-flint -1 4
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama_run_wiki.sh 7 wikitext 0 olive int-flint -1 4 4
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama_run_wiki.sh 7 wikitext 0 olive int-flint -1 8 8
 
-# CODE-ANT Ours
+# Giant Ours
 CUDA_VISIBLE_DEVICES=0 ./scripts/llama_run_wiki.sh 7 wikitext 0 giant int 64 4 4
 CUDA_VISIBLE_DEVICES=0 ./scripts/opt_run.sh 6.7 wikitext 0 giant int 64 4
 CUDA_VISIBLE_DEVICES=0 ./scripts/bloom_run.sh 7 wikitext 0 giant int 64 4
-
 CUDA_VISIBLE_DEVICES=0 ./scripts/llama_run_wiki.sh 7 wikitext 0 giant int 64 4 16 0 5
 
+# Giant-INT
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama_run_wiki.sh 7 wikitext 0 int int 64 4 4
+
+# ANT, OliVe group-wise
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama2_run_wiki.sh 7 wikitext 0 ant int-flint-float-pot 64 4 4
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama2_run_wiki.sh 7 wikitext 0 ant int-flint-float-pot 128 4 4
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama2_run_wiki.sh 7 wikitext 0 ant int-flint-float-pot 128 8 8
+
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama2_run_wiki.sh 7 wikitext 0 olive int 128 4 4
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama2_run_wiki.sh 7 wikitext 0 olive int 128 8 8
 # Change the model_path based on your path.
 ```
 

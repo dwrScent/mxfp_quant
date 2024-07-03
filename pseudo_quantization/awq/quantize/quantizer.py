@@ -180,7 +180,7 @@ def pseudo_quant_output_mse(
     from .pre_quant import get_blocks, get_named_linears
     from .kmeans import use_kmeans_quantization
     from .ant_quant import generate_quant_grid, get_quant_weight
-    from .qmodule_encode import encode_gen, encode_gen_no_zero
+    from .qmodule_giant import encode_gen, encode_gen_no_zero
 
     
     layers = get_blocks(model)
@@ -395,11 +395,11 @@ def make_quant_linear(
                 q_linear = OliVe_Linear.from_linear(
                     module, w_bit, a_bit, q_config['q_group_size'], i, name, init_only=False, ant_config=ant_config)
             elif quant_mode_config['quant_method'] == 'giant':
-                from .qmodule_encode import GIANT_Linear
+                from .qmodule_giant import GIANT_Linear
                 q_linear = GIANT_Linear.from_linear(
                     module, w_bit, a_bit, q_config['q_group_size'], i, name, quant_mode_config['quant_kv'], init_only=False, ant_config=ant_config)
             elif quant_mode_config['quant_method'] == 'int':
-                from .qmodule_encode import GIANT_Linear
+                from .qmodule_giant import GIANT_Linear
                 q_linear = GIANT_Linear.from_linear(
                     module, w_bit, a_bit, q_config['q_group_size'], i, name, quant_mode_config['quant_kv'], init_only=False, ant_config=ant_config)
             elif quant_mode_config['quant_method'] == 'mokey':

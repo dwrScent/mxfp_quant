@@ -115,9 +115,13 @@ def get_quant(tensor_value, quant_grid, outlier_grid, normal_max, alpha=1.0, is_
         assert org_shape[-1] % group_size == 0
         tensor_value = tensor_value.reshape(-1, group_size)
 
+
     max_quant_val = max(quant_grid)
     scales = (normal_max * alpha) / max_quant_val
     zeros = 0
+
+    # print(tensor_value.shape, group_size, normal_max.shape, scales.shape)
+
 
     # argmin, find to index
     if is_input:
@@ -163,6 +167,7 @@ def get_quant(tensor_value, quant_grid, outlier_grid, normal_max, alpha=1.0, is_
     # quant_mse = (tensor_deq - tensor_value).abs().pow(2)
 
     tensor_deq = tensor_deq.to(tensor_value.device).half()
+
     tensor_value = tensor_value.reshape(org_shape)
     return tensor_deq
 
@@ -253,7 +258,7 @@ def olive_quant(self, n_bit, weight, input, ant_config, group_size, layer_id, la
         self.weight_outlier_grid = outlier_grid
         self.weight_alpha = best_alpha
         quant_obj = 'weight'
-    print(f"layer: {layer_id}, tensor: {layer_name}, {quant_obj} quant, best mode: {best_mode}, mse: {min_mse}, alpha: {best_alpha}")
+    # print(f"layer: {layer_id}, tensor: {layer_name}, {quant_obj} quant, best mode: {best_mode}, mse: {min_mse}, alpha: {best_alpha}")
     if is_input:
         print(f"normal_max: {normal_max}, max: {input.max()}, deq_max: {final_tensor.max()}, deq_max  /normal_max: {final_tensor.max() / normal_max}, exp_base: {exp_base}")
     else:
@@ -262,13 +267,12 @@ def olive_quant(self, n_bit, weight, input, ant_config, group_size, layer_id, la
     return final_tensor
 
 class OliVe_Linear(nn.Module):
-    def __init__(self, w_bit, a_bit, group_size, in_features, out_features, bias, dev, ant_config, layer_id, layer_name):
+    def __init__(self, w_bit, group_size, in_features, out_features, bias, dev, ant_config, layer_id, layer_name):
         super().__init__()
         
         self.in_features = in_features
         self.out_features = out_features
         self.w_bit = w_bit
-        self.a_bit = a_bit
         self.group_size = group_size 
         self.ant_config = ant_config
 
@@ -293,9 +297,9 @@ class OliVe_Linear(nn.Module):
             self.bias = None
 
     @classmethod
-    def from_linear(cls, linear, w_bit, a_bit, group_size, layer_id, layer_name, init_only=False, ant_config=None):
+    def from_linear(cls, linear, w_bit, group_size, layer_id, layer_name, init_only=False, ant_config=None):
 
-        awq_linear = cls(w_bit, a_bit, group_size, linear.in_features, linear.out_features, linear.bias is not None, linear.weight.device, ant_config, layer_id, layer_name)
+        awq_linear = cls(w_bit, group_size, linear.in_features, linear.out_features, linear.bias is not None, linear.weight.device, ant_config, layer_id, layer_name)
         if init_only:  # just prepare for loading sd
             return awq_linear
 
@@ -315,7 +319,8 @@ class OliVe_Linear(nn.Module):
         # search and set data type and alpha in the first inference
         if self.weight_quant_grid is None:
             # deq_weight = olive_quant(self, self.w_bit, self.weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, exp_base=5, is_input=False)
-            
+            deq_weight = olive_quant(self, self.w_bit, self.weight, input, self.ant_config, -1, self.layer_id, self.layer_name, exp_base=5, is_input=False)
+
             # group support
             if self.group_size > 0:
                 org_w_shape = self.weight.shape
@@ -328,17 +333,14 @@ class OliVe_Linear(nn.Module):
 
                 deq_weight = get_quant(self.weight, self.weight_quant_grid, self.weight_outlier_grid, normal_max, alpha=self.weight_alpha, is_input=False, group_size=self.group_size)
                 deq_weight = deq_weight.reshape(org_w_shape)
-                self.weight = deq_weight
-            else:
-                deq_weight = olive_quant(self, self.w_bit, self.weight, input, self.ant_config, -1, self.layer_id, self.layer_name, exp_base=5, is_input=False)
-                self.weight = deq_weight
+
             # if self.layer_name == 'mlp.down_proj' and self.w_bit == 4:
-            if self.a_bit == 4:
-                # deq_input = olive_quant(self, self.a_bit, deq_weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, exp_base=7, is_input=True)
-                deq_input = olive_quant(self, self.a_bit, deq_weight, input, self.ant_config, -1, self.layer_id, self.layer_name, exp_base=5, is_input=True)
+            if self.w_bit == 4:
+                # deq_input = olive_quant(self, self.w_bit, deq_weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, exp_base=7, is_input=True)
+                deq_input = olive_quant(self, self.w_bit, deq_weight, input, self.ant_config, -1, self.layer_id, self.layer_name, exp_base=5, is_input=True)
             else:
-                deq_input = olive_quant(self, self.a_bit, deq_weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, exp_base=5, is_input=True)
-            
+                deq_input = olive_quant(self, self.w_bit, deq_weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, exp_base=5, is_input=True)
+            self.weight = deq_weight
             print("olive search data type and alpha.")
             
         # quantize input based on the selected data type and alpha
@@ -347,6 +349,7 @@ class OliVe_Linear(nn.Module):
             std = input.std()
             normal_max = torch.maximum((mean + 3 * std).abs(), (mean - 3 * std).abs())
             org_shape = input.shape
+
             if self.group_size > 0:
                 input = input.reshape(-1, self.group_size)
 
@@ -356,8 +359,11 @@ class OliVe_Linear(nn.Module):
 
                 deq_input = get_quant(input, self.input_quant_grid, self.input_outlier_grid, normal_max, alpha=self.input_alpha, is_input=False, group_size=self.group_size)
                 deq_input = deq_input.reshape(org_shape)
+                # print('group')
+                # exit(0)
             else:
                 deq_input = get_quant(input.view(-1), self.input_quant_grid, self.input_outlier_grid, normal_max, alpha=self.input_alpha, is_input=True)
+
             deq_input = deq_input.reshape(org_shape)
 
         out = F.linear(deq_input, self.weight)

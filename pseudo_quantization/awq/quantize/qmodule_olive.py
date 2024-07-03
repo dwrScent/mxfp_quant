@@ -275,7 +275,7 @@ class OliVe_Linear(nn.Module):
         self.layer_id = layer_id
         self.layer_name = layer_name
 
-        # OliVe param
+        # OliVe parameters
         self.weight_quant_grid = None
         self.weight_outlier_grid = None
         self.weight_alpha = -1
@@ -312,11 +312,8 @@ class OliVe_Linear(nn.Module):
         out_shape = x.shape[:-1] + (self.out_features, )
         input = x.reshape(-1, x.shape[-1])
 
-        # search and set data type and alpha in the first inference
+        # Search and set data type and alpha during the first inference
         if self.weight_quant_grid is None:
-            # deq_weight = olive_quant(self, self.w_bit, self.weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, exp_base=5, is_input=False)
-            
-            # group support
             if self.group_size > 0:
                 org_w_shape = self.weight.shape
                 self.weight = self.weight.reshape(-1, self.group_size)

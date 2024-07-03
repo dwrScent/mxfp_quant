@@ -186,7 +186,7 @@ class ANT_Linear(nn.Module):
     def from_linear(cls, linear, w_bit, a_bit, group_size, layer_id, layer_name, init_only=False, ant_config=None):
 
         awq_linear = cls(w_bit, a_bit, group_size, linear.in_features, linear.out_features, linear.bias is not None, linear.weight.device, ant_config, layer_id, layer_name)
-        if init_only:  # just prepare for loading sd
+        if init_only:  # just prepare for loading state dictionary
             return awq_linear
 
         awq_linear.weight = linear.weight.data.clone().half()
@@ -208,26 +208,21 @@ class ANT_Linear(nn.Module):
             "keep_ratio": "-1",  
             "keep_num": 1, 
         }
-        # search and set data type and alpha in the first inference
+        # Search and set data type and alpha during the first inference
         if self.weight_quant_grid is None:
-            # deq_weight = ant_quant(self, self.w_bit, self.weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, is_input=False)
-            # deq_input = ant_quant(self, self.a_bit, deq_weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, is_input=True)
-
             deq_weight = ant_quant(self, self.w_bit, self.weight, input, self.ant_config, -1, self.layer_id, self.layer_name, is_input=False)
             deq_input = ant_quant(self, self.a_bit, deq_weight, input, self.ant_config, -1, self.layer_id, self.layer_name, is_input=True)
 
-            # quantize weight only once
             if self.group_size > 0:
                 deq_weight = ant_quantization(self.weight, n_bit=self.w_bit, q_group_size=self.group_size, ant_mode=self.weight_mode, outlier_config=outlier_config, display=False)
-                self.weight = deq_weight
-            else:
-                self.weight = deq_weight
-            
+
+            self.weight = deq_weight            
             print("ant search data type and alpha.")
 
         # quantize input based on the selected data type and alpha
         else:
             org_shape = input.shape
+            
             if self.a_bit > 6:
                 deq_input = pseudo_quantize_int(input.view(-1), n_bit=self.a_bit, zero_point=False, q_group_size=self.group_size, alpha=self.input_alpha, is_input=True)
             else:

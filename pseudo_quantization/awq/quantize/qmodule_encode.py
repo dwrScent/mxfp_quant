@@ -14,7 +14,7 @@ def encode_gen_no_zero(w_bit, return_list=False, a_stride=5):
     for coefficient in range(0, 128, a_stride):
         coefficient_list.append(coefficient)
     # supply some specific data type, merge them after removing duplicates
-    # supply_list = [0, 5, 17, 20]
+    supply_list = [0, 5, 17, 20]
     supply_list = [0, 17]
     merged_list = list(set(coefficient_list + supply_list))
 
@@ -93,7 +93,7 @@ def encode_gen(w_bit, return_list=False):
     return codebook_dict
 
 # core quantization method (simulated quantization)
-def pseudo_quantize_int(tensor, n_bit=8, zero_point=False, q_group_size=-1):
+def pseudo_quantize_int(tensor, n_bit=8, zero_point=False, q_group_size=-1, alpha=1.0):
     org_shape = tensor.shape
     if q_group_size > 0:
         assert org_shape[-1] % q_group_size == 0
@@ -112,7 +112,7 @@ def pseudo_quantize_int(tensor, n_bit=8, zero_point=False, q_group_size=-1):
 
         max_int = 2 ** (n_bit - 1) - 1
         min_int = - 2 ** (n_bit - 1)
-        scales = max_val / max_int
+        scales = (max_val * alpha) / max_int
         zeros = 0
 
     assert torch.isnan(scales).sum() == 0
@@ -124,7 +124,7 @@ def pseudo_quantize_int(tensor, n_bit=8, zero_point=False, q_group_size=-1):
     tensor = tensor.reshape(org_shape)
     return tensor
     
-class CODEANT_Linear(nn.Module):
+class GIANT_Linear(nn.Module):
     def __init__(self, w_bit, a_bit, group_size, in_features, out_features, bias, dev, ant_config, layer_id, layer_name, quant_kv):
         super().__init__()
         
@@ -175,12 +175,27 @@ class CODEANT_Linear(nn.Module):
     def forward(self, x):
         out_shape = x.shape[:-1] + (self.out_features, )
         input = x.reshape(-1, x.shape[-1])
+        input_init = input.clone().detach()
         # print(input, self.weight)
 
         # quantize activation to INT8
         if self.a_bit < 16 and self.a_bit != -1:
             # input = pseudo_quantize_int(input, n_bit=8, zero_point=False, q_group_size=self.group_size)
+
             input = pseudo_quantize_int(input, n_bit=self.a_bit, zero_point=False, q_group_size=self.group_size)
+
+            # best_mse = float('inf')
+            # best_alpha = 1.0
+            # mse = nn.MSELoss()
+            # for alpha_search in range(75, 125, 10):
+            #     alpha = alpha_search * 0.01
+            #     input_deq = pseudo_quantize_int(input, n_bit=self.a_bit, zero_point=False, q_group_size=self.group_size, alpha=alpha)
+            #     quantize_mse = mse(input_deq, input_init)
+            #     if quantize_mse < best_mse:
+            #         best_mse = quantize_mse
+            #         best_alpha = alpha
+            # print(f'best alpha:{best_alpha}, best mse:{best_mse}')
+            # input = pseudo_quantize_int(input, n_bit=self.a_bit, zero_point=False, q_group_size=self.group_size, alpha=best_alpha)
         
         out = F.linear(input, self.weight)
         # if self.quant_kv:

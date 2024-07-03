@@ -56,7 +56,7 @@ parser.add_argument(
     + "https://huggingface.co/docs/accelerate/usage_guides/big_modeling",
 )
 parser.add_argument('--quant_mode', type=str, default="compute_encode")
-parser.add_argument('--quant_kv', type=bool, default=False)
+parser.add_argument('--quant_kv', type=int, default=0)
 parser.add_argument('--ant_mode', type=str, default="int")
 parser.add_argument('--mse_type', type=str, default="weight")
 parser.add_argument('--ant_search_granularity', type=int, default=1)
@@ -66,6 +66,7 @@ parser.add_argument('--w_high', type=int, default=150)
 
 parser.add_argument('--outlier_type', type=str, default="none")
 parser.add_argument('--outlier_ratio', type=float, default=-1.0)
+parser.add_argument('--a_stride', type=int, default=5)
 
 # save/load real quantized weights
 parser.add_argument('--dump_quant', type=str, default=None,
@@ -123,19 +124,16 @@ def build_model_and_enc(model_path):
         print("Loading pre-computed quantized weights...")
         with init_empty_weights():
             kwargs_init = {"device_map": "balanced", "torch_dtype": torch.float16}
-            if quant_mode_config['quant_method'] =='codeant' and isinstance(config, OPTConfig):
+            if quant_mode_config['quant_method'] =='giant' and isinstance(config, OPTConfig):
                 model = OPTForCausalLM_giant.from_pretrained(
                     model_path, config=config, **kwargs_init)
-            elif quant_mode_config['quant_method'] =='codeant' and isinstance(config, BloomConfig):
+            elif quant_mode_config['quant_method'] =='giant' and isinstance(config, BloomConfig):
                 model = BloomForCausalLM_giant.from_pretrained(
                     model_path, config=config, **kwargs_init)
             else:
                 model = AutoModelForCausalLM.from_config(
                         config=config, torch_dtype=torch.float16, trust_remote_code=True
                     )
-            # model = AutoModelForCausalLM.from_config(
-            #     config=config, torch_dtype=torch.float16, trust_remote_code=True
-            # )
 
         model.tie_weights()
 
@@ -162,7 +160,7 @@ def build_model_and_enc(model_path):
         # Dispatch model
         model = simple_dispatch_model(model, device_map=device_map)
 
-        if quant_mode_config['quant_method'] in ['ant', 'olive', 'int', 'mokey', 'codeant']:
+        if quant_mode_config['quant_method'] in ['ant', 'olive', 'int', 'mokey', 'giant']:
             make_quant_linear(
                 model, args.w_bit, q_config, ant_config=ant_config, quant_mode_config=quant_mode_config
             )
@@ -172,10 +170,10 @@ def build_model_and_enc(model_path):
         kwargs = {"device_map": "balanced", "torch_dtype": torch.float16}
 
         # modify the attention layer
-        if quant_mode_config['quant_method'] =='codeant' and isinstance(config, OPTConfig):
+        if quant_mode_config['quant_method'] =='giant' and quant_mode_config['quant_kv'] and isinstance(config, OPTConfig):
             model = OPTForCausalLM_giant.from_pretrained(
                 model_path, config=config, **kwargs)
-        elif quant_mode_config['quant_method'] =='codeant' and isinstance(config, BloomConfig):
+        elif quant_mode_config['quant_method'] =='giant' and quant_mode_config['quant_kv'] and isinstance(config, BloomConfig):
             model = BloomForCausalLM_giant.from_pretrained(
                 model_path, config=config, **kwargs)
         else:
@@ -183,43 +181,47 @@ def build_model_and_enc(model_path):
                 model_path, config=config, **kwargs)
 
         # weight quantization
-        if args.w_bit is not None and args.w_bit != -1:
+        if args.w_bit and args.w_bit != -1 and args.w_bit < 16:
             if args.q_backend == "fake":
                 # assert args.dump_quant is None, \
                 #     "Need to use real quantization to dump quantized weights"
                 quant_mode = quant_mode_config['quant_method']
                 print_time('Start pseudo quantize')
-                if quant_mode == 'ant' or quant_mode == 'olive':
+
+                if quant_mode in ['ant', 'olive', 'mokey']:
                     make_quant_linear(
                         model, args.w_bit, args.a_bit, q_config, ant_config=ant_config, quant_mode_config=quant_mode_config
                     )
-
-                elif quant_mode =='codeant':
-                    if quant_mode_config['quant_kv']:
-                        print('quant KV Cache')
-                    # quantize weight to 4-bit
-                    pseudo_quant_output_mse(
-                        model, enc, w_bit=args.w_bit, q_config=q_config, ant_config=ant_config, n_samples=512, seqlen=512, max_iter=args.max_iter
-                    )
+                elif quant_mode =='giant':
+                    # weight quantization
+                    if args.w_bit == 8:
+                        pseudo_quantize_model_weight(model, w_bit=args.w_bit, q_config=q_config)
+                    elif args.w_bit == 4:
+                        pseudo_quant_output_mse(
+                            model, enc, w_bit=args.w_bit, q_config=q_config, ant_config=ant_config, n_samples=512, seqlen=512, max_iter=args.max_iter, a_stride=args.a_stride
+                        )
+                    else:
+                        print('not supported yet')
+                        exit(0)
                     make_quant_linear(
                         model, args.w_bit, args.a_bit, q_config, ant_config=ant_config, quant_mode_config=quant_mode_config
                     )
                 elif quant_mode == 'int':
-                    # quant_mode_config['quant_kv'] = True
                     if quant_mode_config['quant_kv']:
                         print('quant KV Cache')
                     pseudo_quantize_model_weight(model, w_bit=args.w_bit, q_config=q_config)
                     make_quant_linear(
                         model, args.w_bit, args.a_bit, q_config, ant_config=ant_config, quant_mode_config=quant_mode_config
                     )
+                elif quant_mode == 'mokey':
+                    make_quant_linear(model, 8, args.a_bit, q_config=q_config, quant_mode_config=quant_mode_config, init_only=False)
                 else:
                     raise NotImplementedError(f"{args.mse_type} not supported yet!")
                 print_time('Finish pseudo quantize')
                 if args.dump_quant:
                     model.save_pretrained(f'quant_cache/{args.dump_quant}')
                     enc.save_pretrained(f'quant_cache/{args.dump_quant}')
-                    print(
-                        f"Saving the quantized model at {args.dump_quant}...")
+                    print(f"Saving the quantized model at {args.dump_quant}...")
                     # torch.save(model.cpu().state_dict(), args.dump_quant)
                     exit(0)
             else:

@@ -1,2 +1,8 @@
-# CUDA_VISIBLE_DEVICES=3,4,5,6 ./scripts/llama_run_wiki.sh 65 wikitext 0 olive int-flint -1 4 bias=5,7
-CUDA_VISIBLE_DEVICES=4,5,6,7 ./scripts/llama_run_wiki.sh 65 wikitext 0 olive int-flint -1 8 bias=5,7
+
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama2_run_wiki.sh 7 wikitext 0 int int 32 4 16 0 43 1type-int
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama2_run_wiki.sh 7 wikitext 0 giant int 32 4 16 0 43 4types
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama2_run_wiki.sh 7 wikitext 0 giant int 32 4 16 0 18 8types
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama2_run_wiki.sh 7 wikitext 0 giant int 32 4 16 0 8 18types
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama2_run_wiki.sh 7 wikitext 0 giant int 32 4 16 0 4 34types
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama2_run_wiki.sh 7 wikitext 0 giant int 32 4 16 0 2 66types
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama2_run_wiki.sh 7 wikitext 0 giant int 32 4 16 0 1 130types

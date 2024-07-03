@@ -9,6 +9,8 @@ from transformers.models.bloom.modeling_bloom import BloomBlock
 import os
 from .ant_quant import ant_quantization, ant_quantization_search, meta_flint_set
 from ..utils.make_distribution import group_dist_outlier, group_dist, make_heat_map, outlier_ratio_stat, outlier_count
+from ..utils.cdf_graph import group_cdf
+from ..utils.plot_mean import group_mean_variance
 import math
 import kmeans_parallel
 from .kmeans import ant_kmeans_quant
@@ -129,6 +131,35 @@ def pseudo_quantize_model_weight(
         named_linears = get_named_linears(layers[i])
         for n, m in named_linears.items():
             # m.cuda()
+            # if n == 'self_attn.q_proj' or n == 'mlp.down_proj':
+            #     if i >= 8 and i < 15:
+            #         print(m.weight.data.shape)
+            #         group_cdf(m.weight.data, -2, i, n, 1000, 'tensor', 1, accumulate=True)
+            #         group_cdf(m.weight.data, -1, i, n, 4096, 'chan', 1024,  accumulate=True)
+
+            #         # group_mean_variance(m.weight.data, -2, i, n, 1000, 'tensor', 1, accumulate=True)
+            #         # group_mean_variance(m.weight.data, -1, i, n, 4096, 'chan', 1024,  accumulate=True)
+
+            #         if 'mlp' in n:
+            #             group_cdf(m.weight.data, 64, i, n, 4096, 'group', 65536,  accumulate=True)
+            #             # group_mean_variance(m.weight.data, 64, i, n, 4096, 'group', 65536,  accumulate=True)
+            #         else:
+            #             group_cdf(m.weight.data, 64, i, n, 4096, 'group', 65536,  accumulate=True)
+            #             # group_mean_variance(m.weight.data, 64, i, n, 4096, 'group', 65536,  accumulate=True)
+            #     elif i == 15:
+            #         group_cdf(m.weight.data, -2, i, n, 1000, 'tensor', 1, accumulate=True, plot_final=True)
+            #         group_cdf(m.weight.data, -1, i, n, 4096, 'chan', 1024,  accumulate=True, plot_final=True)
+
+            #         # group_mean_variance(m.weight.data, -2, i, n, 1000, 'tensor', 1, accumulate=True, plot_final=True)
+            #         # group_mean_variance(m.weight.data, -1, i, n, 4096, 'chan', 1024,  accumulate=True, plot_final=True)
+
+            #         if 'mlp' in n:
+            #             group_cdf(m.weight.data, 64, i, n, 4096, 'group', 65536,  accumulate=True, plot_final=True)
+            #             # group_mean_variance(m.weight.data, 64, i, n, 4096, 'group', 65536,  accumulate=True, plot_final=True)
+            #         else:
+            #             group_cdf(m.weight.data, 64, i, n, 4096, 'group', 65536,  accumulate=True, plot_final=True)
+            #             # group_mean_variance(m.weight.data, 64, i, n, 4096, 'group', 65536,  accumulate=True, plot_final=True)
+
             m.weight.data = pseudo_quantize_tensor(
                 m.weight.data, n_bit=w_bit, **q_config
             )
@@ -195,9 +226,6 @@ def pseudo_quant_output_mse(
 
     # quant_grid_set = encode_gen(w_bit)
     quant_grid_set = encode_gen_no_zero(w_bit, a_stride=a_stride)
-    # print(quant_grid_set, quant_grid_set_v)
-    # print(quant_grid_set)
-    # exit(0)
 
     int_grid_set = generate_quant_grid(n_bit=w_bit, signed=True, ant_mode='int')
     mode_list = []
@@ -212,8 +240,6 @@ def pseudo_quant_output_mse(
         d_type_stats[mode] = torch.tensor(0.)
         tensor_stats[mode] = torch.tensor(0.)
 
-    # print(mode_list, quant_grid_set)
-    # exit(0)
     # solve layer by layer
     for i in tqdm(range(len(layers)), desc="Psuedo weight quantizatoion with output MSE..."):
         layer = layers[i]
@@ -234,8 +260,10 @@ def pseudo_quant_output_mse(
         inps = inps.to(next(layer.parameters()).device)  # in case multi-gpu
         # get output as next layer's input
         layer_kwargs_copy = copy.deepcopy(layer_kwargs)
-        # inps = layer(inps, **layer_kwargs)[0]
-        layer(inps, **layer_kwargs)
+        
+        # new copy
+        inps = layer(inps, **layer_kwargs)[0]
+        # layer(inps, **layer_kwargs)
         for h in handles:
             h.remove()
 
@@ -243,13 +271,15 @@ def pseudo_quant_output_mse(
         input_feat = {k: torch.cat(v, dim=0) for k, v in input_feat.items()}
         
         for name, m in named_linears.items():
-
+            # if name == 'self_attn.q_proj' or name == 'self_attn.k_proj' or name == 'self_attn.v_proj':
+            # if name == 'self_attn.o_proj':
+            # if 'mlp' in name:
             input_x = input_feat[name] # 65 * 512 * k ,运算前先转换为二维的 m * k
             group_size = q_config["q_group_size"]
             if group_size == -1:
                 group_size = m.weight.data.shape[1]
             group_num = m.weight.data.shape[1] // group_size
-             
+            
             input_x = input_x.to(m.weight.data.device)
             input_x = input_x.reshape(-1, input_x.shape[-1])
 
@@ -319,7 +349,11 @@ def pseudo_quant_output_mse(
             overall_mse = overall_mse.to(tensor_mse.device)
             overall_mse += tensor_mse
             # exit(0)
+
+        # new copy
         inps = layer(inps, **layer_kwargs_copy)[0]
+        del layer_kwargs_copy
+
         del input_feat
         gc.collect()
         torch.cuda.empty_cache()
@@ -360,13 +394,13 @@ def make_quant_linear(
                 from .qmodule_olive import OliVe_Linear
                 q_linear = OliVe_Linear.from_linear(
                     module, w_bit, a_bit, q_config['q_group_size'], i, name, init_only=False, ant_config=ant_config)
-            elif quant_mode_config['quant_method'] == 'codeant':
-                from .qmodule_encode import CODEANT_Linear
-                q_linear = CODEANT_Linear.from_linear(
+            elif quant_mode_config['quant_method'] == 'giant':
+                from .qmodule_encode import GIANT_Linear
+                q_linear = GIANT_Linear.from_linear(
                     module, w_bit, a_bit, q_config['q_group_size'], i, name, quant_mode_config['quant_kv'], init_only=False, ant_config=ant_config)
             elif quant_mode_config['quant_method'] == 'int':
-                from .qmodule_encode import CODEANT_Linear
-                q_linear = CODEANT_Linear.from_linear(
+                from .qmodule_encode import GIANT_Linear
+                q_linear = GIANT_Linear.from_linear(
                     module, w_bit, a_bit, q_config['q_group_size'], i, name, quant_mode_config['quant_kv'], init_only=False, ant_config=ant_config)
             elif quant_mode_config['quant_method'] == 'mokey':
                 from .qmodule_mokey import Mokey_Linear

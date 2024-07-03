@@ -13,6 +13,9 @@ cumulative_data = {}
 def compute_cdf(data):
     sorted_data = np.sort(data)
     yvals = np.arange(1, len(sorted_data) + 1) / float(len(sorted_data))
+
+    # show the percentage
+    yvals = yvals * 100
     return sorted_data, yvals
 
 def smooth_curve(x, y, num_points=1000, window_length=175, polyorder=2):
@@ -112,7 +115,7 @@ def group_cdf(w_data, group_size=-1, layer_idx=0, layer_name="", max_fig=1000, d
         for x_smooth, y_smooth, label in cumulative_data[layer_name][desc]:
             plt.plot(x_smooth, y_smooth, alpha=0.7, linewidth=1.5, label=label)  # Adjusted line width
         # plt.savefig(f'{save_path}/layer_{layer_name}_{desc}.png')
-        plt.savefig(f'{save_path}/layer_{layer_name}_{desc}.pdf', format='pdf', dpi=600)
+        plt.savefig(f'{save_path}/layer_{layer_name}_{desc}.pdf', format='pdf', dpi=600, bbox_inches='tight', pad_inches=0.1)
         plt.show()
         # Clear data after plotting
         cumulative_data[layer_name][desc] = []

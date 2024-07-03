@@ -342,7 +342,7 @@ def build_model_and_enc(model_path):
                     model, args.w_bit, q_config, ant_config=ant_config, quant_mode_config=quant_mode_config
                 )
 
-            elif quant_mode =='codeant':
+            elif quant_mode =='giant':
                 # quant_mode_config['quant_kv'] = True
                 if quant_mode_config['quant_kv']:
                     print('quant KV Cache')

@@ -18,7 +18,7 @@ import bitfusion.src.benchmarks.olaccel_bench as ola
 import bitfusion.src.benchmarks.olive_bench as olive
 
 import bitfusion.src.benchmarks.bitfusion_bench as bf
-import bitfusion.src.benchmarks.codeant_bench as codeant
+import bitfusion.src.benchmarks.giant_bench as giant
 
 import os
 
@@ -132,7 +132,7 @@ def create_fc(input_size, weight_size, c_dtype=None, w_dtype=None, asymmetry=Fal
     output_channels = weight_size[0]
     input_channels = weight_size[1]
 
-    # add by wmhu. codeant w4a8
+    # add by wmhu. giant w4a8
     if asymmetry:
         input_dtype = FQDtype.FXP8
     else:
@@ -264,17 +264,17 @@ def get_bench_nn_bit(bench_name, batch_size):
     elif bench_name == 'llama_7b':
         return create_net(bench_name, bit.llama_7b, batch_size)
 
-def get_bench_nn_codeant(bench_name, batch_size):
+def get_bench_nn_giant(bench_name, batch_size):
     if bench_name == 'gpt2_xl':
-        return create_net(bench_name, codeant.gpt2_xl, batch_size, asymmetry=True)
+        return create_net(bench_name, giant.gpt2_xl, batch_size, asymmetry=True)
     elif bench_name == 'bloom3b':
-        return create_net(bench_name, codeant.bloom3b, batch_size, asymmetry=True)
+        return create_net(bench_name, giant.bloom3b, batch_size, asymmetry=True)
     elif bench_name == 'bloom7b1':
-        return create_net(bench_name, codeant.bloom7b1, batch_size, asymmetry=True)
+        return create_net(bench_name, giant.bloom7b1, batch_size, asymmetry=True)
     elif bench_name == 'opt6b7':
-        return create_net(bench_name, codeant.opt6b7, batch_size, asymmetry=True)
+        return create_net(bench_name, giant.opt6b7, batch_size, asymmetry=True)
     elif bench_name == 'llama_7b':
-        return create_net(bench_name, codeant.llama_7b, batch_size, asymmetry=True)
+        return create_net(bench_name, giant.llama_7b, batch_size, asymmetry=True)
     
 def get_bench_nn_ada(bench_name, batch_size):
     if bench_name == 'vgg16':

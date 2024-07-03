@@ -38,11 +38,11 @@ CUDA_VISIBLE_DEVICES=0 ./scripts/llama_run_wiki.sh 7 c4 0 ant int-flint-float-po
 CUDA_VISIBLE_DEVICES=0 ./scripts/llama_run_wiki.sh 7 wikitext 0 olive int-flint -1 4
 
 # CODE-ANT Ours
-CUDA_VISIBLE_DEVICES=0 ./scripts/llama_run_wiki.sh 7 wikitext 0 codeant int 64 4 4
-CUDA_VISIBLE_DEVICES=0 ./scripts/opt_run.sh 6.7 wikitext 0 codeant int 64 4
-CUDA_VISIBLE_DEVICES=0 ./scripts/bloom_run.sh 7 wikitext 0 codeant int 64 4
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama_run_wiki.sh 7 wikitext 0 giant int 64 4 4
+CUDA_VISIBLE_DEVICES=0 ./scripts/opt_run.sh 6.7 wikitext 0 giant int 64 4
+CUDA_VISIBLE_DEVICES=0 ./scripts/bloom_run.sh 7 wikitext 0 giant int 64 4
 
-CUDA_VISIBLE_DEVICES=0 ./scripts/llama_run_wiki.sh 7 wikitext 0 codeant int 64 4 16 0 5
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama_run_wiki.sh 7 wikitext 0 giant int 64 4 16 0 5
 
 # Change the model_path based on your path.
 ```
@@ -50,8 +50,8 @@ CUDA_VISIBLE_DEVICES=0 ./scripts/llama_run_wiki.sh 7 wikitext 0 codeant int 64 4
 
 ## Setting
 
-quant_mode = [codeant, ant, olive, mokey, gobo, mx, awq]
-+ codeant: W4A8, W4KV4A8
+quant_mode = [giant, ant, olive, mokey, gobo, mx, awq]
++ giant: W4A8, W4KV4A8
 + ant: W4A4, W8A8. ant do not quantize the attention, and target CNN and BERT.
 + olive: W4A4, W8A8. olive do not quantize the attention
 + mokey: W4A4. Mokey only evaluate the BERT model

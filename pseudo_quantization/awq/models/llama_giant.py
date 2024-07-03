@@ -172,7 +172,7 @@ class LlamaAttention_giant(nn.Module):
             key_states = key_states.reshape(org_k_shape)
             value_states = value_states.reshape(org_v_shape)
 
-            print(f"mse q: {mse(org_q, query_states)} mse k: {mse(org_k, key_states)} mse v: {mse(org_v, value_states)} k_bit: {k_bit} v_bit: {v_bit}")
+            print(f"mse q: {mse(org_q, query_states)} mse k: {mse(org_k, key_states)} mse v: {mse(org_v, value_states)} k_bit: {k_bit} v_bit: {v_bit} q_group_size=64")
         query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
         key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
         value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)

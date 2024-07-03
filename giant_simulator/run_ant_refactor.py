@@ -171,7 +171,7 @@ def process_result():
 
 
 # bench_type_list = ['olive', 'ant', 'ola', 'ada']
-bench_type_list = ['codeant', 'olive', 'ant', 'bit']
+bench_type_list = ['giant', 'olive', 'ant', 'bit']
 # bench_type_list = ['bit']
 
 for item in bench_type_list:

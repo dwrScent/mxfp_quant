@@ -6,12 +6,14 @@ ANT_MODE=${5:-"int"}
 GROUP_SIZE=${6:-"-1"}
 WEIGHT_BIT=${7:-"4"}
 ACT_BIT=${8:-"16"}
-# MSE_TYPE=${8:-"weight"}
+QUANT_KV=${9:-"0"}
+A_STRIDE=${10:-"5"}
+# MSE_TYPE=${11:-"weight"}
 # OUTLIER_TYPE=${7:-"none"}
 # OUTLIER_RATIO=${8:-"-1"}
-DESC=${9:-""}
+DESC=${11:-""}
 
-MODEL=/cephfs/shared/model/opt-${MODEL_SIZE}b
+MODEL=/localssd/wmhu/models/opt-${MODEL_SIZE}b
 OUTPUT_NAME=opt-${MODEL_SIZE}b
 OUTPUT_DIR=output/output_opt
 
@@ -22,9 +24,11 @@ python -m awq.entry --model_path $MODEL \
     --num_fewshot $SHOTS \
     --w_bit $WEIGHT_BIT  \
     --a_bit $ACT_BIT  \
+    --quant_kv $QUANT_KV \
+    --a_stride $A_STRIDE \
     --q_backend fake \
     --no_zero_point \
     --quant_mode $QUANT_MODE \
     --ant_mode $ANT_MODE \
     --q_group_size $GROUP_SIZE \
-    | tee $OUTPUT_DIR/${OUTPUT_NAME}_${TASKS}_${WEIGHT_BIT}bit_${SHOTS}shots_${QUANT_MODE}_${ANT_MODE}_g${GROUP_SIZE}_${DESC}.log 2>&1
+    | tee $OUTPUT_DIR/${OUTPUT_NAME}_${TASKS}_w${WEIGHT_BIT}a${ACT_BIT}_kv${QUANT_KV}_${SHOTS}shots_${QUANT_MODE}_${ANT_MODE}_g${GROUP_SIZE}_astride${A_STRIDE}_${MSE_TYPE}_${DESC}_$(date +%m%d%H%M).log 2>&1

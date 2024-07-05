@@ -12,10 +12,19 @@ from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_m
 
 _CONFIG_FOR_DOC = "LlamaConfig"
 
+
 def pseudo_quantize_int(tensor, n_bit=8, zero_point=False, q_group_size=-1):
     org_shape = tensor.shape
+    padding_size = 0
+    
     if q_group_size > 0:
-        assert org_shape[-1] % q_group_size == 0
+        if org_shape[-1] % q_group_size != 0:
+            # Calculate padding size
+            padding_size = q_group_size - (org_shape[-1] % q_group_size)
+            # Apply padding
+            tensor = F.pad(tensor, (0, padding_size), "constant", 0)
+            padding_shape = tensor.shape
+            assert padding_shape[-1] % q_group_size == 0
         tensor = tensor.reshape(-1, q_group_size)
     assert tensor.dim() == 2
     if zero_point:
@@ -38,9 +47,15 @@ def pseudo_quantize_int(tensor, n_bit=8, zero_point=False, q_group_size=-1):
     assert torch.isnan(tensor).sum() == 0
 
     tensor = (torch.clamp(torch.round(tensor / scales) +
-                         zeros, min_int, max_int) - zeros) * scales
+                        zeros, min_int, max_int) - zeros) * scales
     assert torch.isnan(tensor).sum() == 0
-    tensor = tensor.reshape(org_shape)
+
+    if padding_size > 0:
+        tensor = tensor.reshape(padding_shape)
+        tensor = tensor[:, :org_shape[-1]]
+    else:
+        tensor = tensor.reshape(org_shape)
+
     return tensor
 
 class LlamaAttention_giant(nn.Module):
@@ -79,6 +94,12 @@ class LlamaAttention_giant(nn.Module):
         self.o_proj = nn.Linear(self.hidden_size, self.hidden_size, bias=config.attention_bias)
         self._init_rope()
 
+        # Quantization args
+        self.quant_attention = True
+        self.group_size = 64
+        self.reset_local_vars()
+
+
     def _init_rope(self):
         if self.config.rope_scaling is None:
             self.rotary_emb = LlamaRotaryEmbedding(
@@ -105,6 +126,10 @@ class LlamaAttention_giant(nn.Module):
                 )
             else:
                 raise ValueError(f"Unknown RoPE scaling type {scaling_type}")
+
+    def reset_local_vars(self):
+        self.local_max = torch.zeros((self.num_key_value_heads * self.head_dim, self.group_size))
+        self.local_scaling_factor = torch.ones((self.num_key_value_heads * self.head_dim, self.group_size))
 
     def forward(
         self,
@@ -142,9 +167,12 @@ class LlamaAttention_giant(nn.Module):
             value_states = self.v_proj(hidden_states)
         # (1, seq_len, head * head_dim), (1, 2048, 4096)
         # quant qkv
-        quant_attention = True
-        if quant_attention == True:
-            print('quant_llama_attention')
+
+        print_stats = False
+        v_update_mode = 'lazy_update'
+        if self.quant_attention == True:
+            if print_stats:
+                print('quant_llama_attention')
             org_q_shape = query_states.shape
             org_k_shape = key_states.shape
             org_v_shape = value_states.shape
@@ -157,22 +185,30 @@ class LlamaAttention_giant(nn.Module):
             k_bit = 4
             v_bit = 6
 
+            # Flatten for quantization
             query_states = query_states.reshape(query_states.shape[1], -1)
             key_states = key_states.reshape(key_states.shape[1], -1)
             value_states = value_states.reshape(value_states.shape[1], -1)
-            query_states = pseudo_quantize_int(query_states, n_bit=8, zero_point=False, q_group_size=64)
-            key_states = pseudo_quantize_int(key_states, n_bit=k_bit, zero_point=False, q_group_size=64)
-            value_trans = value_states.t()
-            value_trans = pseudo_quantize_int(value_trans, n_bit=v_bit, zero_point=False, q_group_size=64)
-            value_states = value_trans.t()
-            # value_states = pseudo_quantize_int(value_states, n_bit=8, zero_point=False, q_group_size=64)
+            # print(f'q shape: {query_states.shape}')
 
+            # Quantize query and key states
+            query_states = pseudo_quantize_int(query_states, n_bit=8, zero_point=False, q_group_size=self.group_size)
+            print(f'k shape: {key_states.shape}')
+            key_states = pseudo_quantize_int(key_states, n_bit=k_bit, zero_point=False, q_group_size=self.group_size)
 
+            # Restore original shapes
             query_states = query_states.reshape(org_q_shape)
             key_states = key_states.reshape(org_k_shape)
-            value_states = value_states.reshape(org_v_shape)
 
-            print(f"mse q: {mse(org_q, query_states)} mse k: {mse(org_k, key_states)} mse v: {mse(org_v, value_states)} k_bit: {k_bit} v_bit: {v_bit} q_group_size=64")
+            # value quantization
+            # value_trans = value_states.t()
+            # print(f'v shape: {value_states.shape} v_trans shape: {value_trans.shape}') 
+            # value_trans = pseudo_quantize_int(value_trans, n_bit=v_bit, zero_point=False, q_group_size=self.group_size)
+            # value_states = value_trans.t()
+            # value_states = value_states.reshape(org_v_shape)
+
+            if print_stats:
+                print(f"mse q: {mse(org_q, query_states)} mse k: {mse(org_k, key_states)} mse v: {mse(org_v, value_states)} k_bit: {k_bit} v_bit: {v_bit} q_group_size=self.group_size")
         query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
         key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
         value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
@@ -185,6 +221,68 @@ class LlamaAttention_giant(nn.Module):
             # sin and cos are specific to RoPE models; cache_position needed for the static cache
             cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}
             key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
+
+        if self.quant_attention == True:
+            # current `value_states` is the new V cache
+            v_seq_len = value_states.shape[2]
+            if v_update_mode == 'lazy_update':
+                # org_v_shape (b, s, n*d)
+                if org_v_shape[-2] == 1:
+                    # decode stage
+                    # quantize the latest $group_size tokens when (V cache % group_size == 0)
+                    # value_states.shape (b, n, s, d)
+                    v_cache_shape = value_states.shape
+                    
+                    if v_seq_len % self.group_size == 0:
+                        # recover the shape of value cache and reshape to 2d for quantization -> (s, b*n*d)
+                        value_states = value_states.transpose(1, 2).reshape(v_seq_len, -1)
+                        value_trans = value_states.t()
+
+                        # quantize the latest V cache group
+                        quantized_part = pseudo_quantize_int(value_trans[:, (v_seq_len-self.group_size):], n_bit=v_bit, zero_point=False, q_group_size=self.group_size)
+                        value_trans = torch.cat([value_trans[:, :(v_seq_len-self.group_size)], quantized_part], dim=1)
+
+                        # reshape
+                        value_states = value_trans.t()
+                        value_states = value_states.reshape(v_cache_shape[0], v_cache_shape[2], v_cache_shape[1], v_cache_shape[3]).transpose(1, 2)
+
+                    
+                elif org_v_shape[-2] > 1:
+                    # prefill stage
+                    # print(f'org v shape: {org_v_shape}, v cache shape: {value_states.shape}')
+
+                    # recover the shape of value cache and reshape to 2d for quantization -> (s, b*n*d)
+                    value_states = value_states.transpose(1, 2).reshape(v_seq_len, -1)
+                    value_trans = value_states.t()
+
+                    # quantize the V cache, leave the (org_v_shape[-2] % group_size) tokens
+                    quant_group_num = (v_seq_len // self.group_size) * self.group_size
+                    quantized_part = pseudo_quantize_int(value_trans[:, :quant_group_num], n_bit=v_bit, zero_point=False, q_group_size=self.group_size)
+                    # concat the quantized and unquantized part
+                    value_trans = torch.cat([quantized_part, value_trans[:, quant_group_num:]], dim=1)
+
+                    # reshape
+                    value_states = value_trans.t()
+                    value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+
+                else:
+                    raise ValueError(f'Error value token shape {org_v_shape}')
+            elif v_update_mode == 'immediate_update':
+                # use our real-time update
+                if self.local_max is None or self.local_scaling_factor is None:
+                    self.reset_local_vars()
+                    
+                if org_v_shape[-2] == 1:
+                    pass
+                    # decode stage
+                    # update the max and scaling factor; then update the tokens in V group if needed
+                elif org_v_shape[-2] > 1:
+                    pass
+                    # prefill stage
+                    # quantize the V cache, leave the (org_v_shape[-2] % group_size) tokens; setting the max and scaling factor buffer
+                else:
+                    raise ValueError(f'Error value token shape {org_v_shape}')
+            print(f'org v shape: {org_v_shape}')
 
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
@@ -199,24 +297,26 @@ class LlamaAttention_giant(nn.Module):
         attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
         attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
         # quantize attention weights
-        if quant_attention == True:
+        if self.quant_attention == True:
             org_weight_shape = attn_weights.shape
             org_weights = attn_weights.clone()
             attn_weights = attn_weights.reshape(attn_weights.shape[1], -1)
-            attn_weights = pseudo_quantize_int(attn_weights, n_bit=8, zero_point=False, q_group_size=64)
+            # print(f'attn_weights shape: {attn_weights.shape}')
+            attn_weights = pseudo_quantize_int(attn_weights, n_bit=8, zero_point=False, q_group_size=self.group_size)
             attn_weights = attn_weights.reshape(org_weight_shape)
-
-            print(f"mse atten_weights: {mse(org_weights, attn_weights)}")
+            if print_stats:
+                print(f"mse atten_weights: {mse(org_weights, attn_weights)}")
         attn_output = torch.matmul(attn_weights, value_states)
         # quantize attention output
-        if quant_attention == True:
+        if self.quant_attention == True:
             org_outputs_shape = attn_output.shape
             org_outputs = attn_output.clone()
             attn_output = attn_output.reshape(attn_output.shape[1], -1)
-            attn_output = pseudo_quantize_int(attn_output, n_bit=8, zero_point=False, q_group_size=64)
+            # print(f'attn_output shape: {attn_output.shape}')
+            attn_output = pseudo_quantize_int(attn_output, n_bit=8, zero_point=False, q_group_size=self.group_size)
             attn_output = attn_output.reshape(org_outputs_shape)
-
-            print(f"mse atten_weights: {mse(org_outputs, attn_output)}")
+            if print_stats:
+                print(f"mse atten_weights: {mse(org_outputs, attn_output)}")
 
         if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
             raise ValueError(

@@ -13,7 +13,7 @@ from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_m
 _CONFIG_FOR_DOC = "LlamaConfig"
 
 
-def pseudo_quantize_int(tensor, n_bit=8, zero_point=False, q_group_size=-1):
+def pseudo_quantize_int(tensor, n_bit=8, zero_point=False, q_group_size=-1, get_scale=False):
     org_shape = tensor.shape
     padding_size = 0
     
@@ -56,7 +56,10 @@ def pseudo_quantize_int(tensor, n_bit=8, zero_point=False, q_group_size=-1):
     else:
         tensor = tensor.reshape(org_shape)
 
-    return tensor
+    if get_scale:
+        return tensor, max_val, scales
+    else:
+        return tensor
 
 class LlamaAttention_giant(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
@@ -101,7 +104,9 @@ class LlamaAttention_giant(nn.Module):
         self.q_bit = 8
         self.k_bit = 4
         self.v_bit = 6
-        self.v_update_mode = 'lazy_update'
+        self.v_group_elem_num = 0
+        # self.v_update_mode = 'lazy_update'
+        self.v_update_mode = 'immediate_update'
         self.reset_local_vars()
 
 
@@ -133,8 +138,8 @@ class LlamaAttention_giant(nn.Module):
                 raise ValueError(f"Unknown RoPE scaling type {scaling_type}")
 
     def reset_local_vars(self):
-        self.local_max = torch.zeros((self.num_key_value_heads * self.head_dim, self.group_size))
-        self.local_scaling_factor = torch.ones((self.num_key_value_heads * self.head_dim, self.group_size))
+        self.local_max = torch.zeros((self.num_key_value_heads * self.head_dim, 1))
+        self.local_scaling_factor = torch.ones((self.num_key_value_heads * self.head_dim, 1))
 
     def quantize_query_key(self, query_states: torch.Tensor, key_states: torch.Tensor, group_size: int) -> Tuple[torch.Tensor, torch.Tensor]:
         org_q_shape = query_states.shape
@@ -159,6 +164,7 @@ class LlamaAttention_giant(nn.Module):
             print(f"mse q: {mse(org_q, query_states)} mse k: {mse(org_k, key_states)} k_bit: {self.k_bit} q_group_size=self.group_size")
         
         return query_states, key_states
+    
     def quantize_value(self, value_states: torch.Tensor, org_v_shape: torch.Tensor, group_size: int, bsz: int, q_len: int) -> torch.Tensor:
         # current `value_states` is the new V cache
         v_seq_len = value_states.shape[2]
@@ -184,21 +190,17 @@ class LlamaAttention_giant(nn.Module):
                     value_states = value_states.reshape(v_cache_shape[0], v_cache_shape[2], v_cache_shape[1], v_cache_shape[3]).transpose(1, 2)
 
                     return value_states
-
-                
+            
+            # prefill stage
             elif org_v_shape[-2] > 1:
-                # prefill stage
-                # print(f'org v shape: {org_v_shape}, v cache shape: {value_states.shape}')
-
                 # recover the shape of value cache and reshape to 2d for quantization -> (s, b*n*d)
                 value_states = value_states.transpose(1, 2).reshape(v_seq_len, -1)
                 value_trans = value_states.t()
 
                 # quantize the V cache, leave the (org_v_shape[-2] % group_size) tokens
-                quant_group_num = (v_seq_len // group_size) * group_size
-                quantized_part = pseudo_quantize_int(value_trans[:, :quant_group_num], n_bit=self.v_bit, zero_point=False, q_group_size=group_size)
-                # concat the quantized and unquantized part
-                value_trans = torch.cat([quantized_part, value_trans[:, quant_group_num:]], dim=1)
+                quant_elem_num = (v_seq_len // group_size) * group_size
+                quantized_part = pseudo_quantize_int(value_trans[:, :quant_elem_num], n_bit=self.v_bit, zero_point=False, q_group_size=group_size)
+                value_trans = torch.cat([quantized_part, value_trans[:, quant_elem_num:]], dim=1)
 
                 # reshape
                 value_states = value_trans.t()
@@ -214,13 +216,70 @@ class LlamaAttention_giant(nn.Module):
                 self.reset_local_vars()
                 
             if org_v_shape[-2] == 1:
-                pass
                 # decode stage
+                if self.v_group_elem_num == self.group_size:
+                    self.v_group_elem_num = 0
+                    self.reset_local_vars()
                 # update the max and scaling factor; then update the tokens in V group if needed
+                value_states = value_states.transpose(1, 2).reshape(v_seq_len, -1)
+                value_trans = value_states.t()
+
+                self.v_group_elem_num += 1
+
+                # quantize the latest V cache group
+                quantized_token = value_trans[:, (v_seq_len-1):]
+                print(f'quantized_token shape: {quantized_token.shape} v group_num: {self.v_group_elem_num}')
+                current_max = torch.cat([self.local_max, quantized_token], dim=1)
+                current_max = current_max.abs().amax(dim=1, keepdim=True)
+                update_scale = self.local_max / current_max
+
+                v_group_token = value_trans[:, (v_seq_len-self.v_group_elem_num):(v_seq_len-1)]
+
+                v_group_token_q = v_group_token / self.local_scaling_factor
+                v_update_token_q = torch.round(v_group_token_q * update_scale)
+
+                # new scaling factor
+                self.local_scaling_factor = self.local_scaling_factor / update_scale
+                v_update_token_deq = v_update_token_q * self.local_scaling_factor
+                self.local_max = current_max
+
+                quantized_token = torch.round(quantized_token / self.local_scaling_factor) * self.local_scaling_factor
+
+                value_trans = torch.cat([value_trans[:, :(v_seq_len-self.v_group_elem_num)], v_update_token_deq, quantized_token], dim=1)
+
+                # reshape
+                value_states = value_trans.t()
+                value_states = value_states.reshape(v_cache_shape[0], v_cache_shape[2], v_cache_shape[1], v_cache_shape[3]).transpose(1, 2)
+            
+            # prefill stage
             elif org_v_shape[-2] > 1:
-                pass
-                # prefill stage
                 # quantize the V cache, leave the (org_v_shape[-2] % group_size) tokens; setting the max and scaling factor buffer
+
+                # recover the shape of value cache and reshape to 2d for quantization -> (s, b*n*d)
+                value_states = value_states.transpose(1, 2).reshape(v_seq_len, -1)
+                value_trans = value_states.t()
+
+                # quantize the V cache, leave the (org_v_shape[-2] % group_size) tokens
+                quant_elem_num = (v_seq_len // group_size) * group_size
+                quantized_part = pseudo_quantize_int(value_trans[:, :quant_elem_num], n_bit=self.v_bit, zero_point=False, q_group_size=group_size)
+
+                # quantize the rest V tokens, set the local_max and local_scaling_factor
+                if v_seq_len % group_size != 0:
+                    # print(value_trans[:, quant_elem_num:])
+                    quantizing_group, self.local_max, self.local_scaling_factor = pseudo_quantize_int(value_trans[:, quant_elem_num:], n_bit=self.v_bit, zero_point=False, q_group_size=group_size, get_scale=True)
+                    # print(f'total shape: {value_trans.shape} group: {quantizing_group.shape}, {quantizing_group} local_max: {self.local_max.shape} {self.local_max}, local_scaleL {self.local_scaling_factor.shape}')
+                    value_trans = torch.cat([quantized_part, quantizing_group], dim=1)
+
+                    # print(quantizing_group, value_trans[:, quant_elem_num:])
+                    self.v_group_elem_num = quantizing_group.shape[-1]
+                    # exit(0)
+                else:
+                    value_trans = quantized_part
+
+                # reshape
+                value_states = value_trans.t()
+                value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+                return value_states
             else:
                 raise ValueError(f'Error value token shape {org_v_shape}')
         print(f'org v shape: {org_v_shape}')
@@ -282,21 +341,10 @@ class LlamaAttention_giant(nn.Module):
             query_states = self.q_proj(hidden_states)
             key_states = self.k_proj(hidden_states)
             value_states = self.v_proj(hidden_states)
-        # (1, seq_len, head * head_dim), (1, 2048, 4096)
-        # quant qkv
 
-        print_stats = False
-        
         if self.quant_attention == True:
             org_v_shape = value_states.shape
             query_states, key_states = self.quantize_query_key(query_states, key_states, self.group_size)
-
-            # value quantization
-            # value_trans = value_states.t()
-            # print(f'v shape: {value_states.shape} v_trans shape: {value_trans.shape}') 
-            # value_trans = pseudo_quantize_int(value_trans, n_bit=self.v_bit, zero_point=False, q_group_size=self.group_size)
-            # value_states = value_trans.t()
-            # value_states = value_states.reshape(org_v_shape)
 
         query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
         key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
@@ -313,6 +361,8 @@ class LlamaAttention_giant(nn.Module):
 
         if self.quant_attention == True:
             value_states = self.quantize_value(value_states, org_v_shape, self.group_size, bsz, q_len)
+            # Update the V cache
+            past_key_value.value_cache[self.layer_idx] = value_states
 
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
@@ -342,7 +392,6 @@ class LlamaAttention_giant(nn.Module):
             )
 
         attn_output = attn_output.transpose(1, 2).contiguous()
-
         attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
 
         if self.config.pretraining_tp > 1:

@@ -105,8 +105,8 @@ class LlamaAttention_giant(nn.Module):
         self.k_bit = 4
         self.v_bit = 6
         self.v_group_elem_num = 0
-        # self.v_update_mode = 'lazy_update'
-        self.v_update_mode = 'immediate_update'
+        self.v_update_mode = 'lazy_update'
+        # self.v_update_mode = 'immediate_update'
         self.reset_local_vars()
 
 
@@ -189,7 +189,7 @@ class LlamaAttention_giant(nn.Module):
                     value_states = value_trans.t()
                     value_states = value_states.reshape(v_cache_shape[0], v_cache_shape[2], v_cache_shape[1], v_cache_shape[3]).transpose(1, 2)
 
-                    return value_states
+                return value_states
             
             # prefill stage
             elif org_v_shape[-2] > 1:
@@ -214,42 +214,76 @@ class LlamaAttention_giant(nn.Module):
             # use our real-time update
             if self.local_max is None or self.local_scaling_factor is None:
                 self.reset_local_vars()
+
                 
             if org_v_shape[-2] == 1:
                 # decode stage
-                if self.v_group_elem_num == self.group_size:
-                    self.v_group_elem_num = 0
-                    self.reset_local_vars()
+
+
+                # value_states.shape (b, n, s, d)
+                v_cache_shape = value_states.shape
+
+                self.local_max = self.local_max.to(value_states.device)
+                self.local_scaling_factor = self.local_scaling_factor.to(value_states.device)
+
                 # update the max and scaling factor; then update the tokens in V group if needed
                 value_states = value_states.transpose(1, 2).reshape(v_seq_len, -1)
                 value_trans = value_states.t()
 
-                self.v_group_elem_num += 1
-
                 # quantize the latest V cache group
                 quantized_token = value_trans[:, (v_seq_len-1):]
-                print(f'quantized_token shape: {quantized_token.shape} v group_num: {self.v_group_elem_num}')
-                current_max = torch.cat([self.local_max, quantized_token], dim=1)
-                current_max = current_max.abs().amax(dim=1, keepdim=True)
-                update_scale = self.local_max / current_max
+                # print(f'quantized_token shape: {quantized_token.shape} v group_num: {self.v_group_elem_num}')
+                if self.v_group_elem_num == 0:
 
-                v_group_token = value_trans[:, (v_seq_len-self.v_group_elem_num):(v_seq_len-1)]
+                    # Initialize the max and scaling factor of group
+                    quantized_token, self.local_max, self.local_scaling_factor = pseudo_quantize_int(quantized_token, n_bit=self.v_bit, zero_point=False, q_group_size=group_size, get_scale=True)
+                    self.v_group_elem_num += 1
+                    value_trans = torch.cat([value_trans[:, :(v_seq_len-self.v_group_elem_num)], quantized_token], dim=1)
+                
+                elif  self.v_group_elem_num > 0 and self.v_group_elem_num < self.group_size:
+                    # Need update the V group
+                    self.v_group_elem_num += 1
+                    current_max = torch.cat([self.local_max, quantized_token], dim=1)
+                    current_max = current_max.abs().amax(dim=1, keepdim=True)
+                    update_scale = self.local_max / current_max
 
-                v_group_token_q = v_group_token / self.local_scaling_factor
-                v_update_token_q = torch.round(v_group_token_q * update_scale)
+                    v_group_token = value_trans[:, (v_seq_len-self.v_group_elem_num):(v_seq_len-1)]
 
-                # new scaling factor
-                self.local_scaling_factor = self.local_scaling_factor / update_scale
-                v_update_token_deq = v_update_token_q * self.local_scaling_factor
-                self.local_max = current_max
+                    v_group_token_q = v_group_token / self.local_scaling_factor
+                    v_update_token_q = torch.round(v_group_token_q * update_scale)
 
-                quantized_token = torch.round(quantized_token / self.local_scaling_factor) * self.local_scaling_factor
+                    # new scaling factor
+                    self.local_scaling_factor = self.local_scaling_factor / update_scale
+                    v_update_token_deq = v_update_token_q * self.local_scaling_factor
+                    self.local_max = current_max
 
-                value_trans = torch.cat([value_trans[:, :(v_seq_len-self.v_group_elem_num)], v_update_token_deq, quantized_token], dim=1)
+                    quantized_token = torch.round(quantized_token / self.local_scaling_factor) * self.local_scaling_factor
+                    
+                    assert torch.isnan(update_scale).sum() == 0
+                    assert torch.isnan(quantized_token).sum() == 0
+                    assert torch.isnan(v_update_token_deq).sum() == 0
+                    assert torch.isnan(value_trans).sum() == 0
+
+                    
+                    value_trans = torch.cat([value_trans[:, :(v_seq_len-self.v_group_elem_num)], v_update_token_deq, quantized_token], dim=1)
+                elif self.v_group_elem_num == self.group_size:
+                    self.v_group_elem_num = 0
+
+                    # Reset the max and scaling factor of group
+                    quantized_token, self.local_max, self.local_scaling_factor = pseudo_quantize_int(quantized_token, n_bit=self.v_bit, zero_point=False, q_group_size=group_size, get_scale=True)
+                    self.v_group_elem_num += 1
+                    value_trans = torch.cat([value_trans[:, :(v_seq_len-self.v_group_elem_num)], quantized_token], dim=1)
+                else:
+                    pass
+                
 
                 # reshape
                 value_states = value_trans.t()
                 value_states = value_states.reshape(v_cache_shape[0], v_cache_shape[2], v_cache_shape[1], v_cache_shape[3]).transpose(1, 2)
+
+                assert torch.isnan(value_states).sum() == 0
+
+                return value_states
             
             # prefill stage
             elif org_v_shape[-2] > 1:
@@ -275,6 +309,7 @@ class LlamaAttention_giant(nn.Module):
                     # exit(0)
                 else:
                     value_trans = quantized_part
+                    self.v_group_elem_num = 0
 
                 # reshape
                 value_states = value_trans.t()
@@ -380,7 +415,10 @@ class LlamaAttention_giant(nn.Module):
         if self.quant_attention == True:
             attn_weights = self.quantize_attention_weights(attn_weights, self.group_size)
 
+
         attn_output = torch.matmul(attn_weights, value_states)
+        # print(value_states, value_states.shape, attn_output, torch.isnan(value_states).sum(), torch.isnan(attn_output).sum())
+        
         # quantize attention output
         if self.quant_attention == True:
             attn_output = self.quantize_attention_output(attn_output, self.group_size)

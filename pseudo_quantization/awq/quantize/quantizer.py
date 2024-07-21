@@ -9,7 +9,7 @@ from transformers.models.bloom.modeling_bloom import BloomBlock
 import os
 from .ant_quant import ant_quantization, ant_quantization_search, meta_flint_set
 from ..utils.make_distribution import group_dist_outlier, group_dist, make_heat_map, outlier_ratio_stat, outlier_count
-from ..utils.cdf_graph import group_cdf
+from ..utils.cdf_graph import group_cdf, cdf_csv
 from ..utils.plot_mean import group_mean_variance
 import math
 import kmeans_parallel
@@ -130,35 +130,43 @@ def pseudo_quantize_model_weight(
     for i in tqdm(range(len(layers)), desc="pseudo weight quantization..."):
         named_linears = get_named_linears(layers[i])
         for n, m in named_linears.items():
-            # m.cuda()
+            m.cuda()
             # if n == 'self_attn.q_proj' or n == 'mlp.down_proj':
-            #     if i >= 8 and i < 15:
-            #         print(m.weight.data.shape)
-            #         group_cdf(m.weight.data, -2, i, n, 1000, 'tensor', 1, accumulate=True)
-            #         group_cdf(m.weight.data, -1, i, n, 4096, 'chan', 1024,  accumulate=True)
+            # cdf_csv(m.weight.data, -2, i, n, 1000, 1, 'cdf_data_tensor.csv')  
 
-            #         # group_mean_variance(m.weight.data, -2, i, n, 1000, 'tensor', 1, accumulate=True)
-            #         # group_mean_variance(m.weight.data, -1, i, n, 4096, 'chan', 1024,  accumulate=True)
+            # if i >= 8 and i <= 24:
+            #     cdf_csv(m.weight.data, -1, i, n, 1000, 64, 'cdf_data_chan.csv')  
+            # if i >= 12 and i <= 15:
+            #     cdf_csv(m.weight.data, 64, i, n, 1000, 1024, 'cdf_data_group.csv')  
 
-            #         if 'mlp' in n:
-            #             group_cdf(m.weight.data, 64, i, n, 4096, 'group', 65536,  accumulate=True)
-            #             # group_mean_variance(m.weight.data, 64, i, n, 4096, 'group', 65536,  accumulate=True)
-            #         else:
-            #             group_cdf(m.weight.data, 64, i, n, 4096, 'group', 65536,  accumulate=True)
-            #             # group_mean_variance(m.weight.data, 64, i, n, 4096, 'group', 65536,  accumulate=True)
-            #     elif i == 15:
-            #         group_cdf(m.weight.data, -2, i, n, 1000, 'tensor', 1, accumulate=True, plot_final=True)
-            #         group_cdf(m.weight.data, -1, i, n, 4096, 'chan', 1024,  accumulate=True, plot_final=True)
+                # Draw cdf
+                # if i >= 8 and i < 15:
+                #     print(m.weight.data.shape)
+                #     group_cdf(m.weight.data, -2, i, n, 1000, 'tensor', 1, accumulate=True)
+                #     group_cdf(m.weight.data, -1, i, n, 4096, 'chan', 1024,  accumulate=True)
 
-            #         # group_mean_variance(m.weight.data, -2, i, n, 1000, 'tensor', 1, accumulate=True, plot_final=True)
-            #         # group_mean_variance(m.weight.data, -1, i, n, 4096, 'chan', 1024,  accumulate=True, plot_final=True)
+                #     # group_mean_variance(m.weight.data, -2, i, n, 1000, 'tensor', 1, accumulate=True)
+                #     # group_mean_variance(m.weight.data, -1, i, n, 4096, 'chan', 1024,  accumulate=True)
 
-            #         if 'mlp' in n:
-            #             group_cdf(m.weight.data, 64, i, n, 4096, 'group', 65536,  accumulate=True, plot_final=True)
-            #             # group_mean_variance(m.weight.data, 64, i, n, 4096, 'group', 65536,  accumulate=True, plot_final=True)
-            #         else:
-            #             group_cdf(m.weight.data, 64, i, n, 4096, 'group', 65536,  accumulate=True, plot_final=True)
-            #             # group_mean_variance(m.weight.data, 64, i, n, 4096, 'group', 65536,  accumulate=True, plot_final=True)
+                #     if 'mlp' in n:
+                #         group_cdf(m.weight.data, 64, i, n, 4096, 'group', 65536,  accumulate=True)
+                #         # group_mean_variance(m.weight.data, 64, i, n, 4096, 'group', 65536,  accumulate=True)
+                #     else:
+                #         group_cdf(m.weight.data, 64, i, n, 4096, 'group', 65536,  accumulate=True)
+                #         # group_mean_variance(m.weight.data, 64, i, n, 4096, 'group', 65536,  accumulate=True)
+                # elif i == 15:
+                #     group_cdf(m.weight.data, -2, i, n, 1000, 'tensor', 1, accumulate=True, plot_final=True)
+                #     group_cdf(m.weight.data, -1, i, n, 4096, 'chan', 1024,  accumulate=True, plot_final=True)
+
+                #     # group_mean_variance(m.weight.data, -2, i, n, 1000, 'tensor', 1, accumulate=True, plot_final=True)
+                #     # group_mean_variance(m.weight.data, -1, i, n, 4096, 'chan', 1024,  accumulate=True, plot_final=True)
+
+                #     if 'mlp' in n:
+                #         group_cdf(m.weight.data, 64, i, n, 4096, 'group', 65536,  accumulate=True, plot_final=True)
+                #         # group_mean_variance(m.weight.data, 64, i, n, 4096, 'group', 65536,  accumulate=True, plot_final=True)
+                #     else:
+                #         group_cdf(m.weight.data, 64, i, n, 4096, 'group', 65536,  accumulate=True, plot_final=True)
+                #         # group_mean_variance(m.weight.data, 64, i, n, 4096, 'group', 65536,  accumulate=True, plot_final=True)
 
             m.weight.data = pseudo_quantize_tensor(
                 m.weight.data, n_bit=w_bit, **q_config
@@ -380,6 +388,7 @@ def make_quant_linear(
     
     layers = get_blocks(model)
 
+    # layers = layers.cpu()
     for i in tqdm(range(len(layers)), desc=" make quant linear..." + ("(init only)" if init_only else "")):
         layer = layers[i]
         named_linears = get_named_linears(layer)
@@ -409,7 +418,14 @@ def make_quant_linear(
                 pass
             q_linear.to(next(layer.parameters()).device)
             set_op_by_name(layer, name, q_linear)
-            # module.cpu()
+
+        #     module.cpu()
+        #     del module
+        #     torch.cuda.empty_cache()
+        #     gc.collect()
+        # del layer
+        # torch.cuda.empty_cache()
+        # gc.collect()
 
 
     torch.cuda.empty_cache()

@@ -253,7 +253,7 @@ def olive_quant(self, n_bit, weight, input, ant_config, group_size, layer_id, la
         self.weight_outlier_grid = outlier_grid
         self.weight_alpha = best_alpha
         quant_obj = 'weight'
-    print(f"layer: {layer_id}, tensor: {layer_name}, {quant_obj} quant, best mode: {best_mode}, mse: {min_mse}, alpha: {best_alpha}")
+    print(f"layer: {layer_id}, tensor: {layer_name}, {quant_obj} quant, best mode: {best_mode}, mse: {min_mse}, alpha: {best_alpha}, bit_width: {n_bit}")
     if is_input:
         print(f"normal_max: {normal_max}, max: {input.max()}, deq_max: {final_tensor.max()}, deq_max  /normal_max: {final_tensor.max() / normal_max}, exp_base: {exp_base}")
     else:
@@ -312,10 +312,18 @@ class OliVe_Linear(nn.Module):
         out_shape = x.shape[:-1] + (self.out_features, )
         input = x.reshape(-1, x.shape[-1])
 
+        # if 'gate' in self.layer_name or 'q_proj' in self.layer_name or 'up' in self.layer_name or 'k_proj' in self.layer_name:
+        #     self.w_bit = 8
+        #     self.a_bit = 8
+
         # Search and set data type and alpha during the first inference
         if self.weight_quant_grid is None:
             if self.group_size > 0:
                 org_w_shape = self.weight.shape
+
+                # search the data type 
+                deq_weight = olive_quant(self, self.w_bit, self.weight, input, self.ant_config, -1, self.layer_id, self.layer_name, exp_base=5, is_input=False)
+
                 self.weight = self.weight.reshape(-1, self.group_size)
 
                 mean = self.weight.mean(dim=1, keepdim=True)
@@ -334,7 +342,7 @@ class OliVe_Linear(nn.Module):
                 # deq_input = olive_quant(self, self.a_bit, deq_weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, exp_base=7, is_input=True)
                 deq_input = olive_quant(self, self.a_bit, deq_weight, input, self.ant_config, -1, self.layer_id, self.layer_name, exp_base=5, is_input=True)
             else:
-                deq_input = olive_quant(self, self.a_bit, deq_weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, exp_base=5, is_input=True)
+                deq_input = olive_quant(self, self.a_bit, deq_weight, input, self.ant_config, -1, self.layer_id, self.layer_name, exp_base=5, is_input=True)
             
             print("olive search data type and alpha.")
             

@@ -20,7 +20,9 @@ import datetime
 
 from awq.models.opt_giant import OPTForCausalLM_giant
 from awq.models.bloom_giant import BloomForCausalLM_giant
-from transformers import OPTConfig, BloomConfig
+from awq.models.llama_giant import LlamaForCausalLM_giant
+
+from transformers import OPTConfig, BloomConfig, LlamaConfig
 
 def print_time(print_str):
     timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -124,12 +126,15 @@ def build_model_and_enc(model_path):
         print("Loading pre-computed quantized weights...")
         with init_empty_weights():
             kwargs_init = {"device_map": "balanced", "torch_dtype": torch.float16}
-            if quant_mode_config['quant_method'] =='giant' and isinstance(config, OPTConfig):
+            if quant_mode_config['quant_method'] =='giant' and quant_mode_config['quant_kv'] and isinstance(config, OPTConfig):
                 model = OPTForCausalLM_giant.from_pretrained(
                     model_path, config=config, **kwargs_init)
-            elif quant_mode_config['quant_method'] =='giant' and isinstance(config, BloomConfig):
+            elif quant_mode_config['quant_method'] =='giant' and quant_mode_config['quant_kv'] and isinstance(config, BloomConfig):
                 model = BloomForCausalLM_giant.from_pretrained(
                     model_path, config=config, **kwargs_init)
+            elif quant_mode_config['quant_method'] =='giant' and quant_mode_config['quant_kv'] and isinstance(config, LlamaConfig):
+                model = LlamaForCausalLM_giant.from_pretrained(
+                    model_path, config=config, **kwargs)
             else:
                 model = AutoModelForCausalLM.from_config(
                         config=config, torch_dtype=torch.float16, trust_remote_code=True
@@ -175,6 +180,9 @@ def build_model_and_enc(model_path):
                 model_path, config=config, **kwargs)
         elif quant_mode_config['quant_method'] =='giant' and quant_mode_config['quant_kv'] and isinstance(config, BloomConfig):
             model = BloomForCausalLM_giant.from_pretrained(
+                model_path, config=config, **kwargs)
+        elif quant_mode_config['quant_method'] =='giant' and quant_mode_config['quant_kv'] and isinstance(config, LlamaConfig):
+            model = LlamaForCausalLM_giant.from_pretrained(
                 model_path, config=config, **kwargs)
         else:
             model = AutoModelForCausalLM.from_pretrained(

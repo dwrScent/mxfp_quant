@@ -3,12 +3,16 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch
 from scipy.signal import savgol_filter
-
+import csv
 from scipy.interpolate import UnivariateSpline
 
 
 
 cumulative_data = {}
+
+def generate_cdf_points(x, y, x_new):
+    y_new = np.interp(x_new, x, y)
+    return y_new
 
 def compute_cdf(data):
     sorted_data = np.sort(data)
@@ -120,6 +124,64 @@ def group_cdf(w_data, group_size=-1, layer_idx=0, layer_name="", max_fig=1000, d
         # Clear data after plotting
         cumulative_data[layer_name][desc] = []
 
+def cdf_csv(w_data, group_size=-1, layer_idx=0, layer_name="", num_points=1000, stride=1, filename='cdf_data.csv'):
+    # Generate a fixed x_new that will be used for all CDFs
+    x_new = np.linspace(-1, 1, num_points)
+    
+    with open(filename, 'a', newline='') as file:
+        writer = csv.writer(file)
+        # Write metadata including layer_id, layer_name, and stride
+        writer.writerow([layer_idx, layer_name, 'stride', stride])
+        writer.writerow(x_new)
+        
+        if group_size == -2:
+            # Tensor-level granularity
+            print(w_data.shape)
+            data_list = w_data.view(-1).tolist()
+            data_list = normalize_data(data_list)
+            assert np.max(data_list) <= 1 and np.min(data_list) >= -1
+
+            sorted_data, yvals = compute_cdf(data_list)
+            y_new = generate_cdf_points(sorted_data, yvals, x_new)
+
+            writer.writerow(y_new)
+        
+        elif group_size == -1:
+            # Channel-level granularity
+            for i in range(0, w_data.size(0), stride):
+                channel = w_data[i]
+                data_list = channel.view(-1).tolist()
+                data_list = normalize_data(data_list)
+                assert np.max(data_list) <= 1 and np.min(data_list) >= -1
+
+                sorted_data, yvals = compute_cdf(data_list)
+                y_new = generate_cdf_points(sorted_data, yvals, x_new)
+
+                writer.writerow(y_new)
+        
+        else:
+            # Group-level granularity
+            if w_data.shape[-1] % group_size != 0:
+                print(f"Input channel: {w_data.shape[-1]} is not divisible by group_size: {group_size}")
+
+                cut_size = w_data.shape[-1] // group_size
+                w_data = w_data[:, :cut_size*group_size]
+                print(f"cut it to {w_data.shape[-1]}")
+                # return
+
+            w_data_group = w_data.view(-1, group_size)
+
+            for i in range(0, len(w_data_group), stride):
+                group = w_data_group[i]
+                data_list = group.view(-1).tolist()
+                data_list = normalize_data(data_list)
+                assert np.max(data_list) <= 1 and np.min(data_list) >= -1
+
+                sorted_data, yvals = compute_cdf(data_list)
+                y_new = generate_cdf_points(sorted_data, yvals, x_new)
+
+                writer.writerow(y_new)
+                
 if __name__ == '__main__':
     w = torch.normal(0, 5, size=(128, 512))
     # group_cdf(w, group_size=-2)

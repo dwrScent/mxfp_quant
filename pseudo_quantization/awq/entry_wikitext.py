@@ -170,7 +170,7 @@ def build_model_and_enc(model_path):
         kwargs = {"device_map": "balanced", "torch_dtype": torch.float16}
 
         # modify the attention layer
-        if quant_mode_config['quant_method'] =='giant' and quant_mode_config['quant_kv']:
+        if (quant_mode_config['quant_method'] =='giant' or quant_mode_config['quant_method'] =='int') and quant_mode_config['quant_kv']:
             print('quant KV Cache')
             model = LlamaForCausalLM_giant.from_pretrained(
                 model_path, config=config, **kwargs)
@@ -244,6 +244,9 @@ def get_wikitext2(nsamples, seed, seqlen, model):
     from datasets import load_dataset
     traindata = load_dataset('wikitext', 'wikitext-2-raw-v1', split='train')
     testdata = load_dataset('wikitext', 'wikitext-2-raw-v1', split='test')
+
+    # traindata = load_dataset('~/.cache/huggingface/datasets/wikitext', 'wikitext-2-raw-v1', split='train')
+    # testdata = load_dataset('~/.cache/huggingface/datasets/wikitext', 'wikitext-2-raw-v1', split='test')
 
     from transformers import AutoTokenizer 
     tokenizer = AutoTokenizer.from_pretrained(model, use_fast=False)
@@ -418,65 +421,38 @@ def main():
         inps_for_search = inps.clone().detach()
         outs_for_search = outs.clone().detach()
 
-        # try:
-        #     test = inps_for_search.to(device='cuda:1')
-        # except Exception as e:
-        #     print(f"Error moving tensor to device: {e}")
-        #     exit(1)
-        # test_weight = layers[0].self_attn.q_proj.weight.data.cpu().to(device='cuda:1')
-
-        # print(inps_for_search.device, test.device)
-        # print(inps_for_search.dtype, test.dtype)
-        # print(inps_for_search, test)
-
-        # print(layers[0].self_attn.q_proj.weight.data.device, test_weight.device)
-        # print(layers[0].self_attn.q_proj.weight.data.dtype, test_weight.dtype)
-        # print(layers[0].self_attn.q_proj.weight.data, test_weight)
-
-        # exit(0)
-
         # layers = layers.cpu()
 
         for i in tqdm(range(len(layers)), desc="data type search..."):
             # if i == 26:
             #     continue
             layer = layers[i]
-            layer = layer.cuda()
 
-            # if i==1:
-            #     print(inps_for_search[0])
-            # print('pre_device', inps_for_search.shape, inps_for_search.dtype, inps_for_search, inps_for_search.device, layer.self_attn.q_proj.weight.data.device)
+            # layer = layer.cuda()
 
-            # target_device = layer.self_attn.q_proj.weight.data.device
-            # if inps_for_search.device != target_device:
-            #     inps_for_search = inps_for_search.cpu().to(device=target_device)
+            # print(f'id: {i} before move', inps_for_search.device, layer.self_attn.q_proj.weight.data.device)
+            inps_for_search = inps_for_search.to(layer.self_attn.q_proj.weight.data.device)
 
-            inps_for_search = inps_for_search.to(device=layer.self_attn.q_proj.weight.data.device)
 
             # 用第一个 sample 进行 search，确定 data type
-            # print('change device', inps_for_search.shape, inps_for_search.dtype, inps_for_search, inps_for_search.device, layer.self_attn.q_proj.weight.data.device)
+            # print(f'id: {i} change device', inps_for_search.shape, inps_for_search.dtype, inps_for_search.device, layer.self_attn.q_proj.weight.data.device)
+
             outs_for_search[0] = layer(inps_for_search[0].unsqueeze(0), attention_mask=attention_mask, position_ids=position_ids)[0]
             inps_for_search, outs_for_search = outs_for_search, inps_for_search
-            # print('out', inps_for_search.shape, inps_for_search.dtype, inps_for_search, inps_for_search.device)
-            # if i == 7:
-            #     exit(0)
+
             dev = inps_for_search.device
 
-            layer = layer.cpu()
-            del layer
-            torch.cuda.empty_cache()
+            # layer = layer.cpu()
+            # del layer
+            # torch.cuda.empty_cache()
         
 
         for i in tqdm(range(len(layers)), desc="forwarding..."):
             # print(i)
             # layer = layers[i].to(dev)
             layer = layers[i]
-            layer = layer.cuda()
-            # print(layer.self_attn.q_proj.weight.data)
 
-            # target_device = layer.self_attn.q_proj.weight.data.device
-            # if inps.device != target_device:
-            #     inps = inps.cpu().to(device=target_device)
+            # layer = layer.cuda()
 
             inps = inps.to(layer.self_attn.q_proj.weight.data.device)
 

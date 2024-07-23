@@ -13,8 +13,7 @@ A_STRIDE=${10:-"5"}
 # OUTLIER_RATIO=${8:-"-1"}
 DESC=${11:-""}
 
-# MODEL=/localssd/wmhu/models/llama-${MODEL_SIZE}b-hf-transformers-4.29
-MODEL=/localssd/wmhu/models//llama-2-${MODEL_SIZE}b-hf
+MODEL=/localssd/wmhu/models/llama-${MODEL_SIZE}b-hf-transformers-4.29
 OUTPUT_NAME=llama-${MODEL_SIZE}b
 OUTPUT_DIR=output/output_giant_dump
 

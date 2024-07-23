@@ -14,11 +14,12 @@ A_STRIDE=${10:-"5"}
 DESC=${11:-""}
 
 # MODEL=/localssd/wmhu/models/llama-${MODEL_SIZE}b-hf-transformers-4.29
-MODEL=/localssd/wmhu/models//llama-2-${MODEL_SIZE}b-hf
-OUTPUT_NAME=llama-${MODEL_SIZE}b
-OUTPUT_DIR=output/output_llama2_w4a4_w8a8
+MODEL=/localssd/wmhu/models/llama-2-${MODEL_SIZE}b-hf
+OUTPUT_NAME=llama-2-${MODEL_SIZE}b
+OUTPUT_DIR=output/output_giant_load
 
 mkdir -p $OUTPUT_DIR
+mkdir -p quant_cache
 # --dump_quant $OUTPUT_NAME \
 # --load_awq /localdata_ssd/wmhu/llm/llm-awq/awq-model-zoo/llama-7b-w4-g128.pt
 

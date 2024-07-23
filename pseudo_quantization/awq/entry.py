@@ -134,7 +134,7 @@ def build_model_and_enc(model_path):
                     model_path, config=config, **kwargs_init)
             elif quant_mode_config['quant_method'] =='giant' and quant_mode_config['quant_kv'] and isinstance(config, LlamaConfig):
                 model = LlamaForCausalLM_giant.from_pretrained(
-                    model_path, config=config, **kwargs)
+                    model_path, config=config, **kwargs_init)
             else:
                 model = AutoModelForCausalLM.from_config(
                         config=config, torch_dtype=torch.float16, trust_remote_code=True
@@ -167,7 +167,7 @@ def build_model_and_enc(model_path):
 
         if quant_mode_config['quant_method'] in ['ant', 'olive', 'int', 'mokey', 'giant']:
             make_quant_linear(
-                model, args.w_bit, q_config, ant_config=ant_config, quant_mode_config=quant_mode_config
+                model, args.w_bit, args.a_bit, q_config, ant_config=ant_config, quant_mode_config=quant_mode_config
             )
 
         model.eval()

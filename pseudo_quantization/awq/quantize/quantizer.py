@@ -130,7 +130,6 @@ def pseudo_quantize_model_weight(
     for i in tqdm(range(len(layers)), desc="pseudo weight quantization..."):
         named_linears = get_named_linears(layers[i])
         for n, m in named_linears.items():
-            m.cuda()
             # if n == 'self_attn.q_proj' or n == 'mlp.down_proj':
             # cdf_csv(m.weight.data, -2, i, n, 1000, 1, 'cdf_data_tensor.csv')  
 

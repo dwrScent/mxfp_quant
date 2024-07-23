@@ -175,8 +175,10 @@ class GIANT_Linear(nn.Module):
     def forward(self, x):
         out_shape = x.shape[:-1] + (self.out_features, )
         input = x.reshape(-1, x.shape[-1])
-        input_init = input.clone().detach()
+        # input_init = input.clone().detach()
         # print(input, self.weight)
+
+        # print(self.layer_id, self.layer_name,'before forward move', input.device, self.weight.device)
 
         # quantize activation to INT8
         if self.a_bit < 16 and self.a_bit != -1:
@@ -197,6 +199,8 @@ class GIANT_Linear(nn.Module):
             # print(f'best alpha:{best_alpha}, best mse:{best_mse}')
             # input = pseudo_quantize_int(input, n_bit=self.a_bit, zero_point=False, q_group_size=self.group_size, alpha=best_alpha)
         
+        # input = input.to(self.weight.device)
+        # print(self.layer_id, self.layer_name,'forward move', input.device, self.weight.device)
         out = F.linear(input, self.weight)
         # if self.quant_kv:
         #     if self.layer_name == 'self_attn.k_proj' or self.layer_name == 'self_attn.v_proj':

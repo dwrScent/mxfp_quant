@@ -313,8 +313,9 @@ class OliVe_Linear(nn.Module):
         input = x.reshape(-1, x.shape[-1])
 
         # if 'gate' in self.layer_name or 'q_proj' in self.layer_name or 'up' in self.layer_name or 'k_proj' in self.layer_name:
-        #     self.w_bit = 8
-        #     self.a_bit = 8
+        if 'mlp' in self.layer_name:
+            self.w_bit = 8
+            self.a_bit = 8
 
         # Search and set data type and alpha during the first inference
         if self.weight_quant_grid is None:

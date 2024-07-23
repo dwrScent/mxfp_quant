@@ -189,6 +189,9 @@ def group_dist(w_data, group_size=-1, layer_idx=0, layer_name="", max_fig=1000, 
     plt.ylabel('number')
     plt.xlabel('value')
 
+    max_val = torch.max(torch.abs(w_data_group), dim=1, keepdim=True).values
+    var_group = torch.var(w_data_group / max_val, dim=1, keepdim=True)
+
     save_path = os.path.join(os.getcwd(), 'distri_img')
     os.makedirs(save_path, exist_ok=True) 
 
@@ -196,14 +199,14 @@ def group_dist(w_data, group_size=-1, layer_idx=0, layer_name="", max_fig=1000, 
         if idx > max_fig:
             print(f"up to the max number of figures: {max_fig}")
             break
-
+        
         data_list = group.view(-1).tolist()
         interval = (max(data_list) - min(data_list)) / 100  # Adjust the number of bins.
         bins = np.arange(min(data_list) - interval * 3, max(data_list) + interval * 3, interval)
         bins = np.sort(np.insert(bins, 0, 0))
 
         print((f'layer{layer_idx}_{layer_name}_group_{idx}_{desc} {max(data_list)} {min(data_list)}'))
-        plt.hist( data_list , bins=bins, color='blue',label="weight")
+        plt.hist( data_list , bins=bins, color='blue',label=f"weight {var_group[idx]}")
         plt.legend()
         plt.savefig(f'{save_path}/layer{layer_idx}_{layer_name}_group_{idx}_{desc}.png')
         plt.clf()

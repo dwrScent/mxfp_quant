@@ -10,6 +10,10 @@ from transformers.models.llama.configuration_llama import *
 from transformers.models.llama.modeling_llama import *
 from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
 
+from ..utils.make_distribution import group_dist
+from ..utils.cdf_graph import group_cdf, cdf_csv
+from ..quantize.ant_quant import get_quant_weight
+
 _CONFIG_FOR_DOC = "LlamaConfig"
 
 
@@ -100,10 +104,10 @@ class LlamaAttention_giant(nn.Module):
         # Quantization args
         self.quant_attention = True
         self.group_size = 64
-        self.print_stats = False
-        self.q_bit = 8
+        self.print_stats = True
+        self.q_bit = 4
         self.k_bit = 4
-        self.v_bit = 6
+        self.v_bit = 4
         self.v_group_elem_num = 0
         self.v_update_mode = 'lazy_update'
         # self.v_update_mode = 'immediate_update'
@@ -152,6 +156,12 @@ class LlamaAttention_giant(nn.Module):
         # Flatten for quantization
         query_states = query_states.reshape(query_states.shape[1], -1)
         key_states = key_states.reshape(key_states.shape[1], -1)
+
+        # cdf_csv(key_states, -2, self.layer_idx, 'key', 1000, 1, 'cdf_key_tensor.csv')  
+        # if self.layer_idx >= 12 and self.layer_idx <= 15:
+        #     cdf_csv(key_states, -1, self.layer_idx, 'key', 1000, 64, 'cdf_key_chan.csv')  
+        # if self.layer_idx >= 12 and self.layer_idx <= 15:
+        #     cdf_csv(key_states, 64, self.layer_idx, 'key', 1000, 512, 'cdf_key_group.csv')
         
         # Quantize query and key states
         query_states = pseudo_quantize_int(query_states, n_bit=self.q_bit, zero_point=False, q_group_size=group_size)
@@ -161,13 +171,17 @@ class LlamaAttention_giant(nn.Module):
         query_states = query_states.reshape(org_q_shape)
         key_states = key_states.reshape(org_k_shape)
         if self.print_stats:
-            print(f"mse q: {mse(org_q, query_states)} mse k: {mse(org_k, key_states)} k_bit: {self.k_bit} q_group_size=self.group_size")
+            print(f"mse q: {mse(org_q, query_states)} mse k: {mse(org_k, key_states)} q_bit: {self.q_bit} k_bit: {self.k_bit} group_size: {self.group_size}")
         
         return query_states, key_states
     
     def quantize_value(self, value_states: torch.Tensor, org_v_shape: torch.Tensor, group_size: int, bsz: int, q_len: int) -> torch.Tensor:
         # current `value_states` is the new V cache
         v_seq_len = value_states.shape[2]
+
+        mse = nn.MSELoss()
+        org_v = value_states.clone()
+
         if self.v_update_mode == 'lazy_update':
             # org_v_shape (b, s, n*d)
             if org_v_shape[-2] == 1:
@@ -188,6 +202,9 @@ class LlamaAttention_giant(nn.Module):
                     # reshape
                     value_states = value_trans.t()
                     value_states = value_states.reshape(v_cache_shape[0], v_cache_shape[2], v_cache_shape[1], v_cache_shape[3]).transpose(1, 2)
+                
+                if self.print_stats:
+                    print(f"decode mse v: {mse(org_v, value_states)} v_bit: {self.v_bit} q_group_size: {self.group_size}")
 
                 return value_states
             
@@ -195,16 +212,90 @@ class LlamaAttention_giant(nn.Module):
             elif org_v_shape[-2] > 1:
                 # recover the shape of value cache and reshape to 2d for quantization -> (s, b*n*d)
                 value_states = value_states.transpose(1, 2).reshape(v_seq_len, -1)
-                value_trans = value_states.t()
+                value_trans = value_states.t().contiguous()
+
+                # cdf_csv(value_trans, -2, self.layer_idx, 'value', 1000, 1, 'cdf_value_tensor.csv')  
+                # if self.layer_idx >= 12 and self.layer_idx <= 15:
+                #     cdf_csv(value_trans, -1, self.layer_idx, 'value', 1000, 64, 'cdf_value_chan.csv')  
+                # if self.layer_idx >= 12 and self.layer_idx <= 15:
+                #     cdf_csv(value_trans, 64, self.layer_idx, 'value', 1000, 512, 'cdf_value_group.csv')
+
 
                 # quantize the V cache, leave the (org_v_shape[-2] % group_size) tokens
                 quant_elem_num = (v_seq_len // group_size) * group_size
-                quantized_part = pseudo_quantize_int(value_trans[:, :quant_elem_num], n_bit=self.v_bit, zero_point=False, q_group_size=group_size)
-                value_trans = torch.cat([quantized_part, value_trans[:, quant_elem_num:]], dim=1)
+                quantized_part = value_trans[:, :quant_elem_num]
+
+                quantized_part_shape = quantized_part.shape
+
+                if group_size > 0:
+                    quantized_part_group = quantized_part.reshape(-1, group_size)
+                else:
+                    raise ValueError('not support yet')
+                max_val = torch.max(torch.abs(quantized_part_group), dim=1, keepdim=True).values
+                value_var = torch.var(quantized_part_group / max_val, dim=1, keepdim=True)
+
+
+                # intervals = [0, 0.05, 0.25, 0.5, 1.0]
+                # interval_counts = torch.zeros(len(intervals) - 1, dtype=torch.int32)
+                
+                # interval_counts[0] = torch.sum((value_var >= intervals[0]) & (value_var < intervals[1]))
+                # interval_counts[1] = torch.sum((value_var >= intervals[1]) & (value_var < intervals[2]))
+                # interval_counts[2] = torch.sum((value_var >= intervals[2]) & (value_var < intervals[3]))
+                # interval_counts[3] = torch.sum((value_var >= intervals[3]) & (value_var <= intervals[4]))
+
+                # # 打印区间统计
+                # total = value_var.size(0)
+                # for i in range(len(intervals) - 1):
+                #     count = interval_counts[i].item()
+                #     percentage = (count / total) * 100
+                #     print(f"Interval {intervals[i]} - {intervals[i+1]}: {count} values ({percentage:.2f}%)")
+                # print(f"Normalized variance of value_states:\n{value_var}, {value_var.max()}, {value_var.min()}")
+                # group_dist(quantized_part_group, group_size=group_size, layer_idx=self.layer_idx, layer_name='value', max_fig=1000)
+
+                quant_grid_set = {}
+                quant_grid_set['coefficient_25'] = torch.tensor([-1.0000, -0.7061, -0.5181, -0.3828, -0.2739, -0.1782, -0.0891, -0.0033, 0.0033,  0.0891,  0.1782,  0.2739,  0.3828,  0.5181,  0.7061,  1.0000])
+                quant_grid_set['int'] = torch.tensor([-0., -7., -6., -5., -4., -3., -2., -1.,  0.,  1.,  2.,  3.,  4.,  5., 6.,  7.])
+                quant_grid_set['coefficient_0'] = torch.tensor([-1.0000, -0.5000, -0.2500, -0.1250, -0.0625, -0.0312, -0.0156, -0.0078, 0.0078,  0.0156,  0.0312,  0.0625,  0.1250,  0.2500,  0.5000,  1.0000])
+
+
+                quantized_part_group_deq_nf, _ = get_quant_weight(quantized_part_group, quant_grid_set['coefficient_25'], mode='coefficient_25', q_group_size=group_size)
+                quantized_part_group_deq_int, _ = get_quant_weight(quantized_part_group, quant_grid_set['int'], mode='int', q_group_size=group_size)
+                quantized_part_group_deq_pot, _ = get_quant_weight(quantized_part_group, quant_grid_set['coefficient_0'], mode='coefficient_0', q_group_size=group_size)
+
+                mask_pot = (value_var < 0.05).expand_as(quantized_part_group_deq_pot)
+                mask_nf = ((value_var >= 0.05) & (value_var <= 0.25)).expand_as(quantized_part_group_deq_nf)
+                mask_int = (value_var > 0.25).expand_as(quantized_part_group_deq_int)
+
+                # 使用 mask 选取对应的量化后 tensor
+                quantized_part_group_deq = torch.zeros_like(quantized_part_group)
+
+                quantized_part_group_deq = torch.where(mask_pot, quantized_part_group_deq_pot, quantized_part_group_deq)
+                quantized_part_group_deq = torch.where(mask_nf, quantized_part_group_deq_nf, quantized_part_group_deq)
+                quantized_part_group_deq = torch.where(mask_int, quantized_part_group_deq_int, quantized_part_group_deq)
+
+                quantized_part_deq = quantized_part_group_deq.reshape(quantized_part_shape)
+                quantized_part_deq = quantized_part_deq.to(dtype=value_trans.dtype, device=value_trans.device)
+
+                # print(f'{quantized_part_group_deq_nf.shape}, {quantized_part_group_deq_int.shape}, {quantized_part_group_deq_pot.shape}, {value_var.shape}, {quantized_part_deq}')
+
+                # mse = nn.MSELoss()
+                # print(f'mse giant: {mse(quantized_part_deq, quantized_part)}')
+                # quantized_part_deq = pseudo_quantize_int(value_trans[:, :quant_elem_num], n_bit=self.v_bit, zero_point=False, q_group_size=group_size)
+                # print(f'mse int: {mse(quantized_part_deq, quantized_part)}')
+
+                value_trans = torch.cat([quantized_part_deq, value_trans[:, quant_elem_num:]], dim=1)
+
+                # exit(0)
 
                 # reshape
-                value_states = value_trans.t()
+                value_states = value_trans.t().contiguous()
                 value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+
+
+                # exit(0)
+
+                if self.print_stats:
+                    print(f"prefill mse v: {mse(org_v, value_states)}  v_bit: {self.v_bit} q_group_size: {self.group_size}")
 
                 return value_states
 
@@ -214,12 +305,9 @@ class LlamaAttention_giant(nn.Module):
             # use our real-time update
             if self.local_max is None or self.local_scaling_factor is None:
                 self.reset_local_vars()
-
                 
             if org_v_shape[-2] == 1:
                 # decode stage
-
-
                 # value_states.shape (b, n, s, d)
                 v_cache_shape = value_states.shape
 
@@ -276,12 +364,14 @@ class LlamaAttention_giant(nn.Module):
                 else:
                     pass
                 
-
                 # reshape
                 value_states = value_trans.t()
                 value_states = value_states.reshape(v_cache_shape[0], v_cache_shape[2], v_cache_shape[1], v_cache_shape[3]).transpose(1, 2)
 
                 assert torch.isnan(value_states).sum() == 0
+
+                if self.print_stats:
+                    print(f"decode mse v: {mse(org_v, value_states)} v_bit: {self.v_bit} q_group_size: {self.group_size}")
 
                 return value_states
             
@@ -314,6 +404,10 @@ class LlamaAttention_giant(nn.Module):
                 # reshape
                 value_states = value_trans.t()
                 value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+
+                if self.print_stats:
+                    print(f"prefill mse v: {mse(org_v, value_states)} v_bit: {self.v_bit} q_group_size: {self.group_size}")
+                
                 return value_states
             else:
                 raise ValueError(f'Error value token shape {org_v_shape}')
@@ -324,7 +418,7 @@ class LlamaAttention_giant(nn.Module):
         org_weight_shape = attn_weights.shape
         org_weights = attn_weights.clone()
         attn_weights = attn_weights.reshape(attn_weights.shape[1], -1)
-        attn_weights = pseudo_quantize_int(attn_weights, n_bit=8, zero_point=False, q_group_size=group_size)
+        attn_weights = pseudo_quantize_int(attn_weights, n_bit=self.q_bit, zero_point=False, q_group_size=group_size)
         attn_weights = attn_weights.reshape(org_weight_shape)
         if self.print_stats:
             print(f"mse atten_weights: {mse(org_weights, attn_weights)}")
@@ -336,10 +430,10 @@ class LlamaAttention_giant(nn.Module):
         org_outputs_shape = attn_output.shape
         org_outputs = attn_output.clone()
         attn_output = attn_output.reshape(attn_output.shape[1], -1)
-        attn_output = pseudo_quantize_int(attn_output, n_bit=8, zero_point=False, q_group_size=group_size)
+        attn_output = pseudo_quantize_int(attn_output, n_bit=self.q_bit, zero_point=False, q_group_size=group_size)
         attn_output = attn_output.reshape(org_outputs_shape)
         if self.print_stats:
-            print(f"mse atten_weights: {mse(org_outputs, attn_output)}")
+            print(f"mse atten_outputs: {mse(org_outputs, attn_output)}")
         return attn_output
     
     def forward(
@@ -378,8 +472,12 @@ class LlamaAttention_giant(nn.Module):
             value_states = self.v_proj(hidden_states)
 
         if self.quant_attention == True:
+            print(f'qk pre quant, {query_states.device}, {key_states.device}')
             org_v_shape = value_states.shape
             query_states, key_states = self.quantize_query_key(query_states, key_states, self.group_size)
+
+            print(f'qk after quant, {query_states.device}, {key_states.device}')
+
 
         query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
         key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
@@ -395,9 +493,13 @@ class LlamaAttention_giant(nn.Module):
             key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
 
         if self.quant_attention == True:
+            print(f'v pre quant, {value_states.device}')
             value_states = self.quantize_value(value_states, org_v_shape, self.group_size, bsz, q_len)
             # Update the V cache
-            past_key_value.value_cache[self.layer_idx] = value_states
+            if past_key_value is not None:
+                past_key_value.value_cache[self.layer_idx] = value_states
+            print(f'v after quant, {value_states.device}')
+            
 
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
@@ -506,12 +608,15 @@ class LlamaDecoderLayer_giant(nn.Module):
             cache_position=cache_position,
             **kwargs,
         )
+        residual = residual.to(device=hidden_states.device)
         hidden_states = residual + hidden_states
 
         # Fully Connected
         residual = hidden_states
         hidden_states = self.post_attention_layernorm(hidden_states)
         hidden_states = self.mlp(hidden_states)
+        
+        residual = residual.to(device=hidden_states.device)
         hidden_states = residual + hidden_states
 
         outputs = (hidden_states,)

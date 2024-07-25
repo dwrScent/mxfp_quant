@@ -1,0 +1,52 @@
+****************************************
+Report : power
+        -analysis_effort low
+Design : tender_Pe
+Version: O-2018.06-SP1
+Date   : Thu Jul 25 22:44:52 2024
+****************************************
+
+
+Library(s) Used:
+
+    NangateOpenCellLibrary (File: /home/design/Desktop/NangateOpenCellLibrary.db)
+
+
+Operating Conditions: typical   Library: NangateOpenCellLibrary
+Wire Load Model Mode: top
+
+Design        Wire Load Model            Library
+------------------------------------------------
+tender_Pe              5K_hvratio_1_1    NangateOpenCellLibrary
+
+
+Global Operating Voltage = 1.1  
+Power-specific unit information :
+    Voltage Units = 1V
+    Capacitance Units = 1.000000ff
+    Time Units = 1ns
+    Dynamic Power Units = 1uW    (derived from V,C,T units)
+    Leakage Power Units = 1nW
+
+
+  Cell Internal Power  =   1.0800 uW   (75%)
+  Net Switching Power  = 352.9668 nW   (25%)
+                         ---------
+Total Dynamic Power    =   1.4329 uW  (100%)
+
+Cell Leakage Power     = 162.1833 nW
+
+Information: report_power power group summary does not include estimated clock tree power. (PWR-789)
+
+                 Internal         Switching           Leakage            Total
+Power Group      Power            Power               Power              Power   (   %    )  Attrs
+--------------------------------------------------------------------------------------------------
+io_pad             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+memory             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+black_box          0.0000            0.0000            0.0000            0.0000  (   0.00%)
+clock_network      0.0000            0.0000            0.0000            0.0000  (   0.00%)
+register           0.0000            0.0000            0.0000            0.0000  (   0.00%)
+sequential         0.4329        1.1094e-02           77.2331            0.5213  (  32.68%)
+combinational      0.6470            0.3419           84.9502            1.0739  (  67.32%)
+--------------------------------------------------------------------------------------------------
+Total              1.0800 uW         0.3530 uW       162.1833 nW         1.5951 uW

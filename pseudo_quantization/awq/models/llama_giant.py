@@ -65,6 +65,60 @@ def pseudo_quantize_int(tensor, n_bit=8, zero_point=False, q_group_size=-1, get_
     else:
         return tensor
 
+class LlamaRotaryEmbedding_giant(nn.Module):
+    def __init__(self, dim, max_position_embeddings=2048, base=10000, device=None, scaling_factor=1.0):
+        super().__init__()
+        self.scaling_factor = scaling_factor
+        self.dim = dim
+        self.max_position_embeddings = max_position_embeddings
+        self.base = base
+        inv_freq = 1.0 / (self.base ** (torch.arange(0, self.dim, 2, dtype=torch.int64).float().to(device) / self.dim))
+        self.register_buffer("inv_freq", inv_freq, persistent=False)
+        # For BC we register cos and sin cached
+        self.max_seq_len_cached = max_position_embeddings
+        t = torch.arange(self.max_seq_len_cached, device=device, dtype=torch.int64).type_as(self.inv_freq)
+        t = t / self.scaling_factor
+        freqs = torch.outer(t, self.inv_freq)
+        # Different from paper, but it uses a different permutation in order to obtain the same calculation
+        emb = torch.cat((freqs, freqs), dim=-1)
+        self.register_buffer("_cos_cached", emb.cos().to(torch.get_default_dtype()), persistent=False)
+        self.register_buffer("_sin_cached", emb.sin().to(torch.get_default_dtype()), persistent=False)
+
+    @property
+    def sin_cached(self):
+        logger.warning_once(
+            "The sin_cached attribute will be removed in 4.39. Bear in mind that its contents changed in v4.38. Use "
+            "the forward method of RoPE from now on instead. It is not used in the `LlamaAttention` class"
+        )
+        return self._sin_cached
+
+    @property
+    def cos_cached(self):
+        logger.warning_once(
+            "The cos_cached attribute will be removed in 4.39. Bear in mind that its contents changed in v4.38. Use "
+            "the forward method of RoPE from now on instead. It is not used in the `LlamaAttention` class"
+        )
+        return self._cos_cached
+
+    @torch.no_grad()
+    def forward(self, x, position_ids):
+        # x: [bs, num_attention_heads, seq_len, head_size]
+        position_ids = position_ids.to(x.device)
+
+        inv_freq_expanded = self.inv_freq[None, :, None].float().expand(position_ids.shape[0], -1, 1)
+        position_ids_expanded = position_ids[:, None, :].float()
+        # Force float32 since bfloat16 loses precision on long contexts
+        # See https://github.com/huggingface/transformers/pull/29285
+        device_type = x.device.type
+        device_type = device_type if isinstance(device_type, str) and device_type != "mps" else "cpu"
+
+        with torch.autocast(device_type=device_type, enabled=False):
+            freqs = (inv_freq_expanded.float() @ position_ids_expanded.float()).transpose(1, 2)
+            emb = torch.cat((freqs, freqs), dim=-1)
+            cos = emb.cos()
+            sin = emb.sin()
+        return cos.to(dtype=x.dtype), sin.to(dtype=x.dtype)
+    
 class LlamaAttention_giant(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
 
@@ -116,7 +170,7 @@ class LlamaAttention_giant(nn.Module):
 
     def _init_rope(self):
         if self.config.rope_scaling is None:
-            self.rotary_emb = LlamaRotaryEmbedding(
+            self.rotary_emb = LlamaRotaryEmbedding_giant(
                 self.head_dim,
                 max_position_embeddings=self.max_position_embeddings,
                 base=self.rope_theta,
@@ -162,10 +216,45 @@ class LlamaAttention_giant(nn.Module):
         #     cdf_csv(key_states, -1, self.layer_idx, 'key', 1000, 64, 'cdf_key_chan.csv')  
         # if self.layer_idx >= 12 and self.layer_idx <= 15:
         #     cdf_csv(key_states, 64, self.layer_idx, 'key', 1000, 512, 'cdf_key_group.csv')
+
+        quantized_part_shape = key_states.shape
+
+        if group_size > 0:
+            quantized_part_group = key_states.reshape(-1, group_size)
+        else:
+            raise ValueError('not support yet')
+        max_val = torch.max(torch.abs(quantized_part_group), dim=1, keepdim=True).values
+        value_var = torch.var(quantized_part_group / max_val, dim=1, keepdim=True)
+
+        quant_grid_set = {}
+        quant_grid_set['coefficient_25'] = torch.tensor([-1.0000, -0.7061, -0.5181, -0.3828, -0.2739, -0.1782, -0.0891, -0.0033, 0.0033,  0.0891,  0.1782,  0.2739,  0.3828,  0.5181,  0.7061,  1.0000])
+        quant_grid_set['int'] = torch.tensor([-0., -7., -6., -5., -4., -3., -2., -1.,  0.,  1.,  2.,  3.,  4.,  5., 6.,  7.])
+        quant_grid_set['coefficient_0'] = torch.tensor([-1.0000, -0.5000, -0.2500, -0.1250, -0.0625, -0.0312, -0.0156, -0.0078, 0.0078,  0.0156,  0.0312,  0.0625,  0.1250,  0.2500,  0.5000,  1.0000])
+
+
+        quantized_part_group_deq_nf, _ = get_quant_weight(quantized_part_group, quant_grid_set['coefficient_25'], mode='coefficient_25', q_group_size=group_size)
+        quantized_part_group_deq_int, _ = get_quant_weight(quantized_part_group, quant_grid_set['int'], mode='int', q_group_size=group_size)
+        quantized_part_group_deq_pot, _ = get_quant_weight(quantized_part_group, quant_grid_set['coefficient_0'], mode='coefficient_0', q_group_size=group_size)
+
+        mask_pot = (value_var < 0.05).expand_as(quantized_part_group_deq_pot)
+        mask_nf = ((value_var >= 0.05) & (value_var <= 0.25)).expand_as(quantized_part_group_deq_nf)
+        mask_int = (value_var > 0.25).expand_as(quantized_part_group_deq_int)
+
+        # 使用 mask 选取对应的量化后 tensor
+        quantized_part_group_deq = torch.zeros_like(quantized_part_group)
+
+        quantized_part_group_deq = torch.where(mask_pot, quantized_part_group_deq_pot, quantized_part_group_deq)
+        quantized_part_group_deq = torch.where(mask_nf, quantized_part_group_deq_nf, quantized_part_group_deq)
+        quantized_part_group_deq = torch.where(mask_int, quantized_part_group_deq_int, quantized_part_group_deq)
+
+        quantized_part_deq = quantized_part_group_deq.reshape(quantized_part_shape)
+        quantized_part_deq = quantized_part_deq.to(dtype=key_states.dtype, device=key_states.device)
         
         # Quantize query and key states
         query_states = pseudo_quantize_int(query_states, n_bit=self.q_bit, zero_point=False, q_group_size=group_size)
-        key_states = pseudo_quantize_int(key_states, n_bit=self.k_bit, zero_point=False, q_group_size=group_size)
+
+        # key_states = pseudo_quantize_int(key_states, n_bit=self.k_bit, zero_point=False, q_group_size=group_size)
+        key_states = quantized_part_deq
 
         # Restore original shapes
         query_states = query_states.reshape(org_q_shape)
@@ -198,6 +287,20 @@ class LlamaAttention_giant(nn.Module):
                     # quantize the latest V cache group
                     quantized_part = pseudo_quantize_int(value_trans[:, (v_seq_len-group_size):], n_bit=self.v_bit, zero_point=False, q_group_size=group_size)
                     value_trans = torch.cat([value_trans[:, :(v_seq_len-group_size)], quantized_part], dim=1)
+
+                    # reshape
+                    value_states = value_trans.t()
+                    value_states = value_states.reshape(v_cache_shape[0], v_cache_shape[2], v_cache_shape[1], v_cache_shape[3]).transpose(1, 2)
+                else:
+                    # quantize the V vector to INT8
+                    value_states = value_states.transpose(1, 2).reshape(v_seq_len, -1)
+                    value_trans = value_states.t()
+
+                    # quantize the latest V cache group
+                    quantized_part = pseudo_quantize_int(value_trans[:, (v_seq_len-1):], n_bit=self.v_bit, zero_point=False, q_group_size=group_size)
+                    print(quantized_part.shape)
+                    input('contiune')
+                    value_trans = torch.cat([value_trans[:, :(v_seq_len-1)], quantized_part], dim=1)
 
                     # reshape
                     value_states = value_trans.t()
@@ -472,11 +575,11 @@ class LlamaAttention_giant(nn.Module):
             value_states = self.v_proj(hidden_states)
 
         if self.quant_attention == True:
-            print(f'qk pre quant, {query_states.device}, {key_states.device}')
+            # print(f'qk pre quant, {query_states.device}, {key_states.device}')
             org_v_shape = value_states.shape
             query_states, key_states = self.quantize_query_key(query_states, key_states, self.group_size)
 
-            print(f'qk after quant, {query_states.device}, {key_states.device}')
+            # print(f'qk after quant, {query_states.device}, {key_states.device}')
 
 
         query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
@@ -484,6 +587,8 @@ class LlamaAttention_giant(nn.Module):
         value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
 
         past_key_value = getattr(self, "past_key_value", past_key_value)
+        # print('v device', value_states.device,s position_ids.device)
+
         cos, sin = self.rotary_emb(value_states, position_ids)
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
@@ -493,12 +598,12 @@ class LlamaAttention_giant(nn.Module):
             key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
 
         if self.quant_attention == True:
-            print(f'v pre quant, {value_states.device}')
+            # print(f'v pre quant, {value_states.device}')
             value_states = self.quantize_value(value_states, org_v_shape, self.group_size, bsz, q_len)
             # Update the V cache
             if past_key_value is not None:
                 past_key_value.value_cache[self.layer_idx] = value_states
-            print(f'v after quant, {value_states.device}')
+            # print(f'v after quant, {value_states.device}')
             
 
         key_states = repeat_kv(key_states, self.num_key_value_groups)
@@ -507,6 +612,7 @@ class LlamaAttention_giant(nn.Module):
         attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
 
         if attention_mask is not None:  # no matter the length, we just slice it
+            attention_mask = attention_mask.to(attn_weights.device)
             causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
             attn_weights = attn_weights + causal_mask
 
@@ -552,6 +658,66 @@ LLAMA_ATTENTION_CLASSES = {
     "sdpa": LlamaSdpaAttention,
 }
 
+class LlamaRMSNorm_giant(nn.Module):
+    def __init__(self, hidden_size, eps=1e-6):
+        """
+        LlamaRMSNorm is equivalent to T5LayerNorm
+        """
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(hidden_size))
+        self.variance_epsilon = eps
+
+    def forward(self, hidden_states):
+        # print('norm before operation', self.weight.device, hidden_states.device)
+
+        input_dtype = hidden_states.dtype
+        hidden_states = hidden_states.to(torch.float32)
+        variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+
+        # print('norm', self.weight.device, hidden_states.device)
+        # wmhu: device move
+        return self.weight * hidden_states.to(dtype=input_dtype, device=self.weight.device)
+
+
+ALL_LAYERNORM_LAYERS.append(LlamaRMSNorm_giant)
+
+class LlamaMLP_giant(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.config = config
+        self.hidden_size = config.hidden_size
+        self.intermediate_size = config.intermediate_size
+        self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
+        self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
+        self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)
+        self.act_fn = ACT2FN[config.hidden_act]
+
+    def forward(self, x):
+        if self.config.pretraining_tp > 1:
+            slice = self.intermediate_size // self.config.pretraining_tp
+            gate_proj_slices = self.gate_proj.weight.split(slice, dim=0)
+            up_proj_slices = self.up_proj.weight.split(slice, dim=0)
+            down_proj_slices = self.down_proj.weight.split(slice, dim=1)
+
+            gate_proj = torch.cat(
+                [F.linear(x, gate_proj_slices[i]) for i in range(self.config.pretraining_tp)], dim=-1
+            )
+            up_proj = torch.cat([F.linear(x, up_proj_slices[i]) for i in range(self.config.pretraining_tp)], dim=-1)
+
+            intermediate_states = (self.act_fn(gate_proj) * up_proj).split(slice, dim=2)
+            down_proj = [
+                F.linear(intermediate_states[i], down_proj_slices[i]) for i in range(self.config.pretraining_tp)
+            ]
+            down_proj = sum(down_proj)
+        else:
+            # print('mlp1', self.gate_proj.weight.device, self.up_proj.weight.device, x.device)
+            # print('mlp', self.act_fn(self.gate_proj(x)).device, self.up_proj(x).device)
+            # print('mlp2', self.act_fn(self.gate_proj(x)).device, self.up_proj(x).device)
+            down_proj = self.down_proj(self.act_fn(self.gate_proj(x)).to(self.gate_proj.weight.device) * self.up_proj(x))
+
+        return down_proj
+    
 class LlamaDecoderLayer_giant(nn.Module):
     def __init__(self, config: LlamaConfig, layer_idx: int):
         super().__init__()
@@ -559,9 +725,9 @@ class LlamaDecoderLayer_giant(nn.Module):
 
         self.self_attn = LLAMA_ATTENTION_CLASSES[config._attn_implementation](config=config, layer_idx=layer_idx)
 
-        self.mlp = LlamaMLP(config)
-        self.input_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        self.post_attention_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.mlp = LlamaMLP_giant(config)
+        self.input_layernorm = LlamaRMSNorm_giant(config.hidden_size, eps=config.rms_norm_eps)
+        self.post_attention_layernorm = LlamaRMSNorm_giant(config.hidden_size, eps=config.rms_norm_eps)
 
     def forward(
         self,
@@ -595,8 +761,10 @@ class LlamaDecoderLayer_giant(nn.Module):
 
         residual = hidden_states
 
-        hidden_states = self.input_layernorm(hidden_states)
+        # print('decoder', hidden_states.device, residual.device, self.self_attn.q_proj.weight.device)
 
+        hidden_states = self.input_layernorm(hidden_states)
+        # print('hidden device0',hidden_states.device)
         # Self Attention
         hidden_states, self_attn_weights, present_key_value = self.self_attn(
             hidden_states=hidden_states,
@@ -608,15 +776,18 @@ class LlamaDecoderLayer_giant(nn.Module):
             cache_position=cache_position,
             **kwargs,
         )
-        residual = residual.to(device=hidden_states.device)
+        # residual = residual.to(device=hidden_states.device)
         hidden_states = residual + hidden_states
 
         # Fully Connected
         residual = hidden_states
+        # print('hidden device1',hidden_states.device)
+
         hidden_states = self.post_attention_layernorm(hidden_states)
+        # print('hidden device2',hidden_states.device)
         hidden_states = self.mlp(hidden_states)
         
-        residual = residual.to(device=hidden_states.device)
+        # residual = residual.to(device=hidden_states.device)
         hidden_states = residual + hidden_states
 
         outputs = (hidden_states,)
@@ -627,6 +798,7 @@ class LlamaDecoderLayer_giant(nn.Module):
         if use_cache:
             outputs += (present_key_value,)
 
+        # print('decoder layer done')
         return outputs
 
 
@@ -647,7 +819,7 @@ class LlamaModel_giant(LlamaPreTrainedModel):
         self.layers = nn.ModuleList(
             [LlamaDecoderLayer_giant(config, layer_idx) for layer_idx in range(config.num_hidden_layers)]
         )
-        self.norm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.norm = LlamaRMSNorm_giant(config.hidden_size, eps=config.rms_norm_eps)
         self.gradient_checkpointing = False
 
         # Initialize weights and apply final processing

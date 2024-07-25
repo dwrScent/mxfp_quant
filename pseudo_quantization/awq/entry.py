@@ -148,8 +148,11 @@ def build_model_and_enc(model_path):
             model,
             no_split_module_classes=[
                 "OPTDecoderLayer",
+                "OPTDecoderLayer_giant",
                 "LlamaDecoderLayer",
+                "LlamaDecoderLayer_giant",
                 "BloomBlock",
+                "BloomBlock_giant",
                 "MPTBlock",
                 "DecoderLayer",
             ],

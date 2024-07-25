@@ -199,7 +199,7 @@ class GIANT_Linear(nn.Module):
             # print(f'best alpha:{best_alpha}, best mse:{best_mse}')
             # input = pseudo_quantize_int(input, n_bit=self.a_bit, zero_point=False, q_group_size=self.group_size, alpha=best_alpha)
         
-        # input = input.to(self.weight.device)
+        input = input.to(self.weight.device)
         # print(self.layer_id, self.layer_name,'forward move', input.device, self.weight.device)
         out = F.linear(input, self.weight)
         # if self.quant_kv:
@@ -207,5 +207,7 @@ class GIANT_Linear(nn.Module):
         #         out = pseudo_quantize_int(out, n_bit=self.w_bit, zero_point=False, q_group_size=self.group_size)
 
         out = out + self.bias if self.bias is not None else out
+
+        # print(out.device)
         return out.reshape(out_shape)
     

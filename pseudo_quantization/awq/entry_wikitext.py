@@ -137,19 +137,26 @@ def build_model_and_enc(model_path):
 
         model.tie_weights()
 
+
         # Infer device map
+        # max_memory = {0: '35GiB', 1:'35GiB', 'cpu':'30GiB'}
+        max_memory = {0: '38GiB', 1:'38GiB', 2: '38GiB', 3:'38GiB', 'cpu':'30GiB'}
         kwargs = {"max_memory": max_memory} if len(max_memory) else {}
         device_map = infer_auto_device_map(
             model,
             no_split_module_classes=[
                 "OPTDecoderLayer",
+                "OPTDecoderLayer_giant",
                 "LlamaDecoderLayer",
+                "LlamaDecoderLayer_giant",
                 "BloomBlock",
+                "BloomBlock_giant",
                 "MPTBlock",
                 "DecoderLayer",
             ],
             **kwargs,
         )
+
         # Load checkpoint in the model
         load_checkpoint_in_model(
             model,
@@ -157,8 +164,13 @@ def build_model_and_enc(model_path):
             device_map=device_map,
             offload_state_dict=True,
         )
+
+
         # Dispatch model
         model = simple_dispatch_model(model, device_map=device_map)
+        print(model, device_map, max_memory)
+        # input('..qeq')
+
 
         if quant_mode_config['quant_method'] in ['ant', 'olive', 'int', 'mokey', 'giant']:
             make_quant_linear(

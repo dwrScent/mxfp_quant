@@ -9,7 +9,7 @@ module tender_Pe(
 	output forwarded_rescale,
 	output forwarded_weight,
 
-	output reg acc
+	output reg [7:0] acc
 );
 	assign forwarded_input = activation;
 	assign forwarded_rescale = rescale;

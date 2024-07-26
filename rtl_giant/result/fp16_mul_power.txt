@@ -1,9 +1,9 @@
 ****************************************
 Report : power
         -analysis_effort low
-Design : float_multi
+Design : int_fp_mul
 Version: O-2018.06-SP1
-Date   : Thu Jul 25 22:47:51 2024
+Date   : Fri Jul 26 23:38:01 2024
 ****************************************
 
 
@@ -17,7 +17,7 @@ Wire Load Model Mode: top
 
 Design        Wire Load Model            Library
 ------------------------------------------------
-float_multi            5K_hvratio_1_1    NangateOpenCellLibrary
+int_fp_mul             5K_hvratio_1_1    NangateOpenCellLibrary
 
 
 Global Operating Voltage = 1.1  
@@ -29,12 +29,12 @@ Power-specific unit information :
     Leakage Power Units = 1nW
 
 
-  Cell Internal Power  = 521.8130 uW   (42%)
-  Net Switching Power  = 707.2570 uW   (58%)
+  Cell Internal Power  = 316.7911 uW   (58%)
+  Net Switching Power  = 233.9587 uW   (42%)
                          ---------
-Total Dynamic Power    =   1.2291 mW  (100%)
+Total Dynamic Power    = 550.7498 uW  (100%)
 
-Cell Leakage Power     =  32.9511 uW
+Cell Leakage Power     =  14.2053 uW
 
 Information: report_power power group summary does not include estimated clock tree power. (PWR-789)
 
@@ -46,7 +46,7 @@ memory             0.0000            0.0000            0.0000            0.0000 
 black_box          0.0000            0.0000            0.0000            0.0000  (   0.00%)
 clock_network      0.0000            0.0000            0.0000            0.0000  (   0.00%)
 register           0.0000            0.0000            0.0000            0.0000  (   0.00%)
-sequential         0.0000            0.0000            0.0000            0.0000  (   0.00%)
-combinational    521.8132          707.2564        3.2951e+04        1.2620e+03  ( 100.00%)
+sequential        10.3181        4.5973e-02        1.2561e+03           11.6202  (   2.06%)
+combinational    306.4732          233.9129        1.2949e+04          553.3353  (  97.94%)
 --------------------------------------------------------------------------------------------------
-Total            521.8132 uW       707.2564 uW     3.2951e+04 nW     1.2620e+03 uW
+Total            316.7912 uW       233.9588 uW     1.4205e+04 nW       564.9555 uW

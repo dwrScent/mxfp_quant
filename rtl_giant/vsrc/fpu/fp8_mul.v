@@ -43,7 +43,7 @@ module fp8_mul (
     assign mantissa_prod = multiplier_output[5:0];
     assign multiplier_output = multiplier_input1 * multiplier_input2;
     
-    assign {c1,,sum_exponent} = a[6:2] + b[6:2];
+    assign {c1,sum_exponent} = a[6:2] + b[6:2];
     assign {c2,biased_sum_exponent} = sum_exponent + 5'b10001; //minux bias
 
     mul_normalizer u4(biased_sum_exponent,mantissa_prod,normalized_out);

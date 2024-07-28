@@ -1,0 +1,30 @@
+ 
+****************************************
+Report : area
+Design : int4_mac_acc8bit
+Version: O-2018.06-SP1
+Date   : Sun Jul 28 10:57:52 2024
+****************************************
+
+Information: Updating design information... (UID-85)
+Library(s) Used:
+
+    NangateOpenCellLibrary (File: /home/design/Desktop/NangateOpenCellLibrary.db)
+
+Number of ports:                           61
+Number of nets:                           143
+Number of cells:                           83
+Number of combinational cells:             71
+Number of sequential cells:                10
+Number of macros/black boxes:               0
+Number of buf/inv:                         11
+Number of references:                       5
+
+Combinational area:                110.922000
+Buf/Inv area:                        5.852000
+Noncombinational area:              36.175999
+Macro/Black Box area:                0.000000
+Net Interconnect area:      undefined  (Wire load has zero net area)
+
+Total cell area:                   147.097999
+Total area:                 undefined

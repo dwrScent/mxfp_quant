@@ -1,0 +1,52 @@
+****************************************
+Report : power
+        -analysis_effort low
+Design : ant_pe
+Version: O-2018.06-SP1
+Date   : Sun Jul 28 11:02:52 2024
+****************************************
+
+
+Library(s) Used:
+
+    NangateOpenCellLibrary (File: /home/design/Desktop/NangateOpenCellLibrary.db)
+
+
+Operating Conditions: typical   Library: NangateOpenCellLibrary
+Wire Load Model Mode: top
+
+Design        Wire Load Model            Library
+------------------------------------------------
+ant_pe                 5K_hvratio_1_1    NangateOpenCellLibrary
+
+
+Global Operating Voltage = 1.1  
+Power-specific unit information :
+    Voltage Units = 1V
+    Capacitance Units = 1.000000ff
+    Time Units = 1ns
+    Dynamic Power Units = 1uW    (derived from V,C,T units)
+    Leakage Power Units = 1nW
+
+
+  Cell Internal Power  =  90.2162 uW   (58%)
+  Net Switching Power  =  66.5180 uW   (42%)
+                         ---------
+Total Dynamic Power    = 156.7343 uW  (100%)
+
+Cell Leakage Power     =   5.9247 uW
+
+Information: report_power power group summary does not include estimated clock tree power. (PWR-789)
+
+                 Internal         Switching           Leakage            Total
+Power Group      Power            Power               Power              Power   (   %    )  Attrs
+--------------------------------------------------------------------------------------------------
+io_pad             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+memory             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+black_box          0.0000            0.0000            0.0000            0.0000  (   0.00%)
+clock_network      0.0000            0.0000            0.0000            0.0000  (   0.00%)
+register           0.0000            0.0000            0.0000            0.0000  (   0.00%)
+sequential         8.1521            0.2377        1.2411e+03            9.6309  (   5.92%)
+combinational     82.0641           66.2804        4.6836e+03          153.0280  (  94.08%)
+--------------------------------------------------------------------------------------------------
+Total             90.2162 uW        66.5180 uW     5.9247e+03 nW       162.6589 uW

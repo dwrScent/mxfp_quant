@@ -341,6 +341,7 @@ def main():
                 batch_size=args.batch_size,
                 no_cache=True,
                 num_fewshot=args.num_fewshot,
+                # limit=2,
             )
             print_time('Task finish!')
             print(evaluator.make_table(results))

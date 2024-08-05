@@ -12,7 +12,7 @@ from accelerate import (
     load_checkpoint_in_model,
 )
 from awq.utils.parallel import auto_parallel
-from awq.quantize.quantizer import pseudo_quant_output_mse, make_quant_linear, pseudo_quantize_model_weight
+from awq.quantize.quantizer import pseudo_quant_output_mse, make_quant_linear, pseudo_quantize_model_weight, pseudo_quant_stats
 from awq.utils.lm_eval_adaptor import LMEvalAdaptor
 from awq.utils.utils import simple_dispatch_model
 import torch.nn as nn
@@ -210,6 +210,9 @@ def build_model_and_enc(model_path):
                         pseudo_quant_output_mse(
                             model, enc, w_bit=args.w_bit, q_config=q_config, ant_config=ant_config, n_samples=512, seqlen=512, max_iter=args.max_iter, a_stride=args.a_stride
                         )
+                        # pseudo_quant_stats(
+                            # model, enc, w_bit=args.w_bit, q_config=q_config, ant_config=ant_config, n_samples=512, seqlen=512, max_iter=args.max_iter, a_stride=args.a_stride
+                        # )
                     else:
                         print('not supported yet')
                         exit(0)

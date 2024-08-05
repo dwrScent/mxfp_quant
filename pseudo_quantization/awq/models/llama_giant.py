@@ -65,6 +65,44 @@ def pseudo_quantize_int(tensor, n_bit=8, zero_point=False, q_group_size=-1, get_
     else:
         return tensor
 
+def pseudo_quantize_giant(tensor, n_bit=8, zero_point=False, q_group_size=-1, get_scale=False):
+    quantized_part_shape = tensor.shape
+
+    if q_group_size > 0:
+        quantized_part_group = tensor.reshape(-1, q_group_size)
+    else:
+        raise ValueError('not support yet')
+    max_val = torch.max(torch.abs(quantized_part_group), dim=1, keepdim=True).values
+    value_var = torch.var(quantized_part_group / max_val, dim=1, keepdim=True)
+
+    quant_grid_set = {}
+    quant_grid_set['coefficient_25'] = torch.tensor([-1.0000, -0.7061, -0.5181, -0.3828, -0.2739, -0.1782, -0.0891, -0.0033, 0.0033,  0.0891,  0.1782,  0.2739,  0.3828,  0.5181,  0.7061,  1.0000])
+    quant_grid_set['int'] = torch.tensor([-0., -7., -6., -5., -4., -3., -2., -1.,  0.,  1.,  2.,  3.,  4.,  5., 6.,  7.])
+    quant_grid_set['coefficient_0'] = torch.tensor([-1.0000, -0.5000, -0.2500, -0.1250, -0.0625, -0.0312, -0.0156, -0.0078, 0.0078,  0.0156,  0.0312,  0.0625,  0.1250,  0.2500,  0.5000,  1.0000])
+
+
+    quantized_part_group_deq_nf, _ = get_quant_weight(quantized_part_group, quant_grid_set['coefficient_25'], mode='coefficient_25', q_group_size=q_group_size)
+    quantized_part_group_deq_int, _ = get_quant_weight(quantized_part_group, quant_grid_set['int'], mode='int', q_group_size=q_group_size)
+    quantized_part_group_deq_pot, _ = get_quant_weight(quantized_part_group, quant_grid_set['coefficient_0'], mode='coefficient_0', q_group_size=q_group_size)
+
+    mask_pot = (value_var < 0.05).expand_as(quantized_part_group_deq_pot)
+    mask_nf = ((value_var >= 0.05) & (value_var <= 0.25)).expand_as(quantized_part_group_deq_nf)
+    mask_int = (value_var > 0.25).expand_as(quantized_part_group_deq_int)
+
+    # 使用 mask 选取对应的量化后 tensor
+    quantized_part_group_deq = torch.zeros_like(quantized_part_group)
+
+    quantized_part_group_deq = torch.where(mask_pot, quantized_part_group_deq_pot, quantized_part_group_deq)
+    quantized_part_group_deq = torch.where(mask_nf, quantized_part_group_deq_nf, quantized_part_group_deq)
+    quantized_part_group_deq = torch.where(mask_int, quantized_part_group_deq_int, quantized_part_group_deq)
+
+    quantized_part_deq = quantized_part_group_deq.reshape(quantized_part_shape)
+    quantized_part_deq = quantized_part_deq.to(dtype=tensor.dtype, device=tensor.device)
+
+    assert torch.isnan(quantized_part_deq).sum() == 0
+
+    return quantized_part_deq
+
 class LlamaRotaryEmbedding_giant(nn.Module):
     def __init__(self, dim, max_position_embeddings=2048, base=10000, device=None, scaling_factor=1.0):
         super().__init__()
@@ -159,11 +197,15 @@ class LlamaAttention_giant(nn.Module):
         self.quant_attention = True
         self.group_size = 64
         self.print_stats = True
-        self.q_bit = 4
+        # self.print_stats = False
+        self.q_bit = 8
         self.k_bit = 4
         self.v_bit = 4
         self.v_group_elem_num = 0
         self.v_update_mode = 'lazy_update'
+        self.data_type = 'int'
+
+
         # self.v_update_mode = 'immediate_update'
         self.reset_local_vars()
 
@@ -199,6 +241,8 @@ class LlamaAttention_giant(nn.Module):
         self.local_max = torch.zeros((self.num_key_value_heads * self.head_dim, 1))
         self.local_scaling_factor = torch.ones((self.num_key_value_heads * self.head_dim, 1))
 
+        self.v_channel_scale = torch.ones((self.num_key_value_heads * self.head_dim, 1))
+
     def quantize_query_key(self, query_states: torch.Tensor, key_states: torch.Tensor, group_size: int) -> Tuple[torch.Tensor, torch.Tensor]:
         org_q_shape = query_states.shape
         org_k_shape = key_states.shape
@@ -217,44 +261,16 @@ class LlamaAttention_giant(nn.Module):
         # if self.layer_idx >= 12 and self.layer_idx <= 15:
         #     cdf_csv(key_states, 64, self.layer_idx, 'key', 1000, 512, 'cdf_key_group.csv')
 
-        quantized_part_shape = key_states.shape
-
-        if group_size > 0:
-            quantized_part_group = key_states.reshape(-1, group_size)
-        else:
-            raise ValueError('not support yet')
-        max_val = torch.max(torch.abs(quantized_part_group), dim=1, keepdim=True).values
-        value_var = torch.var(quantized_part_group / max_val, dim=1, keepdim=True)
-
-        quant_grid_set = {}
-        quant_grid_set['coefficient_25'] = torch.tensor([-1.0000, -0.7061, -0.5181, -0.3828, -0.2739, -0.1782, -0.0891, -0.0033, 0.0033,  0.0891,  0.1782,  0.2739,  0.3828,  0.5181,  0.7061,  1.0000])
-        quant_grid_set['int'] = torch.tensor([-0., -7., -6., -5., -4., -3., -2., -1.,  0.,  1.,  2.,  3.,  4.,  5., 6.,  7.])
-        quant_grid_set['coefficient_0'] = torch.tensor([-1.0000, -0.5000, -0.2500, -0.1250, -0.0625, -0.0312, -0.0156, -0.0078, 0.0078,  0.0156,  0.0312,  0.0625,  0.1250,  0.2500,  0.5000,  1.0000])
-
-
-        quantized_part_group_deq_nf, _ = get_quant_weight(quantized_part_group, quant_grid_set['coefficient_25'], mode='coefficient_25', q_group_size=group_size)
-        quantized_part_group_deq_int, _ = get_quant_weight(quantized_part_group, quant_grid_set['int'], mode='int', q_group_size=group_size)
-        quantized_part_group_deq_pot, _ = get_quant_weight(quantized_part_group, quant_grid_set['coefficient_0'], mode='coefficient_0', q_group_size=group_size)
-
-        mask_pot = (value_var < 0.05).expand_as(quantized_part_group_deq_pot)
-        mask_nf = ((value_var >= 0.05) & (value_var <= 0.25)).expand_as(quantized_part_group_deq_nf)
-        mask_int = (value_var > 0.25).expand_as(quantized_part_group_deq_int)
-
-        # 使用 mask 选取对应的量化后 tensor
-        quantized_part_group_deq = torch.zeros_like(quantized_part_group)
-
-        quantized_part_group_deq = torch.where(mask_pot, quantized_part_group_deq_pot, quantized_part_group_deq)
-        quantized_part_group_deq = torch.where(mask_nf, quantized_part_group_deq_nf, quantized_part_group_deq)
-        quantized_part_group_deq = torch.where(mask_int, quantized_part_group_deq_int, quantized_part_group_deq)
-
-        quantized_part_deq = quantized_part_group_deq.reshape(quantized_part_shape)
-        quantized_part_deq = quantized_part_deq.to(dtype=key_states.dtype, device=key_states.device)
-        
         # Quantize query and key states
         query_states = pseudo_quantize_int(query_states, n_bit=self.q_bit, zero_point=False, q_group_size=group_size)
 
-        # key_states = pseudo_quantize_int(key_states, n_bit=self.k_bit, zero_point=False, q_group_size=group_size)
-        key_states = quantized_part_deq
+        if self.data_type == 'giant':
+            key_states = pseudo_quantize_giant(key_states, n_bit=self.k_bit, zero_point=False, q_group_size=group_size)
+        elif self.data_type == 'int':
+            key_states = pseudo_quantize_int(key_states, n_bit=self.k_bit, zero_point=False, q_group_size=group_size)
+        else:
+            raise ImportError('not support yet')
+        # key_states = quantized_part_deq
 
         # Restore original shapes
         query_states = query_states.reshape(org_q_shape)
@@ -285,8 +301,14 @@ class LlamaAttention_giant(nn.Module):
                     value_trans = value_states.t()
 
                     # quantize the latest V cache group
-                    quantized_part = pseudo_quantize_int(value_trans[:, (v_seq_len-group_size):], n_bit=self.v_bit, zero_point=False, q_group_size=group_size)
-                    value_trans = torch.cat([value_trans[:, :(v_seq_len-group_size)], quantized_part], dim=1)
+                    if self.data_type == 'giant':
+                        quantized_part_deq = pseudo_quantize_giant(value_trans[:, (v_seq_len-group_size):], n_bit=self.v_bit, zero_point=False, q_group_size=group_size)
+                    elif self.data_type == 'int':
+                        quantized_part_deq = pseudo_quantize_int(value_trans[:, (v_seq_len-group_size):], n_bit=self.v_bit, zero_point=False, q_group_size=group_size)
+                    else:
+                        raise ImportError('not support yet')
+
+                    value_trans = torch.cat([value_trans[:, :(v_seq_len-group_size)], quantized_part_deq], dim=1)
 
                     # reshape
                     value_states = value_trans.t()
@@ -297,9 +319,18 @@ class LlamaAttention_giant(nn.Module):
                     value_trans = value_states.t()
 
                     # quantize the latest V cache group
-                    quantized_part = pseudo_quantize_int(value_trans[:, (v_seq_len-1):], n_bit=self.v_bit, zero_point=False, q_group_size=group_size)
-                    print(quantized_part.shape)
-                    input('contiune')
+                    quantized_part = value_trans[:, (v_seq_len-1):]
+                    # print(quantized_part.shape, self.v_channel_scale.shape, self.v_channel_scale)
+
+                    max_int = 2 ** (8 - 1) - 1
+                    min_int = - 2 ** (8 - 1)
+
+                    quantized_part = (torch.clamp(torch.round(quantized_part /  self.v_channel_scale) +
+                                    0, min_int, max_int) - 0) *  self.v_channel_scale
+                    assert torch.isnan(quantized_part).sum() == 0
+
+                    # quantized_part = pseudo_quantize_int(value_trans[:, (v_seq_len-1):], n_bit=8, zero_point=False, q_group_size=group_size)
+                    # print(quantized_part.shape)
                     value_trans = torch.cat([value_trans[:, :(v_seq_len-1)], quantized_part], dim=1)
 
                     # reshape
@@ -323,73 +354,37 @@ class LlamaAttention_giant(nn.Module):
                 # if self.layer_idx >= 12 and self.layer_idx <= 15:
                 #     cdf_csv(value_trans, 64, self.layer_idx, 'value', 1000, 512, 'cdf_value_group.csv')
 
-
                 # quantize the V cache, leave the (org_v_shape[-2] % group_size) tokens
                 quant_elem_num = (v_seq_len // group_size) * group_size
+
                 quantized_part = value_trans[:, :quant_elem_num]
+                # print(self.v_channel_scale.shape, value_trans.shape, value_trans.abs().amax(dim=1, keepdim=True))
+                self.v_channel_scale = value_trans.abs().amax(dim=1, keepdim=True) / 127
 
-                quantized_part_shape = quantized_part.shape
-
-                if group_size > 0:
-                    quantized_part_group = quantized_part.reshape(-1, group_size)
+                if self.data_type == 'giant':
+                    quantized_part_deq = pseudo_quantize_giant(quantized_part, n_bit=self.v_bit, zero_point=False, q_group_size=group_size)
+                elif self.data_type == 'int':
+                    quantized_part_deq = pseudo_quantize_int(quantized_part, n_bit=self.v_bit, zero_point=False, q_group_size=group_size)
                 else:
-                    raise ValueError('not support yet')
-                max_val = torch.max(torch.abs(quantized_part_group), dim=1, keepdim=True).values
-                value_var = torch.var(quantized_part_group / max_val, dim=1, keepdim=True)
-
-
-                # intervals = [0, 0.05, 0.25, 0.5, 1.0]
-                # interval_counts = torch.zeros(len(intervals) - 1, dtype=torch.int32)
+                    raise ImportError('not support yet')
+                # # intervals = [0, 0.05, 0.25, 0.5, 1.0]
+                # # interval_counts = torch.zeros(len(intervals) - 1, dtype=torch.int32)
                 
-                # interval_counts[0] = torch.sum((value_var >= intervals[0]) & (value_var < intervals[1]))
-                # interval_counts[1] = torch.sum((value_var >= intervals[1]) & (value_var < intervals[2]))
-                # interval_counts[2] = torch.sum((value_var >= intervals[2]) & (value_var < intervals[3]))
-                # interval_counts[3] = torch.sum((value_var >= intervals[3]) & (value_var <= intervals[4]))
+                # # interval_counts[0] = torch.sum((value_var >= intervals[0]) & (value_var < intervals[1]))
+                # # interval_counts[1] = torch.sum((value_var >= intervals[1]) & (value_var < intervals[2]))
+                # # interval_counts[2] = torch.sum((value_var >= intervals[2]) & (value_var < intervals[3]))
+                # # interval_counts[3] = torch.sum((value_var >= intervals[3]) & (value_var <= intervals[4]))
 
-                # # 打印区间统计
-                # total = value_var.size(0)
-                # for i in range(len(intervals) - 1):
-                #     count = interval_counts[i].item()
-                #     percentage = (count / total) * 100
-                #     print(f"Interval {intervals[i]} - {intervals[i+1]}: {count} values ({percentage:.2f}%)")
-                # print(f"Normalized variance of value_states:\n{value_var}, {value_var.max()}, {value_var.min()}")
-                # group_dist(quantized_part_group, group_size=group_size, layer_idx=self.layer_idx, layer_name='value', max_fig=1000)
-
-                quant_grid_set = {}
-                quant_grid_set['coefficient_25'] = torch.tensor([-1.0000, -0.7061, -0.5181, -0.3828, -0.2739, -0.1782, -0.0891, -0.0033, 0.0033,  0.0891,  0.1782,  0.2739,  0.3828,  0.5181,  0.7061,  1.0000])
-                quant_grid_set['int'] = torch.tensor([-0., -7., -6., -5., -4., -3., -2., -1.,  0.,  1.,  2.,  3.,  4.,  5., 6.,  7.])
-                quant_grid_set['coefficient_0'] = torch.tensor([-1.0000, -0.5000, -0.2500, -0.1250, -0.0625, -0.0312, -0.0156, -0.0078, 0.0078,  0.0156,  0.0312,  0.0625,  0.1250,  0.2500,  0.5000,  1.0000])
-
-
-                quantized_part_group_deq_nf, _ = get_quant_weight(quantized_part_group, quant_grid_set['coefficient_25'], mode='coefficient_25', q_group_size=group_size)
-                quantized_part_group_deq_int, _ = get_quant_weight(quantized_part_group, quant_grid_set['int'], mode='int', q_group_size=group_size)
-                quantized_part_group_deq_pot, _ = get_quant_weight(quantized_part_group, quant_grid_set['coefficient_0'], mode='coefficient_0', q_group_size=group_size)
-
-                mask_pot = (value_var < 0.05).expand_as(quantized_part_group_deq_pot)
-                mask_nf = ((value_var >= 0.05) & (value_var <= 0.25)).expand_as(quantized_part_group_deq_nf)
-                mask_int = (value_var > 0.25).expand_as(quantized_part_group_deq_int)
-
-                # 使用 mask 选取对应的量化后 tensor
-                quantized_part_group_deq = torch.zeros_like(quantized_part_group)
-
-                quantized_part_group_deq = torch.where(mask_pot, quantized_part_group_deq_pot, quantized_part_group_deq)
-                quantized_part_group_deq = torch.where(mask_nf, quantized_part_group_deq_nf, quantized_part_group_deq)
-                quantized_part_group_deq = torch.where(mask_int, quantized_part_group_deq_int, quantized_part_group_deq)
-
-                quantized_part_deq = quantized_part_group_deq.reshape(quantized_part_shape)
-                quantized_part_deq = quantized_part_deq.to(dtype=value_trans.dtype, device=value_trans.device)
-
-                # print(f'{quantized_part_group_deq_nf.shape}, {quantized_part_group_deq_int.shape}, {quantized_part_group_deq_pot.shape}, {value_var.shape}, {quantized_part_deq}')
-
-                # mse = nn.MSELoss()
-                # print(f'mse giant: {mse(quantized_part_deq, quantized_part)}')
-                # quantized_part_deq = pseudo_quantize_int(value_trans[:, :quant_elem_num], n_bit=self.v_bit, zero_point=False, q_group_size=group_size)
-                # print(f'mse int: {mse(quantized_part_deq, quantized_part)}')
+                # # # 打印区间统计
+                # # total = value_var.size(0)
+                # # for i in range(len(intervals) - 1):
+                # #     count = interval_counts[i].item()
+                # #     percentage = (count / total) * 100
+                # #     print(f"Interval {intervals[i]} - {intervals[i+1]}: {count} values ({percentage:.2f}%)")
+                # # print(f"Normalized variance of value_states:\n{value_var}, {value_var.max()}, {value_var.min()}")
+                # # group_dist(quantized_part_group, group_size=group_size, layer_idx=self.layer_idx, layer_name='value', max_fig=1000)
 
                 value_trans = torch.cat([quantized_part_deq, value_trans[:, quant_elem_num:]], dim=1)
-
-                # exit(0)
-
                 # reshape
                 value_states = value_trans.t().contiguous()
                 value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)

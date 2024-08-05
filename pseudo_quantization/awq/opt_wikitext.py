@@ -129,15 +129,20 @@ def build_model_and_enc(model_path):
 
     if args.load_quant:  # directly load quantized weights
         print("Loading pre-computed quantized weights...")
-        with init_empty_weights():
-            if quant_mode_config['quant_method'] =='giant' and quant_mode_config['quant_kv']:
-                kwargs_init = {"device_map": "balanced", "torch_dtype": torch.float16}
-                model = OPTForCausalLM_giant.from_pretrained(
-                    model_path, config=config, **kwargs_init)
-            else:
-                model = AutoModelForCausalLM.from_config(
-                    config=config, torch_dtype=torch.float16, trust_remote_code=True
-                )
+        # with init_empty_weights():
+            # if quant_mode_config['quant_method'] =='giant' and quant_mode_config['quant_kv']:
+            #     kwargs_init = {"device_map": "balanced", "torch_dtype": torch.float16}
+            #     model = OPTForCausalLM_giant.from_pretrained(
+            #         model_path, config=config, **kwargs_init)
+
+            # else:
+            #     model = AutoModelForCausalLM.from_config(
+            #         config=config, torch_dtype=torch.float16, trust_remote_code=True
+            #     )
+
+        kwargs_init = {"device_map": "balanced", "torch_dtype": torch.float16}
+        model = OPTForCausalLM_giant.from_pretrained(
+            args.load_quant, config=config, **kwargs_init)
 
         model.tie_weights()
 
@@ -167,6 +172,7 @@ def build_model_and_enc(model_path):
         )
         # Dispatch model
         model = simple_dispatch_model(model, device_map=device_map)
+        print(model, device_map, max_memory)
 
         if quant_mode_config['quant_method'] in ['ant', 'olive', 'int', 'mokey', 'giant']:
             make_quant_linear(

@@ -9,7 +9,7 @@ from transformers.models.bloom.modeling_bloom import BloomBlock
 import os
 from .ant_quant import ant_quantization, ant_quantization_search, meta_flint_set
 from ..utils.make_distribution import group_dist_outlier, group_dist, make_heat_map, outlier_ratio_stat, outlier_count
-from ..utils.cdf_graph import group_cdf, cdf_csv
+from ..utils.cdf_graph import group_cdf, cdf_csv, pdf_csv
 from ..utils.plot_mean import group_mean_variance
 import math
 import kmeans_parallel
@@ -130,13 +130,16 @@ def pseudo_quantize_model_weight(
     for i in tqdm(range(len(layers)), desc="pseudo weight quantization..."):
         named_linears = get_named_linears(layers[i])
         for n, m in named_linears.items():
-            # if n == 'self_attn.q_proj' or n == 'mlp.down_proj':
-            # cdf_csv(m.weight.data, -2, i, n, 1000, 1, 'cdf_data_tensor.csv')  
+            if n == 'self_attn.q_proj':
+                # cdf_csv(m.weight.data, -2, i, n, 1000, 1, 'cdf_data_tensor.csv')  
+                pdf_csv(m.weight.data, -2, i, n, 1000, 1, 'pdf_data_tensor.csv')  
 
-            # if i >= 8 and i <= 24:
-            #     cdf_csv(m.weight.data, -1, i, n, 1000, 64, 'cdf_data_chan.csv')  
-            # if i >= 12 and i <= 15:
-            #     cdf_csv(m.weight.data, 64, i, n, 1000, 1024, 'cdf_data_group.csv')  
+                if i >= 12 and i <= 15:
+                    # cdf_csv(m.weight.data, -1, i, n, 1000, 64, 'cdf_data_chan.csv')  
+                    pdf_csv(m.weight.data, -1, i, n, 1000, 64, 'pdf_data_chan.csv')  
+                if i >= 12 and i <= 15:
+                    # cdf_csv(m.weight.data, 64, i, n, 1000, 1024, 'cdf_data_group.csv')  
+                    pdf_csv(m.weight.data, 256, i, n, 1000, 1024, 'pdf_data_group.csv')  
 
                 # Draw cdf
                 # if i >= 8 and i < 15:
@@ -171,6 +174,294 @@ def pseudo_quantize_model_weight(
                 m.weight.data, n_bit=w_bit, **q_config
             )
             # m.cpu()
+
+@torch.no_grad()
+def pseudo_quant_stats(
+    model, enc,
+    w_bit, q_config,
+    ant_config=None,
+    n_samples=512, seqlen=512,
+    # some configs for ablation study
+    calib_data="pileval",
+    max_iter=600,
+    a_stride=5
+):
+    from ..utils.calib_data import get_calib_dataset
+    from .pre_quant import get_blocks, get_named_linears
+    from .kmeans import use_kmeans_quantization
+    from .ant_quant import generate_quant_grid, get_quant_weight
+    from .qmodule_giant import encode_gen, encode_gen_no_zero
+
+    
+    layers = get_blocks(model)
+
+    samples = get_calib_dataset(
+        data=calib_data, tokenizer=enc, n_samples=n_samples, block_size=seqlen)
+    samples = torch.cat(samples, dim=0)
+
+    inps = []
+    layer_kwargs = {}
+
+    # get input and kwargs to layer 0
+    # with_kwargs is only supported in PyTorch 2.0
+    # use this Catcher hack for now
+    class Catcher(nn.Module):
+        def __init__(self, module):
+            super().__init__()
+            self.module = module
+
+        def forward(self, inp, **kwargs):
+            inps.append(inp)
+            layer_kwargs.update(kwargs)
+            raise ValueError  # early exit to break later inference
+
+    # patch layer 0 to catch input and kwargs
+    layers[0] = Catcher(layers[0])
+    try:
+        model(samples.to(next(model.parameters()).device))
+    except ValueError:  # work with early exit
+        pass
+    layers[0] = layers[0].module  # restore
+    inps = inps[0]
+
+    gc.collect()
+    torch.cuda.empty_cache()
+    overall_mse = torch.tensor(0.).to(next(layers[0].parameters()).device)
+    total_params = torch.tensor(0.).to(next(layers[0].parameters()).device)
+    total_bits = torch.tensor(0.).to(next(layers[0].parameters()).device)
+    # mode_list = ant_config['ant_mode'].split('-')
+    # if 'meta_flint' in mode_list:
+    #     mode_list.remove('meta_flint')
+    #     mode_list.extend(meta_flint_set.keys())
+
+    # quant_grid_set = encode_gen(w_bit)
+    quant_grid_set = encode_gen_no_zero(w_bit, a_stride=a_stride)
+
+    int_grid_set = generate_quant_grid(n_bit=w_bit, signed=True, ant_mode='int')
+    mode_list = []
+    # mode_list = ant_config['ant_mode'].split('-')
+    mode_list.extend(quant_grid_set.keys())
+    mode_list.append('int')
+    quant_grid_set['int'] = int_grid_set['int']    
+
+    # ant_config['ant_mode'] = 'int-flint-pot'
+    # mode_list = ant_config['ant_mode'].split('-')
+    # quant_grid_set = generate_quant_grid(n_bit=w_bit, signed=True, ant_mode=ant_config['ant_mode'])
+    
+
+    d_type_stats = {}
+    tensor_stats = {}
+    for mode in mode_list:
+        d_type_stats[mode] = torch.tensor(0.)
+        tensor_stats[mode] = torch.tensor(0.)
+
+    # solve layer by layer
+    for i in tqdm(range(len(layers)), desc="Psuedo weight quantizatoion with output MSE..."):
+        layer = layers[i]
+        named_linears = get_named_linears(layer)
+
+        # firstly, get input features of all linear layers
+        def cache_input_hook(m, x, y, name, feat_dict):
+            x = x[0]
+            x = x.detach().cpu()
+            feat_dict[name].append(x)
+
+        input_feat = defaultdict(list)
+        handles = []
+        for name in named_linears:
+            handles.append(named_linears[name].register_forward_hook(
+                functools.partial(cache_input_hook, name=name,
+                                  feat_dict=input_feat)))
+        inps = inps.to(next(layer.parameters()).device)  # in case multi-gpu
+        # get output as next layer's input
+        layer_kwargs_copy = copy.deepcopy(layer_kwargs)
+        
+        # new copy
+        inps = layer(inps, **layer_kwargs)[0]
+        # layer(inps, **layer_kwargs)
+        for h in handles:
+            h.remove()
+
+        # now solve for scaling and clipping
+        input_feat = {k: torch.cat(v, dim=0) for k, v in input_feat.items()}
+        
+        for name, m in named_linears.items():
+            # if name == 'self_attn.q_proj' or name == 'self_attn.k_proj' or name == 'self_attn.v_proj':
+            # if name == 'self_attn.o_proj':
+            # if 'mlp' in name:
+            input_x = input_feat[name] # 65 * 512 * k ,运算前先转换为二维的 m * k
+            group_size = q_config["q_group_size"]
+            if group_size == -1:
+                group_size = m.weight.data.shape[1]
+            group_num = m.weight.data.shape[1] // group_size
+            
+            input_x = input_x.to(m.weight.data.device)
+            input_x = input_x.reshape(-1, input_x.shape[-1])
+
+            # m.weight.data = pseudo_quantize_tensor(m.weight.data, n_bit=6, **q_config)
+            org_weight = m.weight.data.clone()
+
+            total_labels = torch.zeros_like(m.weight.data, dtype=torch.int).to(m.weight.data.device)
+            
+            tensor_mse = torch.tensor(0.).to(m.weight.data.device)
+            for group_id in range(0, group_num):
+                x = input_x[ : , group_id * group_size: (group_id + 1) * group_size ] 
+                
+                org_group_w = m.weight.data[ : ,group_id * group_size: (group_id + 1) * group_size ]     
+                org_group_output = torch.mm(x, org_group_w.T)
+                
+                def weight_quant():
+                    # support output MSE search for ant and kmeans
+                    mask_list = [] # 0-int, 1-flint, 2-pot, 3-fp4/flint_0, 4-nf4, 5-kmeans
+                    deq_w = torch.zeros_like(org_group_w, dtype=torch.half).to(m.weight.data.device)
+
+                    deq_labels = torch.zeros_like(org_group_w, dtype=torch.int).to(m.weight.data.device) - 1
+
+                    # min_mse = torch.full([1, m.weight.data.shape[0]], 10000.0).to(m.weight.data.device)  # 1 x N
+
+                    min_mse = torch.full([m.weight.data.shape[0], 1], 10000.0).to(m.weight.data.device)  # N x 1
+
+                    
+                    # x_feature = x.abs().mean(0, keepdim=False)
+                    # for stats
+                    data_type_identify = torch.zeros_like(min_mse, dtype=torch.int32)
+                    mapping_list = {}
+
+                    x_feature = x.mean(0, keepdim=False)
+                    # for mode in ["weighted_kmeans"]:
+    
+                    for idx, mode in enumerate(mode_list):
+                        if mode != "weighted_kmeans":
+                            quant_grid = quant_grid_set[mode]
+                            quant_grid, _ = quant_grid.sort()
+                            print(quant_grid)
+                            w_group_deq, _, labels, _ = get_quant_weight(org_group_w, quant_grid, mode=mode, q_group_size=group_size, get_labels=True)
+                            # w_group_deq, _ = get_quant_weight(org_group_w, quant_grid, mode=mode, q_group_size=group_size)
+                            w_group_deq = w_group_deq.half()
+                        else:
+                            w_group_deq = use_kmeans_quantization(org_group_w, w_bit=w_bit, x_feature=x_feature, zero_point=False, q_group_size=group_size, outlier_config=None, max_iter=max_iter)
+
+                        deq_group_output = torch.mm(x, w_group_deq.T)
+
+                        mse = (deq_group_output - org_group_output).pow(2).mean(0, keepdim=True)
+
+                        weight_mse = (org_group_w - w_group_deq).pow(2).mean(1, keepdim=True)
+
+                        sig = (weight_mse <= min_mse).to(torch.half) # N x 1
+
+                        # sig = (mse <= min_mse).to(torch.half) # 1 x N
+                        # mask = sig.repeat(group_size, 1).T # N x group_size
+                        mask = sig.repeat(1, group_size) # N x group_size
+                        org_mask = 1.0 - mask
+
+                        # print(org_mask.shape, mask.shape, deq_w.shape, w_group_deq.shape)
+                        
+
+                        deq_w = torch.mul(deq_w, org_mask) + torch.mul(w_group_deq, mask)
+                        deq_labels = torch.mul(deq_labels, org_mask) + torch.mul(labels, mask)
+
+                        # deq_w = torch.mul(w_group_deq, mask)
+                        # for stats
+                        mapping_list[mode] = idx
+                        # data_type_identify = torch.where(mse < min_mse, idx, data_type_identify)
+                        data_type_identify = torch.where(weight_mse < min_mse, idx, data_type_identify)
+                        
+                        # update min MSE
+                        # min_mse = torch.where(mse <= min_mse, mse, min_mse)
+                        min_mse = torch.where(weight_mse <= min_mse, weight_mse, min_mse)
+                    data_type_mask = {}
+                    for mode in mode_list:
+                        data_type_mask[mode] = (data_type_identify == mapping_list[mode])
+                
+                        d_type_stats[mode] = d_type_stats[mode].to(data_type_identify.device)
+                        tensor_stats[mode] = tensor_stats[mode].to(data_type_identify.device)
+                        d_type_stats[mode] = d_type_stats[mode] + torch.count_nonzero(data_type_identify.view(-1) == mapping_list[mode]) / 1e5
+                        tensor_stats[mode] = tensor_stats[mode] + torch.count_nonzero(data_type_identify.view(-1) == mapping_list[mode]) 
+                    
+                    assert not torch.any(deq_labels == -1), "Tensor contains -1"
+                    return deq_w, min_mse, deq_labels
+                
+                deq_w, min_mse, deq_labels = weight_quant()
+
+
+                tensor_mse += min_mse.mean()
+                # print(min_mse, min_mse.mean())
+                m.weight.data[ : ,group_id * group_size: (group_id + 1) * group_size ] = deq_w
+                total_labels[ : ,group_id * group_size: (group_id + 1) * group_size ] = deq_labels
+
+            def compute_row_frequencies(tensor):
+                row_frequencies = []
+                for row in tensor:
+                    values, counts = torch.unique(row, return_counts=True)
+                    total_elements = row.numel()
+                    row_freq = {value.item(): count.item() / total_elements for value, count in zip(values, counts)}
+                    row_frequencies.append(row_freq)
+                return row_frequencies
+
+            def compute_entropy(frequencies):
+                entropy = -sum(p * np.log2(p) for p in frequencies.values() if p > 0)
+                return entropy
+
+            def compute_average_row_entropy(tensor):
+                row_frequencies = compute_row_frequencies(tensor)
+                row_entropies = [compute_entropy(freq) for freq in row_frequencies]
+                average_entropy = np.mean(row_entropies)
+                return average_entropy
+            
+            # print(total_labels, total_labels.shape, m.weight.data)
+            # compute frequency
+
+            values, counts = torch.unique(total_labels, return_counts=True)
+            total_elements = total_labels.numel()
+            frequencies = {value.item(): count.item() / total_elements for value, count in zip(values, counts)}
+            # frequencies[8] = 0
+            print(frequencies)
+            entropy = -sum(p * np.log2(p) for p in frequencies.values() if p > 0)
+
+            average_entropy = compute_average_row_entropy(total_labels)
+
+            for value, frequency in sorted(frequencies.items()):
+                print(f'{value}: {frequency:.4f}')
+            for value, frequency in sorted(frequencies.items()):
+                print(f'{frequency:.4f}')
+            print(name, entropy)
+            print(average_entropy)
+
+            for mode in mode_list:
+                print(f"{mode} num: {tensor_stats[mode]}")    
+                tensor_stats[mode] = torch.tensor(0.)
+            
+            # print(m.weight.data.shape, m.weight.data)
+            mse = nn.MSELoss()
+            print(mse(org_weight, m.weight.data))
+
+            input('contuine')
+
+
+            print(f"layer: {i}, {name}, tensor_mse: {tensor_mse}")
+            overall_mse = overall_mse.to(tensor_mse.device)
+            overall_mse += tensor_mse
+            # exit(0)
+        input('contuine')
+
+        # new copy
+        inps = layer(inps, **layer_kwargs_copy)[0]
+        del layer_kwargs_copy
+
+        del input_feat
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    overall_select = 0
+    for mode in mode_list:
+        overall_select = overall_select + d_type_stats[mode]
+    for mode in mode_list:
+        ratio = d_type_stats[mode] / overall_select
+        print(f"{mode} ratio: {ratio * 100:.3f}%")
+    print(f"overall_mse: {overall_mse}")
+
+    gc.collect()
+    torch.cuda.empty_cache()
 
 @torch.no_grad()
 def pseudo_quant_output_mse(
@@ -241,6 +532,11 @@ def pseudo_quant_output_mse(
     mode_list.append('int')
     quant_grid_set['int'] = int_grid_set['int']    
 
+    # quant_grid_set = generate_quant_grid(n_bit=w_bit, signed=True, ant_mode='int-flint-pot')
+    # mode_list = ['int', 'flint', 'pot']
+
+
+
     d_type_stats = {}
     tensor_stats = {}
     for mode in mode_list:
@@ -290,8 +586,7 @@ def pseudo_quant_output_mse(
             input_x = input_x.to(m.weight.data.device)
             input_x = input_x.reshape(-1, input_x.shape[-1])
 
-            # m.weight.data = pseudo_quantize_tensor(m.weight.data, n_bit=6, **q_config)
-            
+            # m.weight.data = pseudo_quantize_tensor(m.weight.data, n_bit=6, **q_config)    
             tensor_mse = torch.tensor(0.).to(m.weight.data.device)
             for group_id in range(0, group_num):
                 x = input_x[ : , group_id * group_size: (group_id + 1) * group_size ] 
@@ -349,9 +644,12 @@ def pseudo_quant_output_mse(
                 tensor_mse += min_mse.mean()
                 # print(min_mse, min_mse.mean())
                 m.weight.data[ : ,group_id * group_size: (group_id + 1) * group_size ] = deq_w
+
+
             for mode in mode_list:
                 print(f"{mode} num: {tensor_stats[mode]}")    
                 tensor_stats[mode] = torch.tensor(0.)
+            
             print(f"layer: {i}, {name}, tensor_mse: {tensor_mse}")
             overall_mse = overall_mse.to(tensor_mse.device)
             overall_mse += tensor_mse

@@ -47,6 +47,8 @@ CUDA_VISIBLE_DEVICES=0 ./scripts/opt_run.sh 6.7 wikitext 0 giant int 64 4 4
 CUDA_VISIBLE_DEVICES=0 ./scripts/bloom_run.sh 7 wikitext 0 giant int 64 4 4
 CUDA_VISIBLE_DEVICES=0 ./scripts/llama_run_wiki.sh 7 wikitext 0 giant int 64 4 16 0 5
 
+CUDA_VISIBLE_DEVICES=0 ./scripts/opt_run_dump.sh 13 wikitext 0 giant int 64 4 4
+
 # Giant-INT
 CUDA_VISIBLE_DEVICES=0 ./scripts/llama_run_wiki.sh 7 wikitext 0 int int 64 4 4
 

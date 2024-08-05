@@ -1,9 +1,3 @@
+CUDA_VISIBLE_DEVICES=4 ./scripts/llama2_run.sh 7 truthfulqa_gen 0 giant int 64 16 16 0 
 
-# CUDA_VISIBLE_DEVICES=0,1,2,3,4,5 ./scripts/llama_run_wiki.sh 65 wikitext 0 olive int-flint 64 4 4
-
-# CUDA_VISIBLE_DEVICES=0,1,2,3,4,5 ./scripts/llama2_run_wiki.sh 70 wikitext 0 ant int-flint-float-pot 64 4 4
-# CUDA_VISIBLE_DEVICES=0,1,2,3,4,5 ./scripts/llama2_run_wiki.sh 70 wikitext 0 olive int-flint 64 4 4
-
-
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5 ./scripts/llama_run_wiki_dump.sh 65 wikitext 0 giant int 64 4 4 1
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5 ./scripts/llama_run_wiki_dump.sh 30 wikitext 0 giant int 64 4 4 1
+CUDA_VISIBLE_DEVICES=5 ./scripts/llama2_run_load.sh 7 truthfulqa_gen 0 giant int 64 4 8 1 5 10sample

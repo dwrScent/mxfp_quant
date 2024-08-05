@@ -18,6 +18,7 @@ OUTPUT_NAME=opt-${MODEL_SIZE}b
 OUTPUT_DIR=output/output_opt
 
 mkdir -p $OUTPUT_DIR
+mkdir -p quant_cache
 
 # python -m awq.entry --model_path $MODEL \
 python -m awq.opt_wikitext --model_path $MODEL \
@@ -27,6 +28,7 @@ python -m awq.opt_wikitext --model_path $MODEL \
     --a_bit $ACT_BIT  \
     --quant_kv $QUANT_KV \
     --a_stride $A_STRIDE \
+    --dump_quant quant_cache/$OUTPUT_NAME-w$WEIGHT_BIT-g$GROUP_SIZE-$QUANT_MODE \
     --q_backend fake \
     --no_zero_point \
     --quant_mode $QUANT_MODE \

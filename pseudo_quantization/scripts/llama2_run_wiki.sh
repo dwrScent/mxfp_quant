@@ -16,7 +16,7 @@ DESC=${11:-""}
 # MODEL=/localssd/wmhu/models/llama-${MODEL_SIZE}b-hf-transformers-4.29
 MODEL=/localssd/wmhu/models//llama-2-${MODEL_SIZE}b-hf
 OUTPUT_NAME=llama-2-${MODEL_SIZE}b
-OUTPUT_DIR=output/output_llama2_hpca
+OUTPUT_DIR=output/output_llama2_hpca_motivation
 
 mkdir -p $OUTPUT_DIR
 # --dump_quant $OUTPUT_NAME \

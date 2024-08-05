@@ -55,6 +55,7 @@ def int_value(n_bit, signed=True):
     if signed:
         values += [-i for i in range(1, 2 ** B)]
         values.append(-2 ** B)
+    values.remove(-8)
     return values
 
 def pot_value(n_bit, signed=True):
@@ -62,12 +63,11 @@ def pot_value(n_bit, signed=True):
     exp_bit = B
     values = []
     values.append(0.)
-    values.append(-0.)
+    # values.append(-0.)
     for i in range(0, 2 ** exp_bit - 1):
         values.append(2 ** i)
         if signed:
             values.append(-2 ** i)
-
     return values
 
 def flint_value(n_bit, signed=True, exp_base=0):
@@ -87,6 +87,7 @@ def flint_value(n_bit, signed=True, exp_base=0):
 
     ## Append zero value
     values = [0., -0.]
+    values = [0.]
 
     # values = [0.]
     ## exponent negative

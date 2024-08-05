@@ -181,7 +181,69 @@ def cdf_csv(w_data, group_size=-1, layer_idx=0, layer_name="", num_points=1000, 
                 y_new = generate_cdf_points(sorted_data, yvals, x_new)
 
                 writer.writerow(y_new)
-                
+
+
+def compute_pdf(data, bins):
+    # 使用 np.histogram 计算每个 bin 中的点的数量
+    hist, bin_edges = np.histogram(data, bins=bins, range=(-1, 1), density=True)
+    return hist, bin_edges
+
+def pdf_csv(w_data, group_size=-1, layer_idx=0, layer_name="", num_points=1000, stride=1, filename='pdf_data.csv'):
+    bin_edges_written = False
+    
+    with open(filename, 'a', newline='') as file:
+        writer = csv.writer(file)
+        # Write metadata including layer_id, layer_name, and stride
+        writer.writerow([layer_idx, layer_name, 'stride', stride])
+        
+        if group_size == -2:
+            # Tensor-level granularity
+            data_list = w_data.view(-1).tolist()
+            data_list = normalize_data(data_list)
+            assert np.max(data_list) <= 1 and np.min(data_list) >= -1
+
+            pdf, bin_edges = compute_pdf(data_list, bins=1000)
+            if not bin_edges_written:
+                writer.writerow(bin_edges[:-1])  # Write bin edges
+                bin_edges_written = True
+            writer.writerow(pdf)  # Write PDF values
+        
+        elif group_size == -1:
+            # Channel-level granularity, 100 bins
+            for i in range(0, w_data.size(0), stride):
+                channel = w_data[i]
+                data_list = channel.view(-1).tolist()
+                data_list = normalize_data(data_list)
+                assert np.max(data_list) <= 1 and np.min(data_list) >= -1
+
+                pdf, bin_edges = compute_pdf(data_list, bins=100)
+                if not bin_edges_written:
+                    writer.writerow(bin_edges[:-1])  # Write bin edges
+                    bin_edges_written = True
+                writer.writerow(pdf)  # Write PDF values
+        
+        else:
+            # Group-level granularity, 15 bins
+            if w_data.shape[-1] % group_size != 0:
+                print(f"Input channel: {w_data.shape[-1]} is not divisible by group_size: {group_size}")
+                cut_size = w_data.shape[-1] // group_size
+                w_data = w_data[:, :cut_size*group_size]
+                print(f"cut it to {w_data.shape[-1]}")
+
+            w_data_group = w_data.view(-1, group_size)
+
+            for i in range(0, len(w_data_group), stride):
+                group = w_data_group[i]
+                data_list = group.view(-1).tolist()
+                data_list = normalize_data(data_list)
+                assert np.max(data_list) <= 1 and np.min(data_list) >= -1
+
+                pdf, bin_edges = compute_pdf(data_list, bins=100)
+                if not bin_edges_written:
+                    writer.writerow(bin_edges[:-1])  # Write bin edges
+                    bin_edges_written = True
+                writer.writerow(pdf)  # Write PDF values
+
 if __name__ == '__main__':
     w = torch.normal(0, 5, size=(128, 512))
     # group_cdf(w, group_size=-2)

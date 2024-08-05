@@ -8,7 +8,7 @@ from torch import nn
 
 from transformers.models.opt.configuration_opt import *
 from transformers.models.opt.modeling_opt import *
-from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
+# from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
 
 from ..utils.make_distribution import group_dist
 from ..utils.cdf_graph import group_cdf, cdf_csv
@@ -167,13 +167,19 @@ class OPTAttention_giant(nn.Module):
         self.v_bit = 4
         self.v_group_elem_num = 0
         self.v_update_mode = 'lazy_update'
-        self.data_type = 'giant'
+        self.data_type = 'int'
 
         # self.v_update_mode = 'immediate_update'
+        self.reset_local_vars()
 
     def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
         return tensor.view(bsz, seq_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
     
+    def reset_local_vars(self):
+        self.local_max = torch.zeros((self.num_key_value_heads * self.head_dim, 1))
+        self.local_scaling_factor = torch.ones((self.num_key_value_heads * self.head_dim, 1))
+
+        self.v_channel_scale = torch.ones((self.num_key_value_heads * self.head_dim, 1))
 
     def quantize_query_key(self, query_states: torch.Tensor, key_states: torch.Tensor, group_size: int) -> Tuple[torch.Tensor, torch.Tensor]:
         org_q_shape = query_states.shape
@@ -186,6 +192,12 @@ class OPTAttention_giant(nn.Module):
         # Flatten for quantization
         query_states = query_states.reshape(query_states.shape[1], -1)
         key_states = key_states.reshape(key_states.shape[1], -1)
+
+        # cdf_csv(key_states, -2, self.layer_idx, 'key', 1000, 1, 'cdf_key_tensor.csv')  
+        # if self.layer_idx >= 12 and self.layer_idx <= 15:
+        #     cdf_csv(key_states, -1, self.layer_idx, 'key', 1000, 64, 'cdf_key_chan.csv')  
+        # if self.layer_idx >= 12 and self.layer_idx <= 15:
+        #     cdf_csv(key_states, 64, self.layer_idx, 'key', 1000, 512, 'cdf_key_group.csv')
 
         # Quantize query and key states
         query_states = pseudo_quantize_int(query_states, n_bit=self.q_bit, zero_point=False, q_group_size=group_size)
@@ -514,31 +526,36 @@ class OPTAttention_giant(nn.Module):
         value_states = value_states.view(*proj_shape)
 
         # query_states, key_states, value_states shape (32, 2048, 128)
-
-        if self.quant_attention == True:
+        quant_attention = True
+        if quant_attention == True:
             print('quant_opt_attention')
+            org_q_shape = query_states.shape
+            org_k_shape = key_states.shape
             org_v_shape = value_states.shape
-
-            query_states, key_states = self.quantize_query_key(query_states, key_states, self.group_size)
 
             mse = nn.MSELoss()
             org_q = query_states.clone()
             org_k = key_states.clone()
             org_v = value_states.clone()
-            value_states = value_states.reshape(value_states.shape[1], -1)
 
+            k_bit = 4
+            v_bit = 4
+
+            query_states = query_states.reshape(query_states.shape[1], -1)
+            key_states = key_states.reshape(key_states.shape[1], -1)
+            value_states = value_states.reshape(value_states.shape[1], -1)
+            query_states = pseudo_quantize_int(query_states, n_bit=8, zero_point=False, q_group_size=64)
+            key_states = pseudo_quantize_int(key_states, n_bit=k_bit, zero_point=False, q_group_size=64)
             value_trans = value_states.t()
-            # value_trans = pseudo_quantize_int(value_trans, n_bit=self.v_bit, zero_point=False, q_group_size=self.group_size)
-            value_trans = pseudo_quantize_giant(value_trans, n_bit=self.v_bit, zero_point=False, q_group_size=self.group_size)
+            value_trans = pseudo_quantize_int(value_trans, n_bit=v_bit, zero_point=False, q_group_size=64)
             value_states = value_trans.t()
             # value_states = pseudo_quantize_int(value_states, n_bit=8, zero_point=False, q_group_size=64)
 
+            query_states = query_states.reshape(org_q_shape)
+            key_states = key_states.reshape(org_k_shape)
             value_states = value_states.reshape(org_v_shape)
 
-            if self.print_stats:
-                print(f"mse v: {mse(org_v, value_states)} v_bit: {self.v_bit}")
-            
-            # exit(0)
+            print(f"mse q: {mse(org_q, query_states)} mse k: {mse(org_k, key_states)} mse v: {mse(org_v, value_states)} k_bit: {k_bit} v_bit: {v_bit}")
 
         src_len = key_states.size(1)
         attn_weights = torch.bmm(query_states, key_states.transpose(1, 2))
@@ -587,28 +604,24 @@ class OPTAttention_giant(nn.Module):
 
         attn_probs = nn.functional.dropout(attn_weights, p=self.dropout, training=self.training)
 
-        # print(attn_probs.dtype, value_states.dtype)
-
-        if self.quant_attention == True:
+        if quant_attention == True:
             org_probs_shape = attn_probs.shape
             org_probs = attn_probs.clone()
             attn_probs = attn_probs.reshape(attn_probs.shape[1], -1)
-            attn_probs = pseudo_quantize_int(attn_probs, n_bit=self.q_bit, zero_point=False, q_group_size=self.group_size)
+            attn_probs = pseudo_quantize_int(attn_probs, n_bit=8, zero_point=False, q_group_size=64)
             attn_probs = attn_probs.reshape(org_probs_shape)
 
             print(f"mse atten_weights: {mse(org_probs, attn_probs)}")
         
-        # print(attn_probs.dtype, value_states.dtype)
-        # exit(0)
-        # attn_probs = attn_probs.to(value_states.dtype)
+
         attn_output = torch.bmm(attn_probs, value_states)
 
         # quantize attention output
-        if self.quant_attention == True:
+        if quant_attention == True:
             org_outputs_shape = attn_output.shape
             org_outputs = attn_output.clone()
             attn_output = attn_output.reshape(attn_output.shape[1], -1)
-            attn_output = pseudo_quantize_int(attn_output, n_bit=self.q_bit, zero_point=False, q_group_size=self.group_size)
+            attn_output = pseudo_quantize_int(attn_output, n_bit=8, zero_point=False, q_group_size=64)
             attn_output = attn_output.reshape(org_outputs_shape)
 
             print(f"mse atten_outputs: {mse(org_outputs, attn_output)}")

@@ -1,9 +1,14 @@
+Information: Propagating switching activity (low effort zero delay simulation). (PWR-6)
+Warning: There is no defined clock in the design. (PWR-80)
+Warning: Design has unannotated primary inputs. (PWR-414)
+Warning: Design has unannotated sequential cell outputs. (PWR-415)
+ 
 ****************************************
 Report : power
         -analysis_effort low
-Design : fp8mul
+Design : int4_mac_acc16bit
 Version: O-2018.06-SP1
-Date   : Thu Jul 25 22:46:05 2024
+Date   : Sun Jul 28 10:59:13 2024
 ****************************************
 
 
@@ -17,7 +22,7 @@ Wire Load Model Mode: top
 
 Design        Wire Load Model            Library
 ------------------------------------------------
-fp8mul                 5K_hvratio_1_1    NangateOpenCellLibrary
+int4_mac_acc16bit      5K_hvratio_1_1    NangateOpenCellLibrary
 
 
 Global Operating Voltage = 1.1  
@@ -29,12 +34,12 @@ Power-specific unit information :
     Leakage Power Units = 1nW
 
 
-  Cell Internal Power  =  59.5101 uW   (52%)
-  Net Switching Power  =  54.0606 uW   (48%)
+  Cell Internal Power  =  42.9098 uW   (57%)
+  Net Switching Power  =  32.0518 uW   (43%)
                          ---------
-Total Dynamic Power    = 113.5706 uW  (100%)
+Total Dynamic Power    =  74.9617 uW  (100%)
 
-Cell Leakage Power     =   4.4554 uW
+Cell Leakage Power     =   4.3660 uW
 
 Information: report_power power group summary does not include estimated clock tree power. (PWR-789)
 
@@ -46,7 +51,7 @@ memory             0.0000            0.0000            0.0000            0.0000 
 black_box          0.0000            0.0000            0.0000            0.0000  (   0.00%)
 clock_network      0.0000            0.0000            0.0000            0.0000  (   0.00%)
 register           0.0000            0.0000            0.0000            0.0000  (   0.00%)
-sequential         4.5614        2.3944e-02          630.1418            5.2155  (   4.42%)
-combinational     54.9487           54.0366        3.8252e+03          112.8105  (  95.58%)
+sequential         7.1448            0.3657        1.2403e+03            8.7508  (  11.03%)
+combinational     35.7651           31.6861        3.1257e+03           70.5769  (  88.97%)
 --------------------------------------------------------------------------------------------------
-Total             59.5101 uW        54.0605 uW     4.4554e+03 nW       118.0260 uW
+Total             42.9098 uW        32.0519 uW     4.3660e+03 nW        79.3277 uW

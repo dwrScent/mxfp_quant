@@ -5,9 +5,9 @@ module tender_Pe(
 	input [3:0] activation,
 	input rescale,
 
-	output forwarded_input,
+	output [3:0] forwarded_input,
 	output forwarded_rescale,
-	output forwarded_weight,
+	output [3:0] forwarded_weight,
 
 	output reg [31:0] acc
 );

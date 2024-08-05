@@ -1,0 +1,29 @@
+****************************************
+Report : area
+Design : int_fp_mul
+Version: O-2018.06-SP1
+Date   : Fri Jul 26 23:36:14 2024
+****************************************
+
+Information: Updating design information... (UID-85)
+Library(s) Used:
+
+    NangateOpenCellLibrary (File: /home/design/Desktop/NangateOpenCellLibrary.db)
+
+Number of ports:                          200
+Number of nets:                           658
+Number of cells:                          413
+Number of combinational cells:            389
+Number of sequential cells:                21
+Number of macros/black boxes:               0
+Number of buf/inv:                         45
+Number of references:                      18
+
+Combinational area:                680.694000
+Buf/Inv area:                       23.940000
+Noncombinational area:              72.351997
+Macro/Black Box area:                0.000000
+Net Interconnect area:      undefined  (Wire load has zero net area)
+
+Total cell area:                   753.045998
+Total area:                 undefined

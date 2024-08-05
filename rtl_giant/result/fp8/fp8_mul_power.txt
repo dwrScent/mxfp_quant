@@ -1,0 +1,52 @@
+****************************************
+Report : power
+        -analysis_effort low
+Design : fp8_mul
+Version: O-2018.06-SP1
+Date   : Sun Jul 28 12:17:51 2024
+****************************************
+
+
+Library(s) Used:
+
+    NangateOpenCellLibrary (File: /home/design/Desktop/NangateOpenCellLibrary.db)
+
+
+Operating Conditions: typical   Library: NangateOpenCellLibrary
+Wire Load Model Mode: top
+
+Design        Wire Load Model            Library
+------------------------------------------------
+fp8_mul                5K_hvratio_1_1    NangateOpenCellLibrary
+
+
+Global Operating Voltage = 1.1  
+Power-specific unit information :
+    Voltage Units = 1V
+    Capacitance Units = 1.000000ff
+    Time Units = 1ns
+    Dynamic Power Units = 1uW    (derived from V,C,T units)
+    Leakage Power Units = 1nW
+
+
+  Cell Internal Power  =  37.4469 uW   (55%)
+  Net Switching Power  =  30.2412 uW   (45%)
+                         ---------
+Total Dynamic Power    =  67.6882 uW  (100%)
+
+Cell Leakage Power     =   2.8551 uW
+
+Information: report_power power group summary does not include estimated clock tree power. (PWR-789)
+
+                 Internal         Switching           Leakage            Total
+Power Group      Power            Power               Power              Power   (   %    )  Attrs
+--------------------------------------------------------------------------------------------------
+io_pad             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+memory             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+black_box          0.0000            0.0000            0.0000            0.0000  (   0.00%)
+clock_network      0.0000            0.0000            0.0000            0.0000  (   0.00%)
+register           0.0000            0.0000            0.0000            0.0000  (   0.00%)
+sequential         4.5877        2.5426e-02          629.7510            5.2429  (   7.43%)
+combinational     32.8592           30.2158        2.2254e+03           65.3004  (  92.57%)
+--------------------------------------------------------------------------------------------------
+Total             37.4469 uW        30.2412 uW     2.8551e+03 nW        70.5433 uW

@@ -1,8 +1,8 @@
 ****************************************
 Report : area
-Design : fp8mul
+Design : fp8_mac
 Version: O-2018.06-SP1
-Date   : Thu Jul 25 22:45:54 2024
+Date   : Sun Jul 28 12:22:17 2024
 ****************************************
 
 Information: Updating design information... (UID-85)
@@ -10,20 +10,20 @@ Library(s) Used:
 
     NangateOpenCellLibrary (File: /home/design/Desktop/NangateOpenCellLibrary.db)
 
-Number of ports:                           43
-Number of nets:                           191
-Number of cells:                          152
-Number of combinational cells:            142
-Number of sequential cells:                 9
+Number of ports:                          130
+Number of nets:                           343
+Number of cells:                          231
+Number of combinational cells:            218
+Number of sequential cells:                 8
 Number of macros/black boxes:               0
-Number of buf/inv:                         26
-Number of references:                      22
+Number of buf/inv:                         42
+Number of references:                       5
 
-Combinational area:                167.579999
-Buf/Inv area:                       13.832000
+Combinational area:                246.049998
+Buf/Inv area:                       22.344000
 Noncombinational area:              36.175999
 Macro/Black Box area:                0.000000
 Net Interconnect area:      undefined  (Wire load has zero net area)
 
-Total cell area:                   203.755998
+Total cell area:                   282.225996
 Total area:                 undefined

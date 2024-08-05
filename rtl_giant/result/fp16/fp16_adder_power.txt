@@ -1,0 +1,52 @@
+****************************************
+Report : power
+        -analysis_effort low
+Design : fp16_adder
+Version: O-2018.06-SP1
+Date   : Wed Jul 31 21:02:13 2024
+****************************************
+
+
+Library(s) Used:
+
+    NangateOpenCellLibrary (File: /home/design/Desktop/NangateOpenCellLibrary.db)
+
+
+Operating Conditions: typical   Library: NangateOpenCellLibrary
+Wire Load Model Mode: top
+
+Design        Wire Load Model            Library
+------------------------------------------------
+fp16_adder             5K_hvratio_1_1    NangateOpenCellLibrary
+
+
+Global Operating Voltage = 1.1  
+Power-specific unit information :
+    Voltage Units = 1V
+    Capacitance Units = 1.000000ff
+    Time Units = 1ns
+    Dynamic Power Units = 1uW    (derived from V,C,T units)
+    Leakage Power Units = 1nW
+
+
+  Cell Internal Power  = 171.9297 uW   (48%)
+  Net Switching Power  = 184.4533 uW   (52%)
+                         ---------
+Total Dynamic Power    = 356.3830 uW  (100%)
+
+Cell Leakage Power     =  10.9107 uW
+
+Information: report_power power group summary does not include estimated clock tree power. (PWR-789)
+
+                 Internal         Switching           Leakage            Total
+Power Group      Power            Power               Power              Power   (   %    )  Attrs
+--------------------------------------------------------------------------------------------------
+io_pad             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+memory             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+black_box          0.0000            0.0000            0.0000            0.0000  (   0.00%)
+clock_network      0.0000            0.0000            0.0000            0.0000  (   0.00%)
+register           0.0000            0.0000            0.0000            0.0000  (   0.00%)
+sequential         9.6509        5.4277e-02        1.2619e+03           10.9671  (   2.99%)
+combinational    162.2788          184.3990        9.6488e+03          356.3265  (  97.01%)
+--------------------------------------------------------------------------------------------------
+Total            171.9297 uW       184.4533 uW     1.0911e+04 nW       367.2936 uW

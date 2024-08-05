@@ -1,0 +1,53 @@
+****************************************
+Report : power
+        -analysis_effort low
+Design : tender_Pe_withFusion_separateRescale
+Version: O-2018.06-SP1
+Date   : Sun Jul 28 11:30:12 2024
+****************************************
+
+
+Library(s) Used:
+
+    NangateOpenCellLibrary (File: /home/design/Desktop/NangateOpenCellLibrary.db)
+
+
+Operating Conditions: typical   Library: NangateOpenCellLibrary
+Wire Load Model Mode: top
+
+Design        Wire Load Model            Library
+------------------------------------------------
+tender_Pe_withFusion_separateRescale
+                       5K_hvratio_1_1    NangateOpenCellLibrary
+
+
+Global Operating Voltage = 1.1  
+Power-specific unit information :
+    Voltage Units = 1V
+    Capacitance Units = 1.000000ff
+    Time Units = 1ns
+    Dynamic Power Units = 1uW    (derived from V,C,T units)
+    Leakage Power Units = 1nW
+
+
+  Cell Internal Power  = 157.7639 uW   (55%)
+  Net Switching Power  = 129.8427 uW   (45%)
+                         ---------
+Total Dynamic Power    = 287.6066 uW  (100%)
+
+Cell Leakage Power     =  15.5139 uW
+
+Information: report_power power group summary does not include estimated clock tree power. (PWR-789)
+
+                 Internal         Switching           Leakage            Total
+Power Group      Power            Power               Power              Power   (   %    )  Attrs
+--------------------------------------------------------------------------------------------------
+io_pad             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+memory             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+black_box          0.0000            0.0000            0.0000            0.0000  (   0.00%)
+clock_network      0.0000            0.0000            0.0000            0.0000  (   0.00%)
+register           0.0000            0.0000            0.0000            0.0000  (   0.00%)
+sequential        14.2097            0.7494        2.4709e+03           17.4300  (   5.75%)
+combinational    143.5542          129.0933        1.3043e+04          285.6905  (  94.25%)
+--------------------------------------------------------------------------------------------------
+Total            157.7639 uW       129.8427 uW     1.5514e+04 nW       303.1205 uW

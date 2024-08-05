@@ -1,0 +1,52 @@
+****************************************
+Report : power
+        -analysis_effort low
+Design : int_fp_mul
+Version: O-2018.06-SP1
+Date   : Fri Jul 26 23:38:01 2024
+****************************************
+
+
+Library(s) Used:
+
+    NangateOpenCellLibrary (File: /home/design/Desktop/NangateOpenCellLibrary.db)
+
+
+Operating Conditions: typical   Library: NangateOpenCellLibrary
+Wire Load Model Mode: top
+
+Design        Wire Load Model            Library
+------------------------------------------------
+int_fp_mul             5K_hvratio_1_1    NangateOpenCellLibrary
+
+
+Global Operating Voltage = 1.1  
+Power-specific unit information :
+    Voltage Units = 1V
+    Capacitance Units = 1.000000ff
+    Time Units = 1ns
+    Dynamic Power Units = 1uW    (derived from V,C,T units)
+    Leakage Power Units = 1nW
+
+
+  Cell Internal Power  = 316.7911 uW   (58%)
+  Net Switching Power  = 233.9587 uW   (42%)
+                         ---------
+Total Dynamic Power    = 550.7498 uW  (100%)
+
+Cell Leakage Power     =  14.2053 uW
+
+Information: report_power power group summary does not include estimated clock tree power. (PWR-789)
+
+                 Internal         Switching           Leakage            Total
+Power Group      Power            Power               Power              Power   (   %    )  Attrs
+--------------------------------------------------------------------------------------------------
+io_pad             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+memory             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+black_box          0.0000            0.0000            0.0000            0.0000  (   0.00%)
+clock_network      0.0000            0.0000            0.0000            0.0000  (   0.00%)
+register           0.0000            0.0000            0.0000            0.0000  (   0.00%)
+sequential        10.3181        4.5973e-02        1.2561e+03           11.6202  (   2.06%)
+combinational    306.4732          233.9129        1.2949e+04          553.3353  (  97.94%)
+--------------------------------------------------------------------------------------------------
+Total            316.7912 uW       233.9588 uW     1.4205e+04 nW       564.9555 uW

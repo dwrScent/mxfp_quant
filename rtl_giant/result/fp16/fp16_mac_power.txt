@@ -1,0 +1,52 @@
+****************************************
+Report : power
+        -analysis_effort low
+Design : fp16_mac
+Version: O-2018.06-SP1
+Date   : Sat Jul 27 00:06:12 2024
+****************************************
+
+
+Library(s) Used:
+
+    NangateOpenCellLibrary (File: /home/design/Desktop/NangateOpenCellLibrary.db)
+
+
+Operating Conditions: typical   Library: NangateOpenCellLibrary
+Wire Load Model Mode: top
+
+Design        Wire Load Model            Library
+------------------------------------------------
+fp16_mac               5K_hvratio_1_1    NangateOpenCellLibrary
+
+
+Global Operating Voltage = 1.1  
+Power-specific unit information :
+    Voltage Units = 1V
+    Capacitance Units = 1.000000ff
+    Time Units = 1ns
+    Dynamic Power Units = 1uW    (derived from V,C,T units)
+    Leakage Power Units = 1nW
+
+
+  Cell Internal Power  = 477.0475 uW   (52%)
+  Net Switching Power  = 439.3221 uW   (48%)
+                         ---------
+Total Dynamic Power    = 916.3696 uW  (100%)
+
+Cell Leakage Power     =  23.7320 uW
+
+Information: report_power power group summary does not include estimated clock tree power. (PWR-789)
+
+                 Internal         Switching           Leakage            Total
+Power Group      Power            Power               Power              Power   (   %    )  Attrs
+--------------------------------------------------------------------------------------------------
+io_pad             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+memory             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+black_box          0.0000            0.0000            0.0000            0.0000  (   0.00%)
+clock_network      0.0000            0.0000            0.0000            0.0000  (   0.00%)
+register           0.0000            0.0000            0.0000            0.0000  (   0.00%)
+sequential         9.6384            0.9323        1.2591e+03           11.8298  (   1.26%)
+combinational    467.4091          438.3896        2.2473e+04          928.2723  (  98.74%)
+--------------------------------------------------------------------------------------------------
+Total            477.0475 uW       439.3218 uW     2.3732e+04 nW       940.1021 uW

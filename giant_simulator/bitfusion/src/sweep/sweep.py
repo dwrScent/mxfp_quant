@@ -111,6 +111,10 @@ class SimulatorSweep(object):
                                                     nn = benchmarks.get_bench_nn_bis(b, batch_size)
                                                 elif bench_type == 'giant':
                                                     nn = benchmarks.get_bench_nn_giant(b, batch_size)
+                                                elif bench_type == 'tender':
+                                                    nn = benchmarks.get_bench_nn_tender(b, batch_size)
+                                                elif bench_type == 'awq':
+                                                    nn = benchmarks.get_bench_nn_awq(b, batch_size)
 
                                                 if len(results) == 0:
                                                     self.logger.info('Simulating Benchmark: {}'.format(b))

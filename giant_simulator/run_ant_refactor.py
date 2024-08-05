@@ -38,7 +38,9 @@ sim_sweep_columns = ['N', 'M',
         'Batch size']
 
 # batch_size = 64
+# batch_size = 512
 batch_size = 1
+# batch_size = 16
 
 # directory to store the .csv
 results_dir = './results'
@@ -81,20 +83,26 @@ model_name_dict = {
                 #    'cola':'BERT-CoLA',
                 #    'sst_2':'BERT-SST-2',
                 #     'bart_base':'bart_base',
-                #     'bert_base':'bert_base',
+                    # 'bert_base':'bert_base',
                 #     'bert_large':'bert_large',
                     # 'gpt2_xl':'gpt2_xl',
                     # 'bloom3b':'bloom3b',
                     # 'bloom7b1':'bloom7b1',
                     # 'opt6b7':'opt6b7',
+                    # 'opt_13b':'opt_13b',
                     'llama_7b':'llama_7b',
+                    # 'llama_13b':'llama_13b',
+                    # 'llama_30b':'llama_30b',
+                    # 'llama_65b':'llama_65b',
+                    # 'llama2_7b':'llama2_7b',
+                    # 'llama2_13b':'llama2_13b',
                     }
 def process_result():
     with open(os.path.join(os.getcwd(), 'results', 'olive_res.csv'), "a") as ff:
         wr_stats_line = "Time, "
         wr_bench_name = ", "
         wr_model_name = ", "
-        normalized_bench = 'bit'
+        normalized_bench = 'ant'
 
         bf_e_cycles_length = len(bf_e_cycles[normalized_bench])
         tmp_cycle = {}
@@ -171,8 +179,9 @@ def process_result():
 
 
 # bench_type_list = ['olive', 'ant', 'ola', 'ada']
-bench_type_list = ['giant', 'olive', 'ant', 'bit']
-# bench_type_list = ['bit']
+# bench_type_list = ['giant', 'olive', 'ant', 'bit']
+# bench_type_list = ['ant', 'tender', 'bit', 'giant', 'olive']
+bench_type_list = ['ant', 'giant', 'awq']
 
 for item in bench_type_list:
     run_sim(item)

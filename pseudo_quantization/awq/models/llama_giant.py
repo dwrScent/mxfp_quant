@@ -205,7 +205,6 @@ class LlamaAttention_giant(nn.Module):
         # self.v_update_mode = 'lazy_update'
         self.data_type = 'giant'
 
-        input('a')
 
         self.reset_local_vars()
 

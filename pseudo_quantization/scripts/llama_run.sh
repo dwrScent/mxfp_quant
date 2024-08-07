@@ -1,32 +1,42 @@
+#!/bin/bash
 MODEL_SIZE=${1:-"7"}
 TASKS=${2:-"arc_challenge"}
 SHOTS=${3:-"0"}
 QUANT_MODE=${4:-"ant"}
 ANT_MODE=${5:-"int"}
 GROUP_SIZE=${6:-"-1"}
-WEIGHT_BIT=${7:-"4"}
-ACT_BIT=${8:-"16"}
-QUANT_KV=${9:-"0"}
-A_STRIDE=${10:-"5"}
-# MSE_TYPE=${11:-"weight"}
-# OUTLIER_TYPE=${7:-"none"}
-# OUTLIER_RATIO=${8:-"-1"}
-DESC=${11:-""}
+QUANT_BIT_WIDTH=${7:-"w4a8k16v16"}
+OPTION=${8:-"quant"}
+DESC=${9:-""}
 
-MODEL=/cephfs/shared/model/llama-${MODEL_SIZE}b-hf-transformers-4.29
+# MODEL=/cephfs/shared/model/llama-${MODEL_SIZE}b-hf-transformers-4.29
+MODEL=/localssd/wmhu/models/llama-${MODEL_SIZE}b-hf-transformers-4.29
 OUTPUT_NAME=llama-${MODEL_SIZE}b
-OUTPUT_DIR=output/output_test_0414_mmlu
+if [ "$OPTION" == "load" ]; then
+    OUTPUT_DIR=output/output_giant_load
+    EXTRA_OPTION="--load_quant /localssd/wmhu/models/quant_cache/$OUTPUT_NAME-w4-g$GROUP_SIZE-$QUANT_MODE"
+elif [ "$OPTION" == "dump" ]; then
+    OUTPUT_DIR=output/output_giant_dump
+    mkdir -p quant_cache
+    EXTRA_OPTION="--dump_quant quant_cache/$OUTPUT_NAME-w4-g$GROUP_SIZE-$QUANT_MODE"
+elif [ "$OPTION" == "quant" ]; then
+    OUTPUT_DIR=output/output_llama2_hpca_motivation
+    EXTRA_OPTION=""
+else
+    echo "Invalid option: $OPTION. Only 'load', 'dump', and 'quant' are supported."
+    exit 1
+fi
 
 mkdir -p $OUTPUT_DIR
 
 python -m awq.entry --model_path $MODEL \
     --tasks $TASKS \
     --num_fewshot $SHOTS \
-    --w_bit $WEIGHT_BIT  \
-    --a_bit $ACT_BIT  \
+    --quant_bit_width $QUANT_BIT_WIDTH \
+    $EXTRA_OPTION \
     --q_backend fake \
     --no_zero_point \
     --quant_mode $QUANT_MODE \
     --ant_mode $ANT_MODE \
     --q_group_size $GROUP_SIZE \
-    | tee $OUTPUT_DIR/${OUTPUT_NAME}_${TASKS}_${WEIGHT_BIT}bit_${SHOTS}shots_${QUANT_MODE}_${ANT_MODE}_g${GROUP_SIZE}_${DESC}_$(date +%m%d%H%M).log 2>&1
+    | tee $OUTPUT_DIR/${OUTPUT_NAME}_${TASKS}_${QUANT_BIT_WIDTH}_${SHOTS}shots_${QUANT_MODE}_${ANT_MODE}_g${GROUP_SIZE}_${DESC}_$(date +%m%d%H%M).log 2>&1

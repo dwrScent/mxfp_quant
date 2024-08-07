@@ -17,6 +17,8 @@ from awq.utils.lm_eval_adaptor import LMEvalAdaptor
 from awq.utils.utils import simple_dispatch_model
 
 import datetime
+import re
+
 
 from awq.models.opt_giant import OPTForCausalLM_giant
 from awq.models.bloom_giant import BloomForCausalLM_giant
@@ -40,8 +42,11 @@ parser.add_argument('--parallel', action='store_true',
 parser.add_argument('--auto_parallel', action='store_true',
                     help="automatically set parallel and batch_size")
 # quantization config
+parser.add_argument('--quant_bit_width', type=str, default='w16a16k16v16')
 parser.add_argument('--w_bit', type=int, default=None)
 parser.add_argument('--a_bit', type=int, default=16)
+parser.add_argument('--k_bit', type=int, default=16)
+parser.add_argument('--v_bit', type=int, default=16)
 parser.add_argument('--q_group_size', type=int, default=-1)
 parser.add_argument('--no_zero_point', action='store_true',
                     help="disable zero_point")
@@ -58,10 +63,8 @@ parser.add_argument(
     + "https://huggingface.co/docs/accelerate/usage_guides/big_modeling",
 )
 parser.add_argument('--quant_mode', type=str, default="compute_encode")
-parser.add_argument('--quant_kv', type=int, default=0)
 parser.add_argument('--ant_mode', type=str, default="int")
 parser.add_argument('--mse_type', type=str, default="weight")
-parser.add_argument('--ant_search_granularity', type=int, default=1)
 parser.add_argument('--ant_asym', type=int, default=0)
 parser.add_argument('--w_low', type=int, default=75)
 parser.add_argument('--w_high', type=int, default=150)
@@ -91,11 +94,11 @@ q_config = {
 }
 quant_mode_config = {
     "quant_method": args.quant_mode,
-    "quant_kv": args.quant_kv,
+    "quant_kv": False,
 }
 ant_config = {
     "ant_mode": args.ant_mode,  
-    "ant_search_granularity": args.ant_search_granularity,  
+    "ant_search_granularity": 1,  
     "w_low": args.w_low,
     "w_high": args.w_high,
     "ant_asym": args.ant_asym,
@@ -107,6 +110,16 @@ outlier_config = {
     "keep_num": 1, 
 }
 
+def extract_bitwidths(quantization_string):
+    w_bits = int(re.search(r'w(\d+)', quantization_string).group(1))
+    a_bits = int(re.search(r'a(\d+)', quantization_string).group(1))
+    k_bits = int(re.search(r'k(\d+)', quantization_string).group(1))
+    v_bits = int(re.search(r'v(\d+)', quantization_string).group(1))
+    return w_bits, a_bits, k_bits, v_bits
+
+args.w_bit, args.a_bit, args.k_bit, args.v_bit = extract_bitwidths(args.quant_bit_width)
+if args.k_bit < 16 or args.v_bit < 16:
+    quant_mode_config['quant_kv'] = True
 print("Quantization config:", q_config)
 max_memory = [v.split(":") for v in (args.max_memory or [])]
 max_memory = {(int(k) if k.isdigit() else k): v for k, v in max_memory}
@@ -126,15 +139,25 @@ def build_model_and_enc(model_path):
         print("Loading pre-computed quantized weights...")
         with init_empty_weights():
             kwargs_init = {"device_map": "balanced", "torch_dtype": torch.float16}
-            if quant_mode_config['quant_method'] =='giant' and quant_mode_config['quant_kv'] and isinstance(config, OPTConfig):
-                model = OPTForCausalLM_giant.from_pretrained(
-                    model_path, config=config, **kwargs_init)
-            elif quant_mode_config['quant_method'] =='giant' and quant_mode_config['quant_kv'] and isinstance(config, BloomConfig):
-                model = BloomForCausalLM_giant.from_pretrained(
-                    model_path, config=config, **kwargs_init)
-            elif quant_mode_config['quant_method'] =='giant' and quant_mode_config['quant_kv'] and isinstance(config, LlamaConfig):
-                model = LlamaForCausalLM_giant.from_pretrained(
-                    model_path, config=config, **kwargs_init)
+
+            if quant_mode_config['quant_method'] =='giant' and quant_mode_config['quant_kv']:
+                config.a_bit = args.a_bit
+                config.w_bit = args.w_bit
+                config.k_bit = args.k_bit
+                config.v_bit = args.v_bit
+                config.group_size = args.q_group_size
+                config.quant_kv = quant_mode_config['quant_kv']
+                if isinstance(config, OPTConfig):
+                    model = OPTForCausalLM_giant.from_pretrained(
+                        model_path, config=config, **kwargs)
+                elif isinstance(config, BloomConfig):
+                    model = BloomForCausalLM_giant.from_pretrained(
+                        model_path, config=config, **kwargs)
+                elif isinstance(config, LlamaConfig):
+                    model = LlamaForCausalLM_giant.from_pretrained(
+                        model_path, config=config, **kwargs)
+                else:
+                    raise NotImplementedError('not support yet')
             else:
                 model = AutoModelForCausalLM.from_config(
                         config=config, torch_dtype=torch.float16, trust_remote_code=True
@@ -178,15 +201,24 @@ def build_model_and_enc(model_path):
         kwargs = {"device_map": "balanced", "torch_dtype": torch.float16}
 
         # modify the attention layer
-        if quant_mode_config['quant_method'] =='giant' and quant_mode_config['quant_kv'] and isinstance(config, OPTConfig):
-            model = OPTForCausalLM_giant.from_pretrained(
-                model_path, config=config, **kwargs)
-        elif quant_mode_config['quant_method'] =='giant' and quant_mode_config['quant_kv'] and isinstance(config, BloomConfig):
-            model = BloomForCausalLM_giant.from_pretrained(
-                model_path, config=config, **kwargs)
-        elif quant_mode_config['quant_method'] =='giant' and quant_mode_config['quant_kv'] and isinstance(config, LlamaConfig):
-            model = LlamaForCausalLM_giant.from_pretrained(
-                model_path, config=config, **kwargs)
+        if quant_mode_config['quant_method'] =='giant' and quant_mode_config['quant_kv']:
+            config.a_bit = args.a_bit
+            config.w_bit = args.w_bit
+            config.k_bit = args.k_bit
+            config.v_bit = args.v_bit
+            config.group_size = args.q_group_size
+            config.quant_kv = quant_mode_config['quant_kv']
+            if isinstance(config, OPTConfig):
+                model = OPTForCausalLM_giant.from_pretrained(
+                    model_path, config=config, **kwargs)
+            elif isinstance(config, BloomConfig):
+                model = BloomForCausalLM_giant.from_pretrained(
+                    model_path, config=config, **kwargs)
+            elif isinstance(config, LlamaConfig):
+                model = LlamaForCausalLM_giant.from_pretrained(
+                    model_path, config=config, **kwargs)
+            else:
+                raise NotImplementedError('not support yet')
         else:
             model = AutoModelForCausalLM.from_pretrained(
                 model_path, config=config, **kwargs)

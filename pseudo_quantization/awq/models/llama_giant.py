@@ -195,18 +195,18 @@ class LlamaAttention_giant(nn.Module):
 
         # Quantization args
         self.quant_attention = True
-        self.group_size = 64
+        self.group_size = config.group_size
         self.print_stats = True
         # self.print_stats = False
-        self.q_bit = 8
-        self.k_bit = 4
-        self.v_bit = 4
-        self.v_group_elem_num = 0
-        self.v_update_mode = 'lazy_update'
-        self.data_type = 'int'
+        self.q_bit = config.a_bit
+        self.k_bit = config.k_bit
+        self.v_bit = config.v_bit
+        # self.v_group_elem_num = 0
+        # self.v_update_mode = 'lazy_update'
+        self.data_type = 'giant'
 
+        input('a')
 
-        # self.v_update_mode = 'immediate_update'
         self.reset_local_vars()
 
 
@@ -286,230 +286,118 @@ class LlamaAttention_giant(nn.Module):
 
         mse = nn.MSELoss()
         org_v = value_states.clone()
-
-        if self.v_update_mode == 'lazy_update':
-            # org_v_shape (b, s, n*d)
-            if org_v_shape[-2] == 1:
-                # decode stage
-                # quantize the latest $group_size tokens when (V cache % group_size == 0)
-                # value_states.shape (b, n, s, d)
-                v_cache_shape = value_states.shape
-                
-                if v_seq_len % group_size == 0:
-                    # recover the shape of value cache and reshape to 2d for quantization -> (s, b*n*d)
-                    value_states = value_states.transpose(1, 2).reshape(v_seq_len, -1)
-                    value_trans = value_states.t()
-
-                    # quantize the latest V cache group
-                    if self.data_type == 'giant':
-                        quantized_part_deq = pseudo_quantize_giant(value_trans[:, (v_seq_len-group_size):], n_bit=self.v_bit, zero_point=False, q_group_size=group_size)
-                    elif self.data_type == 'int':
-                        quantized_part_deq = pseudo_quantize_int(value_trans[:, (v_seq_len-group_size):], n_bit=self.v_bit, zero_point=False, q_group_size=group_size)
-                    else:
-                        raise ImportError('not support yet')
-
-                    value_trans = torch.cat([value_trans[:, :(v_seq_len-group_size)], quantized_part_deq], dim=1)
-
-                    # reshape
-                    value_states = value_trans.t()
-                    value_states = value_states.reshape(v_cache_shape[0], v_cache_shape[2], v_cache_shape[1], v_cache_shape[3]).transpose(1, 2)
-                else:
-                    # quantize the V vector to INT8
-                    value_states = value_states.transpose(1, 2).reshape(v_seq_len, -1)
-                    value_trans = value_states.t()
-
-                    # quantize the latest V cache group
-                    quantized_part = value_trans[:, (v_seq_len-1):]
-                    # print(quantized_part.shape, self.v_channel_scale.shape, self.v_channel_scale)
-
-                    max_int = 2 ** (8 - 1) - 1
-                    min_int = - 2 ** (8 - 1)
-
-                    quantized_part = (torch.clamp(torch.round(quantized_part /  self.v_channel_scale) +
-                                    0, min_int, max_int) - 0) *  self.v_channel_scale
-                    assert torch.isnan(quantized_part).sum() == 0
-
-                    # quantized_part = pseudo_quantize_int(value_trans[:, (v_seq_len-1):], n_bit=8, zero_point=False, q_group_size=group_size)
-                    # print(quantized_part.shape)
-                    value_trans = torch.cat([value_trans[:, :(v_seq_len-1)], quantized_part], dim=1)
-
-                    # reshape
-                    value_states = value_trans.t()
-                    value_states = value_states.reshape(v_cache_shape[0], v_cache_shape[2], v_cache_shape[1], v_cache_shape[3]).transpose(1, 2)
-                
-                if self.print_stats:
-                    print(f"decode mse v: {mse(org_v, value_states)} v_bit: {self.v_bit} q_group_size: {self.group_size}")
-
-                return value_states
+        # org_v_shape (b, s, n*d)
+        if org_v_shape[-2] == 1:
+            # decode stage
+            # quantize the latest $group_size tokens when (V cache % group_size == 0)
+            # value_states.shape (b, n, s, d)
+            v_cache_shape = value_states.shape
             
-            # prefill stage
-            elif org_v_shape[-2] > 1:
+            if v_seq_len % group_size == 0:
                 # recover the shape of value cache and reshape to 2d for quantization -> (s, b*n*d)
-                value_states = value_states.transpose(1, 2).reshape(v_seq_len, -1)
-                value_trans = value_states.t().contiguous()
-
-                # cdf_csv(value_trans, -2, self.layer_idx, 'value', 1000, 1, 'cdf_value_tensor.csv')  
-                # if self.layer_idx >= 12 and self.layer_idx <= 15:
-                #     cdf_csv(value_trans, -1, self.layer_idx, 'value', 1000, 64, 'cdf_value_chan.csv')  
-                # if self.layer_idx >= 12 and self.layer_idx <= 15:
-                #     cdf_csv(value_trans, 64, self.layer_idx, 'value', 1000, 512, 'cdf_value_group.csv')
-
-                # quantize the V cache, leave the (org_v_shape[-2] % group_size) tokens
-                quant_elem_num = (v_seq_len // group_size) * group_size
-
-                quantized_part = value_trans[:, :quant_elem_num]
-                # print(self.v_channel_scale.shape, value_trans.shape, value_trans.abs().amax(dim=1, keepdim=True))
-                self.v_channel_scale = value_trans.abs().amax(dim=1, keepdim=True) / 127
-
-                if self.data_type == 'giant':
-                    quantized_part_deq = pseudo_quantize_giant(quantized_part, n_bit=self.v_bit, zero_point=False, q_group_size=group_size)
-                elif self.data_type == 'int':
-                    quantized_part_deq = pseudo_quantize_int(quantized_part, n_bit=self.v_bit, zero_point=False, q_group_size=group_size)
-                else:
-                    raise ImportError('not support yet')
-                # # intervals = [0, 0.05, 0.25, 0.5, 1.0]
-                # # interval_counts = torch.zeros(len(intervals) - 1, dtype=torch.int32)
-                
-                # # interval_counts[0] = torch.sum((value_var >= intervals[0]) & (value_var < intervals[1]))
-                # # interval_counts[1] = torch.sum((value_var >= intervals[1]) & (value_var < intervals[2]))
-                # # interval_counts[2] = torch.sum((value_var >= intervals[2]) & (value_var < intervals[3]))
-                # # interval_counts[3] = torch.sum((value_var >= intervals[3]) & (value_var <= intervals[4]))
-
-                # # # 打印区间统计
-                # # total = value_var.size(0)
-                # # for i in range(len(intervals) - 1):
-                # #     count = interval_counts[i].item()
-                # #     percentage = (count / total) * 100
-                # #     print(f"Interval {intervals[i]} - {intervals[i+1]}: {count} values ({percentage:.2f}%)")
-                # # print(f"Normalized variance of value_states:\n{value_var}, {value_var.max()}, {value_var.min()}")
-                # # group_dist(quantized_part_group, group_size=group_size, layer_idx=self.layer_idx, layer_name='value', max_fig=1000)
-
-                value_trans = torch.cat([quantized_part_deq, value_trans[:, quant_elem_num:]], dim=1)
-                # reshape
-                value_states = value_trans.t().contiguous()
-                value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
-
-
-                # exit(0)
-
-                if self.print_stats:
-                    print(f"prefill mse v: {mse(org_v, value_states)}  v_bit: {self.v_bit} q_group_size: {self.group_size}")
-
-                return value_states
-
-            else:
-                raise ValueError(f'Error value token shape {org_v_shape}')
-        elif self.v_update_mode == 'immediate_update':
-            # use our real-time update
-            if self.local_max is None or self.local_scaling_factor is None:
-                self.reset_local_vars()
-                
-            if org_v_shape[-2] == 1:
-                # decode stage
-                # value_states.shape (b, n, s, d)
-                v_cache_shape = value_states.shape
-
-                self.local_max = self.local_max.to(value_states.device)
-                self.local_scaling_factor = self.local_scaling_factor.to(value_states.device)
-
-                # update the max and scaling factor; then update the tokens in V group if needed
                 value_states = value_states.transpose(1, 2).reshape(v_seq_len, -1)
                 value_trans = value_states.t()
 
                 # quantize the latest V cache group
-                quantized_token = value_trans[:, (v_seq_len-1):]
-                # print(f'quantized_token shape: {quantized_token.shape} v group_num: {self.v_group_elem_num}')
-                if self.v_group_elem_num == 0:
-
-                    # Initialize the max and scaling factor of group
-                    quantized_token, self.local_max, self.local_scaling_factor = pseudo_quantize_int(quantized_token, n_bit=self.v_bit, zero_point=False, q_group_size=group_size, get_scale=True)
-                    self.v_group_elem_num += 1
-                    value_trans = torch.cat([value_trans[:, :(v_seq_len-self.v_group_elem_num)], quantized_token], dim=1)
-                
-                elif  self.v_group_elem_num > 0 and self.v_group_elem_num < self.group_size:
-                    # Need update the V group
-                    self.v_group_elem_num += 1
-                    current_max = torch.cat([self.local_max, quantized_token], dim=1)
-                    current_max = current_max.abs().amax(dim=1, keepdim=True)
-                    update_scale = self.local_max / current_max
-
-                    v_group_token = value_trans[:, (v_seq_len-self.v_group_elem_num):(v_seq_len-1)]
-
-                    v_group_token_q = v_group_token / self.local_scaling_factor
-                    v_update_token_q = torch.round(v_group_token_q * update_scale)
-
-                    # new scaling factor
-                    self.local_scaling_factor = self.local_scaling_factor / update_scale
-                    v_update_token_deq = v_update_token_q * self.local_scaling_factor
-                    self.local_max = current_max
-
-                    quantized_token = torch.round(quantized_token / self.local_scaling_factor) * self.local_scaling_factor
-                    
-                    assert torch.isnan(update_scale).sum() == 0
-                    assert torch.isnan(quantized_token).sum() == 0
-                    assert torch.isnan(v_update_token_deq).sum() == 0
-                    assert torch.isnan(value_trans).sum() == 0
-
-                    
-                    value_trans = torch.cat([value_trans[:, :(v_seq_len-self.v_group_elem_num)], v_update_token_deq, quantized_token], dim=1)
-                elif self.v_group_elem_num == self.group_size:
-                    self.v_group_elem_num = 0
-
-                    # Reset the max and scaling factor of group
-                    quantized_token, self.local_max, self.local_scaling_factor = pseudo_quantize_int(quantized_token, n_bit=self.v_bit, zero_point=False, q_group_size=group_size, get_scale=True)
-                    self.v_group_elem_num += 1
-                    value_trans = torch.cat([value_trans[:, :(v_seq_len-self.v_group_elem_num)], quantized_token], dim=1)
+                if self.data_type == 'giant':
+                    quantized_part_deq = pseudo_quantize_giant(value_trans[:, (v_seq_len-group_size):], n_bit=self.v_bit, zero_point=False, q_group_size=group_size)
+                elif self.data_type == 'int':
+                    quantized_part_deq = pseudo_quantize_int(value_trans[:, (v_seq_len-group_size):], n_bit=self.v_bit, zero_point=False, q_group_size=group_size)
                 else:
-                    pass
-                
+                    raise ImportError('not support yet')
+
+                value_trans = torch.cat([value_trans[:, :(v_seq_len-group_size)], quantized_part_deq], dim=1)
+
                 # reshape
                 value_states = value_trans.t()
                 value_states = value_states.reshape(v_cache_shape[0], v_cache_shape[2], v_cache_shape[1], v_cache_shape[3]).transpose(1, 2)
-
-                assert torch.isnan(value_states).sum() == 0
-
-                if self.print_stats:
-                    print(f"decode mse v: {mse(org_v, value_states)} v_bit: {self.v_bit} q_group_size: {self.group_size}")
-
-                return value_states
-            
-            # prefill stage
-            elif org_v_shape[-2] > 1:
-                # quantize the V cache, leave the (org_v_shape[-2] % group_size) tokens; setting the max and scaling factor buffer
-
-                # recover the shape of value cache and reshape to 2d for quantization -> (s, b*n*d)
+            else:
+                # quantize the V vector to INT8
                 value_states = value_states.transpose(1, 2).reshape(v_seq_len, -1)
                 value_trans = value_states.t()
 
-                # quantize the V cache, leave the (org_v_shape[-2] % group_size) tokens
-                quant_elem_num = (v_seq_len // group_size) * group_size
-                quantized_part = pseudo_quantize_int(value_trans[:, :quant_elem_num], n_bit=self.v_bit, zero_point=False, q_group_size=group_size)
+                # quantize the latest V cache group
+                quantized_part = value_trans[:, (v_seq_len-1):]
+                # print(quantized_part.shape, self.v_channel_scale.shape, self.v_channel_scale)
 
-                # quantize the rest V tokens, set the local_max and local_scaling_factor
-                if v_seq_len % group_size != 0:
-                    # print(value_trans[:, quant_elem_num:])
-                    quantizing_group, self.local_max, self.local_scaling_factor = pseudo_quantize_int(value_trans[:, quant_elem_num:], n_bit=self.v_bit, zero_point=False, q_group_size=group_size, get_scale=True)
-                    # print(f'total shape: {value_trans.shape} group: {quantizing_group.shape}, {quantizing_group} local_max: {self.local_max.shape} {self.local_max}, local_scaleL {self.local_scaling_factor.shape}')
-                    value_trans = torch.cat([quantized_part, quantizing_group], dim=1)
+                max_int = 2 ** (8 - 1) - 1
+                min_int = - 2 ** (8 - 1)
 
-                    # print(quantizing_group, value_trans[:, quant_elem_num:])
-                    self.v_group_elem_num = quantizing_group.shape[-1]
-                    # exit(0)
-                else:
-                    value_trans = quantized_part
-                    self.v_group_elem_num = 0
+                quantized_part = (torch.clamp(torch.round(quantized_part /  self.v_channel_scale) +
+                                0, min_int, max_int) - 0) *  self.v_channel_scale
+                assert torch.isnan(quantized_part).sum() == 0
+
+                # quantized_part = pseudo_quantize_int(value_trans[:, (v_seq_len-1):], n_bit=8, zero_point=False, q_group_size=group_size)
+                # print(quantized_part.shape)
+                value_trans = torch.cat([value_trans[:, :(v_seq_len-1)], quantized_part], dim=1)
 
                 # reshape
                 value_states = value_trans.t()
-                value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+                value_states = value_states.reshape(v_cache_shape[0], v_cache_shape[2], v_cache_shape[1], v_cache_shape[3]).transpose(1, 2)
+            
+            if self.print_stats:
+                print(f"decode mse v: {mse(org_v, value_states)} v_bit: {self.v_bit} q_group_size: {self.group_size}")
 
-                if self.print_stats:
-                    print(f"prefill mse v: {mse(org_v, value_states)} v_bit: {self.v_bit} q_group_size: {self.group_size}")
-                
-                return value_states
+            return value_states
+        
+        # prefill stage
+        elif org_v_shape[-2] > 1:
+            # recover the shape of value cache and reshape to 2d for quantization -> (s, b*n*d)
+            value_states = value_states.transpose(1, 2).reshape(v_seq_len, -1)
+            value_trans = value_states.t().contiguous()
+
+            # cdf_csv(value_trans, -2, self.layer_idx, 'value', 1000, 1, 'cdf_value_tensor.csv')  
+            # if self.layer_idx >= 12 and self.layer_idx <= 15:
+            #     cdf_csv(value_trans, -1, self.layer_idx, 'value', 1000, 64, 'cdf_value_chan.csv')  
+            # if self.layer_idx >= 12 and self.layer_idx <= 15:
+            #     cdf_csv(value_trans, 64, self.layer_idx, 'value', 1000, 512, 'cdf_value_group.csv')
+
+            # quantize the V cache, leave the (org_v_shape[-2] % group_size) tokens
+            quant_elem_num = (v_seq_len // group_size) * group_size
+
+            quantized_part = value_trans[:, :quant_elem_num]
+            # print(self.v_channel_scale.shape, value_trans.shape, value_trans.abs().amax(dim=1, keepdim=True))
+            self.v_channel_scale = value_trans.abs().amax(dim=1, keepdim=True) / 127
+
+            if self.data_type == 'giant':
+                quantized_part_deq = pseudo_quantize_giant(quantized_part, n_bit=self.v_bit, zero_point=False, q_group_size=group_size)
+            elif self.data_type == 'int':
+                quantized_part_deq = pseudo_quantize_int(quantized_part, n_bit=self.v_bit, zero_point=False, q_group_size=group_size)
             else:
-                raise ValueError(f'Error value token shape {org_v_shape}')
-        print(f'org v shape: {org_v_shape}')
+                raise ImportError('not support yet')
+            # # intervals = [0, 0.05, 0.25, 0.5, 1.0]
+            # # interval_counts = torch.zeros(len(intervals) - 1, dtype=torch.int32)
+            
+            # # interval_counts[0] = torch.sum((value_var >= intervals[0]) & (value_var < intervals[1]))
+            # # interval_counts[1] = torch.sum((value_var >= intervals[1]) & (value_var < intervals[2]))
+            # # interval_counts[2] = torch.sum((value_var >= intervals[2]) & (value_var < intervals[3]))
+            # # interval_counts[3] = torch.sum((value_var >= intervals[3]) & (value_var <= intervals[4]))
+
+            # # # 打印区间统计
+            # # total = value_var.size(0)
+            # # for i in range(len(intervals) - 1):
+            # #     count = interval_counts[i].item()
+            # #     percentage = (count / total) * 100
+            # #     print(f"Interval {intervals[i]} - {intervals[i+1]}: {count} values ({percentage:.2f}%)")
+            # # print(f"Normalized variance of value_states:\n{value_var}, {value_var.max()}, {value_var.min()}")
+            # # group_dist(quantized_part_group, group_size=group_size, layer_idx=self.layer_idx, layer_name='value', max_fig=1000)
+
+            value_trans = torch.cat([quantized_part_deq, value_trans[:, quant_elem_num:]], dim=1)
+            # reshape
+            value_states = value_trans.t().contiguous()
+            value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+
+
+            # exit(0)
+
+            if self.print_stats:
+                print(f"prefill mse v: {mse(org_v, value_states)}  v_bit: {self.v_bit} q_group_size: {self.group_size}")
+
+            return value_states
+
+        else:
+            raise ValueError(f'Error value token shape {org_v_shape}')
+
 
     def quantize_attention_weights(self, attn_weights, group_size):
         mse = nn.MSELoss()

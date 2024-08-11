@@ -411,9 +411,9 @@ def main():
             dataset, seed=args.seed, model=args.model_path, seqlen=model.seqlen
         )
         testenc = testenc.input_ids
-        nsamples = testenc.numel() // model.seqlen
+        # nsamples = testenc.numel() // model.seqlen
         
-        # nsamples = 4
+        nsamples = 4
 
         use_cache = model.config.use_cache
         model.config.use_cache = False

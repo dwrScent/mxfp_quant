@@ -102,28 +102,29 @@ def outlier_value(n_bit, signed=True, exp_bit=2, exp_base=5):
                 
     return values
 
+
 @torch.no_grad()
-def get_quant(tensor_value, quant_grid, outlier_grid, normal_max, alpha=1.0, is_input=False, group_size=-1):
+def get_quant(tensor_value, quant_grid, outlier_grid, alpha=1.0, group_size=-1):
 
     org_shape = tensor_value.shape
     quant_grid = quant_grid.to(tensor_value.device)
     outlier_grid = outlier_grid.to(tensor_value.device)
     merge_grid = torch.cat((quant_grid, outlier_grid), dim=0)
 
-    # group support
-    if group_size > 0:
-        assert org_shape[-1] % group_size == 0
-        tensor_value = tensor_value.reshape(-1, group_size)
+    if group_size == -2:
+        tensor_value = tensor_value.view(-1)
 
-    max_quant_val = max(quant_grid)
-    scales = (normal_max * alpha) / max_quant_val
-    zeros = 0
+        mean = tensor_value.mean()
+        std = tensor_value.std()
+        normal_max = torch.maximum((mean + 3 * std).abs(), (mean - 3 * std).abs())
 
-    # argmin, find to index
-    if is_input:
+        max_quant_val = max(quant_grid)
+        scales = (normal_max * alpha) / max_quant_val
+        zeros = 0
+
         batch_num = 32
-        assert org_shape[0] % batch_num == 0
-        batch_size = org_shape[0] // batch_num
+        assert tensor_value.shape[0] % batch_num == 0
+        batch_size = tensor_value.shape[0] // batch_num
         tensor_q = torch.zeros_like(tensor_value)
         for idx in range(batch_num):
             tensor_par = tensor_value[idx*batch_size : (idx+1)*batch_size]
@@ -131,20 +132,34 @@ def get_quant(tensor_value, quant_grid, outlier_grid, normal_max, alpha=1.0, is_
             tensor_q_par = merge_grid[labels]
             tensor_q[idx*batch_size : (idx+1)*batch_size] = tensor_q_par
 
-    else:
+    
+    elif group_size >= -1:
+        if group_size > 0:
+            assert org_shape[-1] % group_size == 0
+            tensor_value = tensor_value.reshape(-1, group_size)
+        new_shape = tensor_value.shape
+
+        mean = tensor_value.mean(dim=1, keepdim=True)
+        std = tensor_value.std(dim=1, keepdim=True)
+        normal_max = torch.maximum((mean + 3 * std).abs(), (mean - 3 * std).abs())
+
+        max_quant_val = max(quant_grid)
+        scales = (normal_max * alpha) / max_quant_val
+        zeros = 0
+
         # Batch processing to avoid OOM
         batch_num = 32
-        assert org_shape[0] % batch_num == 0
-        batch_size = org_shape[0] // batch_num
+
+        assert tensor_value.shape[0] % batch_num == 0
+        batch_size = tensor_value.shape[0] // batch_num
         tensor_q = torch.zeros_like(tensor_value)
         for idx in range(batch_num):
             tensor_par = tensor_value[idx*batch_size : (idx+1)*batch_size, :]
             labels = (((tensor_par + zeros) / scales[idx*batch_size : (idx+1)*batch_size, :]).unsqueeze(-1) - merge_grid).abs().argmin(dim=-1)
             tensor_q_par = merge_grid[labels]
             tensor_q[idx*batch_size : (idx+1)*batch_size, :] = tensor_q_par
-    # activation is already reshape to (-1)
-    if not is_input:
-        tensor_q = tensor_q.view(-1)      
+        
+        tensor_q = tensor_q.view(-1)    
 
     # Outlier Victim Pair Encoding
     mask = tensor_q.abs() > 32
@@ -155,62 +170,42 @@ def get_quant(tensor_value, quant_grid, outlier_grid, normal_max, alpha=1.0, is_
     victim = victim_even | victim_odd
     tensor_q = tensor_q * (~victim)
 
-    if not is_input:
-        tensor_q = tensor_q.view(org_shape)
+    if group_size >= -1:
+        tensor_q = tensor_q.view(new_shape)
 
     tensor_deq = tensor_q * scales - zeros
 
-    # quant_mse = (tensor_deq - tensor_value).abs().pow(2)
-
     tensor_deq = tensor_deq.to(tensor_value.device).half()
-    tensor_value = tensor_value.reshape(org_shape)
+    tensor_deq = tensor_deq.reshape(org_shape)
+
     return tensor_deq
 
 def olive_quant(self, n_bit, weight, input, ant_config, group_size, layer_id, layer_name, exp_base=5, is_input=False):
 
-    assert group_size == -1, "OliVe use per-channel quantization for weight and per-tensor for activation"
+    # assert group_size == -1, "OliVe use per-channel quantization for weight and per-tensor for activation"
     mode_list = ant_config['ant_mode'].split('-')
 
-    # transform to float to avoid overflow in MSE compute
+    # For MSE computation
     org_output = torch.mm(input, weight.T).to(torch.float)
 
     int_grid = int_value(n_bit, signed=True)
     flint_grid = flint_value(n_bit, signed=True)
-    
-    # deal with outlier
-    if is_input:
-        if n_bit == 8:
-            outlier_grid = outlier_value(n_bit, signed=True, exp_bit=4)
-        else:
-            outlier_grid = outlier_value(n_bit, signed=True, exp_base=exp_base)
-        # outlier of the tensor
-        mean = input.mean()
-        std = input.std()
-        normal_max = torch.maximum((mean + 3 * std).abs(), (mean - 3 * std).abs())
-
-        # tensor-wise for activation quantization
-        org_shape = input.shape
-        final_tensor = torch.zeros_like(input, dtype=torch.half).to(input.device)
-        input = input.reshape(-1)
+    if n_bit == 8:
+        outlier_grid = outlier_value(n_bit, signed=True, exp_bit=4)
     else:
-        if n_bit == 8:
-            outlier_grid = outlier_value(n_bit, signed=True, exp_bit=4)
-        else:
-            outlier_grid = outlier_value(n_bit, signed=True, exp_base=exp_base)
-        # outlier of each channel
-        mean = weight.mean(dim=1, keepdim=True)
-        std = weight.std(dim=1, keepdim=True)
-        normal_max = torch.maximum((mean + 3 * std).abs(), (mean - 3 * std).abs())
+        outlier_grid = outlier_value(n_bit, signed=True, exp_base=exp_base)
 
+    if is_input:
+        tensor_value = input
+        final_tensor = torch.zeros_like(input, dtype=torch.half).to(input.device)
+    else:
+        tensor_value = weight
         final_tensor = torch.zeros_like(weight, dtype=torch.half).to(weight.device)
-
-    # print(mode_list, int_grid, outlier_grid)
-    # exit(0)
 
     min_mse = float('inf')
     best_mode = 'null'
     best_alpha = -1
-    # lower bound and upper bound of alpha
+    # Lower bound and upper bound of alpha
     lb = ant_config['w_low']
     ub = ant_config['w_high']
 
@@ -226,13 +221,10 @@ def olive_quant(self, n_bit, weight, input, ant_config, group_size, layer_id, la
         for i in range(lb, ub, 10):
             search_alpha = i * 0.01
 
+            tensor_deq = get_quant(tensor_value, quant_grid, outlier_grid, alpha=search_alpha, group_size=group_size)
             if is_input:
-                tensor_deq = get_quant(input, quant_grid, outlier_grid, normal_max, alpha=search_alpha, is_input=True)
-                # reshape from (-1) to (seq_len, hidden), for mm operation
-                tensor_deq = tensor_deq.reshape(org_shape)
                 deq_output = torch.mm(tensor_deq, weight.T).to(torch.float)
             else:
-                tensor_deq = get_quant(weight, quant_grid, outlier_grid, normal_max, alpha=search_alpha, is_input=False)
                 deq_output = torch.mm(input, tensor_deq.T).to(torch.float)
 
             mse = (deq_output - org_output).pow(2).mean()
@@ -254,10 +246,15 @@ def olive_quant(self, n_bit, weight, input, ant_config, group_size, layer_id, la
         self.weight_alpha = best_alpha
         quant_obj = 'weight'
     print(f"layer: {layer_id}, tensor: {layer_name}, {quant_obj} quant, best mode: {best_mode}, mse: {min_mse}, alpha: {best_alpha}, bit_width: {n_bit}")
+    # if is_input:
+    #     print(f"normal_max: {normal_max}, max: {input.max()}, deq_max: {final_tensor.max()}, deq_max  /normal_max: {final_tensor.max() / normal_max}, exp_base: {exp_base}")
+    # else:
+    #     print(f"normal_max.max(): {normal_max.max()}, max: {weight.max()}, deq_max: {final_tensor.max()}, deq_max  /normal_max.max(): {final_tensor.max() / normal_max.max()}, exp_base: {exp_base}")
+    
     if is_input:
-        print(f"normal_max: {normal_max}, max: {input.max()}, deq_max: {final_tensor.max()}, deq_max  /normal_max: {final_tensor.max() / normal_max}, exp_base: {exp_base}")
+        print(f"input max: {tensor_value.max()}, deq_max: {final_tensor.max()}, exp_base: {exp_base}")
     else:
-        print(f"normal_max.max(): {normal_max.max()}, max: {weight.max()}, deq_max: {final_tensor.max()}, deq_max  /normal_max.max(): {final_tensor.max() / normal_max.max()}, exp_base: {exp_base}")
+        print(f"weight max: {tensor_value.max()}, deq_max: {final_tensor.max()}, exp_base: {exp_base}")
 
     return final_tensor
 
@@ -282,6 +279,9 @@ class OliVe_Linear(nn.Module):
         self.input_quant_grid = None
         self.input_outlier_grid = None
         self.input_alpha = -1
+
+        self.tensor_wise_activation = True
+
 
         assert self.in_features % self.group_size == 0
 
@@ -313,61 +313,35 @@ class OliVe_Linear(nn.Module):
         input = x.reshape(-1, x.shape[-1])
 
         # if 'gate' in self.layer_name or 'q_proj' in self.layer_name or 'up' in self.layer_name or 'k_proj' in self.layer_name:
-        if 'mlp' in self.layer_name:
-            self.w_bit = 8
-            self.a_bit = 8
+        # if 'mlp' in self.layer_name:
+        #     self.w_bit = 8
+        #     self.a_bit = 8
 
         # Search and set data type and alpha during the first inference
         if self.weight_quant_grid is None:
-            if self.group_size > 0:
-                org_w_shape = self.weight.shape
-
-                # search the data type 
+            if self.group_size > -1:
+                # Channel-wise search
                 deq_weight = olive_quant(self, self.w_bit, self.weight, input, self.ant_config, -1, self.layer_id, self.layer_name, exp_base=5, is_input=False)
 
-                self.weight = self.weight.reshape(-1, self.group_size)
-
-                mean = self.weight.mean(dim=1, keepdim=True)
-                std = self.weight.std(dim=1, keepdim=True)
-                normal_max = torch.maximum((mean + 3 * std).abs(), (mean - 3 * std).abs())
-                
-
-                deq_weight = get_quant(self.weight, self.weight_quant_grid, self.weight_outlier_grid, normal_max, alpha=self.weight_alpha, is_input=False, group_size=self.group_size)
-                deq_weight = deq_weight.reshape(org_w_shape)
+                deq_weight = get_quant(self.weight, self.weight_quant_grid, self.weight_outlier_grid, alpha=self.weight_alpha, group_size=self.group_size)
                 self.weight = deq_weight
             else:
                 deq_weight = olive_quant(self, self.w_bit, self.weight, input, self.ant_config, -1, self.layer_id, self.layer_name, exp_base=5, is_input=False)
                 self.weight = deq_weight
-            # if self.layer_name == 'mlp.down_proj' and self.w_bit == 4:
-            if self.a_bit == 4:
-                # deq_input = olive_quant(self, self.a_bit, deq_weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, exp_base=7, is_input=True)
-                deq_input = olive_quant(self, self.a_bit, deq_weight, input, self.ant_config, -1, self.layer_id, self.layer_name, exp_base=5, is_input=True)
-            else:
-                deq_input = olive_quant(self, self.a_bit, deq_weight, input, self.ant_config, -1, self.layer_id, self.layer_name, exp_base=5, is_input=True)
-            
+
+            # Tensor-wise search
+            deq_input = olive_quant(self, self.a_bit, deq_weight, input, self.ant_config, -2, self.layer_id, self.layer_name, exp_base=7, is_input=True)
             print("olive search data type and alpha.")
             
         # quantize input based on the selected data type and alpha
         else:
-            mean = input.mean()
-            std = input.std()
-            normal_max = torch.maximum((mean + 3 * std).abs(), (mean - 3 * std).abs())
-            org_shape = input.shape
-            if self.group_size > 0:
-                input = input.reshape(-1, self.group_size)
-
-                mean = input.mean(dim=1, keepdim=True)
-                std = input.std(dim=1, keepdim=True)
-                normal_max = torch.maximum((mean + 3 * std).abs(), (mean - 3 * std).abs())
-
-                deq_input = get_quant(input, self.input_quant_grid, self.input_outlier_grid, normal_max, alpha=self.input_alpha, is_input=False, group_size=self.group_size)
-                deq_input = deq_input.reshape(org_shape)
+            # OliVe Tensor-wise quantization for activation
+            if self.tensor_wise_activation:
+                deq_input = get_quant(input, self.input_quant_grid, self.input_outlier_grid, alpha=self.input_alpha, group_size=-2)
             else:
-                deq_input = get_quant(input.view(-1), self.input_quant_grid, self.input_outlier_grid, normal_max, alpha=self.input_alpha, is_input=True)
-            deq_input = deq_input.reshape(org_shape)
+                deq_input = get_quant(input, self.input_quant_grid, self.input_outlier_grid, alpha=self.input_alpha, group_size=self.group_size)
 
         out = F.linear(deq_input, self.weight)
-
         out = out + self.bias if self.bias is not None else out
         return out.reshape(out_shape)
     

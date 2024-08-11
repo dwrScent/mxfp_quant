@@ -711,6 +711,10 @@ def make_quant_linear(
             elif quant_mode_config['quant_method'] == 'mokey':
                 from .qmodule_mokey import Mokey_Linear
                 q_linear = Mokey_Linear.from_linear(module, layer_id=i, layer_name=name)
+            elif quant_mode_config['quant_method'] == 'mxfp':
+                from .qmodule_mxfp import MXFP_Linear
+                q_linear = MXFP_Linear.from_linear(
+                    module, w_bit, a_bit, 32, i, name, init_only=False, ant_config=ant_config, quant_mode="fp4_e2m1")
             else:
                 pass
             q_linear.to(next(layer.parameters()).device)

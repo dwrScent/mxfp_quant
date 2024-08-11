@@ -14,7 +14,9 @@ from ..utils.make_distribution import group_dist
 from ..utils.cdf_graph import group_cdf, cdf_csv
 
 from ..quantize.quant_func import pseudo_quantize_giant
-from ..quantize.quant_func import pseudo_quantize_int
+from ..quantize.quant_func import pseudo_quantize_int, get_quant_grid
+from ..quantize.ant_quant import generate_quant_grid, ant_quantization
+
 
 _CONFIG_FOR_DOC = "LlamaConfig"
 
@@ -121,6 +123,8 @@ class LlamaAttention_giant(nn.Module):
         # self.v_update_mode = 'lazy_update'
         self.data_type = 'giant'
 
+        self.quant_grid_set = generate_quant_grid(n_bit=4, signed=True, ant_mode='float')
+
 
         self.reset_local_vars()
 
@@ -177,12 +181,19 @@ class LlamaAttention_giant(nn.Module):
         #     cdf_csv(key_states, 64, self.layer_idx, 'key', 1000, 512, 'cdf_key_group.csv')
 
         # Quantize query and key states
-        query_states = pseudo_quantize_int(query_states, n_bit=self.q_bit, zero_point=False, q_group_size=group_size)
+        if self.data_type == 'float':
+            quant_grid_set = generate_quant_grid(4, ant_mode='float')
+            query_states = get_quant_grid(query_states, quant_grid_set['float'], group_size, 1)
+        else:
+            query_states = pseudo_quantize_int(query_states, n_bit=self.q_bit, zero_point=False, q_group_size=group_size)
 
         if self.data_type == 'giant':
             key_states = pseudo_quantize_giant(key_states, n_bit=self.k_bit, zero_point=False, q_group_size=group_size)
         elif self.data_type == 'int':
             key_states = pseudo_quantize_int(key_states, n_bit=self.k_bit, zero_point=False, q_group_size=group_size)
+        elif self.data_type == 'float':
+            quant_grid_set = generate_quant_grid(4, ant_mode='float')
+            key_states = get_quant_grid(key_states, quant_grid_set['float'], group_size, 1)
         else:
             raise ImportError('not support yet')
         # key_states = quantized_part_deq
@@ -218,6 +229,9 @@ class LlamaAttention_giant(nn.Module):
                     quantized_part_deq = pseudo_quantize_giant(value_trans[:, (v_seq_len-group_size):], n_bit=self.v_bit, zero_point=False, q_group_size=group_size)
                 elif self.data_type == 'int':
                     quantized_part_deq = pseudo_quantize_int(value_trans[:, (v_seq_len-group_size):], n_bit=self.v_bit, zero_point=False, q_group_size=group_size)
+                elif self.data_type == 'float':
+                    quant_grid_set = generate_quant_grid(self.v_bit, ant_mode='float')
+                    quantized_part_deq = get_quant_grid(value_trans[:, (v_seq_len-group_size):], quant_grid_set['float'], group_size, 1)
                 else:
                     raise ImportError('not support yet')
 
@@ -278,6 +292,9 @@ class LlamaAttention_giant(nn.Module):
                 quantized_part_deq = pseudo_quantize_giant(quantized_part, n_bit=self.v_bit, zero_point=False, q_group_size=group_size)
             elif self.data_type == 'int':
                 quantized_part_deq = pseudo_quantize_int(quantized_part, n_bit=self.v_bit, zero_point=False, q_group_size=group_size)
+            elif self.data_type == 'float':
+                quant_grid_set = generate_quant_grid(4, ant_mode='float')
+                quantized_part_deq = get_quant_grid(quantized_part, quant_grid_set['float'], group_size, 1)
             else:
                 raise ImportError('not support yet')
             # # intervals = [0, 0.05, 0.25, 0.5, 1.0]
@@ -319,7 +336,11 @@ class LlamaAttention_giant(nn.Module):
         org_weight_shape = attn_weights.shape
         org_weights = attn_weights.clone()
         attn_weights = attn_weights.reshape(attn_weights.shape[1], -1)
-        attn_weights = pseudo_quantize_int(attn_weights, n_bit=self.q_bit, zero_point=False, q_group_size=group_size)
+        if self.data_type == 'float':
+            quant_grid_set = generate_quant_grid(4, ant_mode='float')
+            attn_weights = get_quant_grid(attn_weights, quant_grid_set['float'], group_size, 1)
+        else:
+            attn_weights = pseudo_quantize_int(attn_weights, n_bit=self.q_bit, zero_point=False, q_group_size=group_size)
         attn_weights = attn_weights.reshape(org_weight_shape)
         if self.print_stats:
             print(f"mse atten_weights: {mse(org_weights, attn_weights)}")
@@ -331,7 +352,11 @@ class LlamaAttention_giant(nn.Module):
         org_outputs_shape = attn_output.shape
         org_outputs = attn_output.clone()
         attn_output = attn_output.reshape(attn_output.shape[1], -1)
-        attn_output = pseudo_quantize_int(attn_output, n_bit=self.q_bit, zero_point=False, q_group_size=group_size)
+        if self.data_type == 'float':
+            quant_grid_set = generate_quant_grid(4, ant_mode='float')
+            attn_output = get_quant_grid(attn_output, quant_grid_set['float'], group_size, 1)
+        else:
+            attn_output = pseudo_quantize_int(attn_output, n_bit=self.q_bit, zero_point=False, q_group_size=group_size)
         attn_output = attn_output.reshape(org_outputs_shape)
         if self.print_stats:
             print(f"mse atten_outputs: {mse(org_outputs, attn_output)}")

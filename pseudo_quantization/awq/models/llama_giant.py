@@ -121,7 +121,8 @@ class LlamaAttention_giant(nn.Module):
         self.v_bit = config.v_bit
         # self.v_group_elem_num = 0
         # self.v_update_mode = 'lazy_update'
-        self.data_type = 'giant'
+        # self.data_type = 'giant'
+        self.data_type = 'float'
 
         self.quant_grid_set = generate_quant_grid(n_bit=4, signed=True, ant_mode='float')
 
@@ -202,7 +203,7 @@ class LlamaAttention_giant(nn.Module):
         query_states = query_states.reshape(org_q_shape)
         key_states = key_states.reshape(org_k_shape)
         if self.print_stats:
-            print(f"mse q: {mse(org_q, query_states)} mse k: {mse(org_k, key_states)} q_bit: {self.q_bit} k_bit: {self.k_bit} group_size: {self.group_size}")
+            print(f"mse q: {mse(org_q, query_states)} mse k: {mse(org_k, key_states)} q_bit: {self.q_bit} k_bit: {self.k_bit} group_size: {self.group_size} quant_dtype: {self.data_type}")
         
         return query_states, key_states
     
@@ -265,7 +266,7 @@ class LlamaAttention_giant(nn.Module):
                 value_states = value_states.reshape(v_cache_shape[0], v_cache_shape[2], v_cache_shape[1], v_cache_shape[3]).transpose(1, 2)
             
             if self.print_stats:
-                print(f"decode mse v: {mse(org_v, value_states)} v_bit: {self.v_bit} q_group_size: {self.group_size}")
+                print(f"decode mse v: {mse(org_v, value_states)} v_bit: {self.v_bit} q_group_size: {self.group_size} quant_dtype: {self.data_type}")
 
             return value_states
         
@@ -323,7 +324,7 @@ class LlamaAttention_giant(nn.Module):
             # exit(0)
 
             if self.print_stats:
-                print(f"prefill mse v: {mse(org_v, value_states)}  v_bit: {self.v_bit} q_group_size: {self.group_size}")
+                print(f"prefill mse v: {mse(org_v, value_states)}  v_bit: {self.v_bit} q_group_size: {self.group_size} quant_dtype: {self.data_type}")
 
             return value_states
 
@@ -343,7 +344,7 @@ class LlamaAttention_giant(nn.Module):
             attn_weights = pseudo_quantize_int(attn_weights, n_bit=self.q_bit, zero_point=False, q_group_size=group_size)
         attn_weights = attn_weights.reshape(org_weight_shape)
         if self.print_stats:
-            print(f"mse atten_weights: {mse(org_weights, attn_weights)}")
+            print(f"mse atten_weights: {mse(org_weights, attn_weights)} quant_dtype: {self.data_type}")
 
         return attn_weights
 
@@ -359,7 +360,7 @@ class LlamaAttention_giant(nn.Module):
             attn_output = pseudo_quantize_int(attn_output, n_bit=self.q_bit, zero_point=False, q_group_size=group_size)
         attn_output = attn_output.reshape(org_outputs_shape)
         if self.print_stats:
-            print(f"mse atten_outputs: {mse(org_outputs, attn_output)}")
+            print(f"mse atten_outputs: {mse(org_outputs, attn_output)} quant_dtype: {self.data_type}")
         return attn_output
     
     def forward(

@@ -280,7 +280,6 @@ class OliVe_Linear(nn.Module):
         self.input_outlier_grid = None
         self.input_alpha = -1
 
-        self.tensor_wise_activation = True
 
 
         assert self.in_features % self.group_size == 0
@@ -336,10 +335,9 @@ class OliVe_Linear(nn.Module):
         # quantize input based on the selected data type and alpha
         else:
             # OliVe Tensor-wise quantization for activation
-            if self.tensor_wise_activation:
-                deq_input = get_quant(input, self.input_quant_grid, self.input_outlier_grid, alpha=self.input_alpha, group_size=-2)
-            else:
-                deq_input = get_quant(input, self.input_quant_grid, self.input_outlier_grid, alpha=self.input_alpha, group_size=self.group_size)
+            deq_input = get_quant(input, self.input_quant_grid, self.input_outlier_grid, alpha=self.input_alpha, group_size=-2)
+
+            # deq_input = get_quant(input, self.input_quant_grid, self.input_outlier_grid, alpha=self.input_alpha, group_size=self.group_size)
 
         out = F.linear(deq_input, self.weight)
         out = out + self.bias if self.bias is not None else out

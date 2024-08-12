@@ -139,7 +139,7 @@ def build_model_and_enc(model_path):
         print("Loading pre-computed quantized weights...")
 
         with init_empty_weights():
-            if quant_mode_config['quant_method'] =='giant' and quant_mode_config['quant_kv']:
+            if quant_mode_config['quant_kv']:
                 kwargs_init = {"device_map": "balanced", "torch_dtype": torch.float16}
                 # kv cache quantization configuration
                 config.a_bit = args.a_bit
@@ -203,7 +203,7 @@ def build_model_and_enc(model_path):
         kwargs = {"device_map": "balanced", "torch_dtype": torch.float16}
 
         # modify the attention layer
-        if (quant_mode_config['quant_method'] =='giant' or quant_mode_config['quant_method'] =='int') and quant_mode_config['quant_kv']:
+        if quant_mode_config['quant_kv']:
             print('quant KV Cache')
             config.a_bit = args.a_bit
             config.w_bit = args.w_bit
@@ -411,9 +411,9 @@ def main():
             dataset, seed=args.seed, model=args.model_path, seqlen=model.seqlen
         )
         testenc = testenc.input_ids
-        # nsamples = testenc.numel() // model.seqlen
+        nsamples = testenc.numel() // model.seqlen
         
-        nsamples = 4
+        # nsamples = 4
 
         use_cache = model.config.use_cache
         model.config.use_cache = False

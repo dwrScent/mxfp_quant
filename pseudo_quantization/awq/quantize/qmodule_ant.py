@@ -170,7 +170,7 @@ class ANT_Linear(nn.Module):
                 quant_grid_set = generate_quant_grid(self.w_bit, ant_mode=self.weight_mode)
                 deq_weight = get_quant_grid(self.weight, quant_grid_set[self.weight_mode], self.group_size, 1)
 
-            # search alpha and mode for activation
+            # Tensor-wise search
             deq_input = ant_quant(self, self.a_bit, deq_weight, input, self.ant_config, -2, self.layer_id, self.layer_name, is_input=True)
 
             deq_input = input

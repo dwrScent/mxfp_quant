@@ -161,7 +161,11 @@ def get_quant_mxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_grou
     assert torch.isnan(tensor_value).sum() == 0
     org_shape = tensor_value.shape
     quant_grid = quant_grid.to(tensor_value.device)
-    
+
+    if q_group_size > 0:
+        assert org_shape[-1] % q_group_size == 0
+        tensor_value = tensor_value.reshape(-1, q_group_size)
+
     zero_point = False
 
     if zero_point:
@@ -200,8 +204,8 @@ def get_quant_mxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_grou
 
     # Batch processing to avoid OOM
     batch_num = 4
-    assert org_shape[0] % batch_num == 0
-    batch_size = org_shape[0] // batch_num
+    assert tensor_value.shape[0] % batch_num == 0
+    batch_size = tensor_value.shape[0] // batch_num
     tensor_deq = torch.zeros_like(tensor_value)
     for idx in range(batch_num):
         tensor_par = tensor_value[idx*batch_size : (idx+1)*batch_size, :]
@@ -218,6 +222,8 @@ def get_quant_mxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_grou
     assert torch.isnan(tensor_deq).sum() == 0
     assert torch.isnan(scales).sum() == 0
     assert torch.isnan(quant_mse).sum() == 0
+
+    tensor_deq = tensor_deq.reshape(org_shape)
 
     if get_labels:
         return tensor_deq, quant_mse_sum, labels, quant_grid * scales

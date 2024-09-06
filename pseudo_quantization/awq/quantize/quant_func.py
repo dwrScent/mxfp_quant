@@ -175,15 +175,12 @@ def get_quant_mxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_grou
             # max_quant_val = max(abs(quant_grid)) * 2
         max_quant_val = max(quant_grid)
         min_quant_val = min(quant_grid)
-        scales = (max_val - min_val).clamp(min=1e-5) / (max_quant_val - min_quant_val)
+        exp = torch.floor(torch.log2((max_val - min_val).clamp(min=1e-5))) / torch.floor(torch.log2(max_quant_val - min_quant_val))
+        scales = torch.pow(2, exp)
         # fp16 z.p.
         # zeros = (- (max_quant_val + min_quant_val)) / 2  
         zeros = (- (max_val + min_val)) / 2
-        
-        # low-bit z.p.
-        
-        # zeros = (-torch.round(min_val / scales)).clamp_(min_quant_val, max_quant_val)
-        # quant_grid = quant_grid + max(abs(quant_grid))
+
     else:
         max_val = tensor_value.abs().amax(dim=1, keepdim=True)
 
@@ -197,10 +194,16 @@ def get_quant_mxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_grou
         # Compute the scaling factor
         # pow(2, math.floor(math.log2(25)) - math.floor(math.log2(6)))
         exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
+        # exp = torch.ceil(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
         # scales = (max_val * alpha) / max_quant_val
         scales = torch.pow(2, exp)
-        # print(scales)
+
+        # exp_max_val = torch.floor(torch.log2(max_val))
+        # mask = torch.where(tensor_value > torch.pow(2, exp_max_val), torch.tensor(1), torch.tensor(0))
+
         zeros = 0
+
+    # org_value = tensor_value.clone()
 
     # Batch processing to avoid OOM
     batch_num = 4
@@ -213,7 +216,7 @@ def get_quant_mxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_grou
         tensor_q_par = quant_grid[labels] * scales[idx*batch_size : (idx+1)*batch_size, :] - zeros
         tensor_deq[idx*batch_size : (idx+1)*batch_size, :] = tensor_q_par
 
-
+    # tensor_deq = org_value * mask + tensor_deq * (1-mask)
     quant_mse = (tensor_deq-tensor_value).abs().pow(2).to(torch.float32)
     quant_mse_sum = torch.mean(quant_mse, dim=1, keepdim=True)
 

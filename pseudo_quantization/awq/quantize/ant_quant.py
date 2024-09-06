@@ -56,7 +56,7 @@ def int_value(n_bit, signed=True):
         values += [-i for i in range(1, 2 ** B)]
         values.append(-2 ** B)
     values.remove(-8)
-    return values
+    return torch.tensor(values)
 
 def pot_value(n_bit, signed=True):
     B = n_bit - 1 if signed else n_bit

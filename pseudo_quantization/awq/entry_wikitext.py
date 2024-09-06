@@ -218,7 +218,7 @@ def build_model_and_enc(model_path):
                 model_path, config=config, **kwargs)
 
         # weight quantization
-        if args.w_bit and args.w_bit != -1 and args.w_bit < 16:
+        if args.w_bit and args.w_bit != -1:
             if args.q_backend == "fake":
                 # assert args.dump_quant is None, \
                 #     "Need to use real quantization to dump quantized weights"

@@ -111,10 +111,10 @@ outlier_config = {
 }
 
 def extract_bitwidths(quantization_string):
-    w_bits = int(re.search(r'w(\d+)', quantization_string).group(1))
-    a_bits = int(re.search(r'a(\d+)', quantization_string).group(1))
-    k_bits = int(re.search(r'k(\d+)', quantization_string).group(1))
-    v_bits = int(re.search(r'v(\d+)', quantization_string).group(1))
+    w_bits = int(re.search(r'w(-?\d+)', quantization_string).group(1))
+    a_bits = int(re.search(r'a(-?\d+)', quantization_string).group(1))
+    k_bits = int(re.search(r'k(-?\d+)', quantization_string).group(1))
+    v_bits = int(re.search(r'v(-?\d+)', quantization_string).group(1))
     return w_bits, a_bits, k_bits, v_bits
 
 args.w_bit, args.a_bit, args.k_bit, args.v_bit = extract_bitwidths(args.quant_bit_width)
@@ -413,7 +413,7 @@ def main():
         testenc = testenc.input_ids
         nsamples = testenc.numel() // model.seqlen
         
-        # nsamples = 4
+        # nsamples = 8
 
         use_cache = model.config.use_cache
         model.config.use_cache = False

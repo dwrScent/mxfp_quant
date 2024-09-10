@@ -134,7 +134,7 @@ def get_quant_grid(tensor_value, quant_grid, group_size, alpha=1.0):
         zeros = 0
 
         # Batch processing to avoid OOM
-        batch_num = 32
+        batch_num = 1
         assert tensor_value.shape[0] % batch_num == 0
         batch_size = tensor_value.shape[0] // batch_num
         tensor_deq = torch.zeros_like(tensor_value)

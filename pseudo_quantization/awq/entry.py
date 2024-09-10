@@ -111,10 +111,10 @@ outlier_config = {
 }
 
 def extract_bitwidths(quantization_string):
-    w_bits = int(re.search(r'w(\d+)', quantization_string).group(1))
-    a_bits = int(re.search(r'a(\d+)', quantization_string).group(1))
-    k_bits = int(re.search(r'k(\d+)', quantization_string).group(1))
-    v_bits = int(re.search(r'v(\d+)', quantization_string).group(1))
+    w_bits = int(re.search(r'w(-?\d+)', quantization_string).group(1))
+    a_bits = int(re.search(r'a(-?\d+)', quantization_string).group(1))
+    k_bits = int(re.search(r'k(-?\d+)', quantization_string).group(1))
+    v_bits = int(re.search(r'v(-?\d+)', quantization_string).group(1))
     return w_bits, a_bits, k_bits, v_bits
 
 args.w_bit, args.a_bit, args.k_bit, args.v_bit = extract_bitwidths(args.quant_bit_width)
@@ -201,7 +201,7 @@ def build_model_and_enc(model_path):
         kwargs = {"device_map": "balanced", "torch_dtype": torch.float16}
 
         # modify the attention layer
-        if quant_mode_config['quant_method'] =='giant' and quant_mode_config['quant_kv']:
+        if quant_mode_config['quant_kv']:
             config.a_bit = args.a_bit
             config.w_bit = args.w_bit
             config.k_bit = args.k_bit
@@ -224,7 +224,7 @@ def build_model_and_enc(model_path):
                 model_path, config=config, **kwargs)
 
         # weight quantization
-        if args.w_bit and args.w_bit != -1 and args.w_bit < 16:
+        if args.w_bit and args.w_bit != -1:
             if args.q_backend == "fake":
                 # assert args.dump_quant is None, \
                 #     "Need to use real quantization to dump quantized weights"

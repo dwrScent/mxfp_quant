@@ -10,8 +10,8 @@ OPTION=${8:-"quant"}
 DESC=${9:-""}
 
 # MODEL=/localssd/wmhu/models/llama-${MODEL_SIZE}b-hf-transformers-4.29
-MODEL=/localssd/wmhu/models//llama-2-${MODEL_SIZE}b-hf
-OUTPUT_NAME=llama-${MODEL_SIZE}b
+MODEL=/localssd/wmhu/models/llama-2-${MODEL_SIZE}b-hf
+OUTPUT_NAME=llama-2-${MODEL_SIZE}b
 
 
 if [ "$OPTION" == "load" ]; then
@@ -22,7 +22,7 @@ elif [ "$OPTION" == "dump" ]; then
     mkdir -p quant_cache
     EXTRA_OPTION="--dump_quant quant_cache/$OUTPUT_NAME-w4-g$GROUP_SIZE-$QUANT_MODE"
 elif [ "$OPTION" == "quant" ]; then
-    OUTPUT_DIR=output/output_llama2_hpca_motivation
+    OUTPUT_DIR=output/output_llama2_mxfp_test
     EXTRA_OPTION=""
 else
     echo "Invalid option: $OPTION. Only 'load', 'dump', and 'quant' are supported."

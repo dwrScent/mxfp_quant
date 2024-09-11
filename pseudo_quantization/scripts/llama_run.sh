@@ -6,8 +6,9 @@ QUANT_MODE=${4:-"ant"}
 ANT_MODE=${5:-"int"}
 GROUP_SIZE=${6:-"-1"}
 QUANT_BIT_WIDTH=${7:-"w4a8k16v16"}
-OPTION=${8:-"quant"}
-DESC=${9:-""}
+MXFP_MODE=${8:-"w-base-a-base"}
+OPTION=${9:-"quant"}
+DESC=${10:-""}
 
 # MODEL=/cephfs/shared/model/llama-${MODEL_SIZE}b-hf-transformers-4.29
 MODEL=/localssd/wmhu/models/llama-${MODEL_SIZE}b-hf-transformers-4.29
@@ -37,6 +38,7 @@ python -m awq.entry --model_path $MODEL \
     --q_backend fake \
     --no_zero_point \
     --quant_mode $QUANT_MODE \
+    --mxfp $MXFP_MODE \
     --ant_mode $ANT_MODE \
     --q_group_size $GROUP_SIZE \
     | tee $OUTPUT_DIR/${OUTPUT_NAME}_${TASKS}_${QUANT_BIT_WIDTH}_${SHOTS}shots_${QUANT_MODE}_${ANT_MODE}_g${GROUP_SIZE}_${DESC}_$(date +%m%d%H%M).log 2>&1

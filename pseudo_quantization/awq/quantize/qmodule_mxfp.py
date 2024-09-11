@@ -424,6 +424,10 @@ class MXFP_Linear(nn.Module):
 
         self.search_tag = None
 
+        # MXFP param
+        self.weight_mxfp_mode = ant_config['weight_mxfp_mode']
+        self.input_mxfp_mode = ant_config['input_mxfp_mode']
+
 
         assert self.in_features % self.group_size == 0
 
@@ -465,9 +469,18 @@ class MXFP_Linear(nn.Module):
 
         assert mxfp_linear.group_size == 32
             
-
         return mxfp_linear
     
+    def _quantize_data(self, data, mode, quant_grid, n_bit, exp_base):
+        quantize_methods = {
+            'base': lambda: get_quant_mxfp(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size),
+            'scale_search': lambda: mxfp_search(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size),
+            'dtype_search': lambda: dtype_search_v2(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size),
+            'dtype_search_olive': lambda: dtype_search_olive(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, n_bit=n_bit, exp_base=exp_base),
+            'naive_adapt': lambda: mxfp_direct(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, n_bit=n_bit),
+        }
+        return quantize_methods.get(mode, lambda: NotImplementedError(f'not support this mxfp mode: {mode}'))()
+
     @torch.no_grad()
     def forward(self, x):
         out_shape = x.shape[:-1] + (self.out_features, )
@@ -476,33 +489,25 @@ class MXFP_Linear(nn.Module):
         # Search and set data type and alpha in the first inference
         if self.search_tag is None:
             if self.w_bit < 16:
-                deq_weight, _ = get_quant_mxfp(self.weight, quant_grid=self.weight_quant_grid, mode=None, zero_point=False, q_group_size=self.group_size)
-                # deq_weight, _ = mxfp_search(self.weight, quant_grid=self.weight_quant_grid, mode=None, zero_point=False, q_group_size=self.group_size)
-                # deq_weight, _ = dtype_search(self.weight, quant_grid=self.weight_quant_grid, mode=None, zero_point=False, q_group_size=self.group_size)
-                # deq_weight, _ = dtype_search_v2(self.weight, quant_grid=self.weight_quant_grid, mode=None, zero_point=False, q_group_size=self.group_size)
-                # deq_weight, _ = dtype_search_olive(self.weight, quant_grid=self.weight_quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, n_bit=self.w_bit, exp_base=5)
-
-                # deq_weight, _ = mxfp_direct(self.weight, quant_grid=self.weight_quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, n_bit=self.w_bit)
+                deq_weight, _ = self._quantize_data(self.weight, self.weight_mxfp_mode, self.weight_quant_grid, self.w_bit, 5)
 
             else:
                 deq_weight = self.weight
             
             # Quantize weight only once
             self.weight = deq_weight
-            deq_input = input
+
+            if self.a_bit < 16:
+                deq_input, _ = self._quantize_data(input, self.input_mxfp_mode, self.input_quant_grid, self.a_bit, 7)
+            else:
+                deq_input = input
+                
             self.search_tag = 1
 
         # quantize input based on the selected data type and alpha
         else:
             if self.a_bit < 16:
-                deq_input, _ = get_quant_mxfp(input, quant_grid=self.input_quant_grid, mode=None, zero_point=False, q_group_size=self.group_size)
-                # deq_input, _ = mxfp_search(input, quant_grid=self.input_quant_grid, mode=None, zero_point=False, q_group_size=self.group_size)
-                # deq_input, _ = dtype_search(input, quant_grid=self.input_quant_grid, mode=None, zero_point=False, q_group_size=self.group_size)
-                # deq_input, _ = dtype_search_v2(input, quant_grid=self.input_quant_grid, mode=None, zero_point=False, q_group_size=self.group_size)
-                # deq_input, _ = dtype_search_olive(input, quant_grid=self.input_quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, n_bit=self.a_bit, exp_base=7)
-
-                # deq_input, _ = mxfp_direct(input, quant_grid=self.input_quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, n_bit=self.a_bit)
-
+                deq_input, _ = self._quantize_data(input, self.input_mxfp_mode, self.input_quant_grid, self.a_bit, 7)
 
             else:
                 deq_input = input

@@ -65,6 +65,7 @@ parser.add_argument('--mse_type', type=str, default="weight")
 parser.add_argument('--ant_asym', type=int, default=0)
 parser.add_argument('--w_low', type=int, default=75)
 parser.add_argument('--w_high', type=int, default=150)
+parser.add_argument('--mxfp_mode', type=str, default="w-base-a-base")
 
 parser.add_argument('--outlier_type', type=str, default="none")
 parser.add_argument('--outlier_ratio', type=float, default=-1.0)
@@ -97,12 +98,25 @@ quant_mode_config = {
     "quant_method": args.quant_mode,
     "quant_kv": False,
 }
+def parse_mxfp_modes(mode_str):
+    pattern = r'w-(\w+)-a-(\w+)'
+    match = re.match(pattern, mode_str)
+    if match:
+        weight_mxfp_mode = match.group(1)
+        input_mxfp_mode = match.group(2)
+        return weight_mxfp_mode, input_mxfp_mode
+    else:
+        raise ValueError(f"Invalid mode string: {mode_str}")
+
+weight_mxfp_mode, input_mxfp_mode = parse_mxfp_modes(args.mxfp_mode)  
 ant_config = {
     "ant_mode": args.ant_mode,  
     "ant_search_granularity": 1,  
     "w_low": args.w_low,
     "w_high": args.w_high,
     "ant_asym": args.ant_asym,
+    "weight_mxfp_mode": weight_mxfp_mode,
+    "input_mxfp_mode": input_mxfp_mode,
 }
 outlier_config = {
     "method": args.outlier_type,  

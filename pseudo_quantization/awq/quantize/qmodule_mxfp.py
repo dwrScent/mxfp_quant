@@ -126,7 +126,7 @@ def mxfp_search(tensor_value, quant_grid, mode="int", zero_point=True, q_group_s
 
     zeros = 0
 
-    org_value = tensor_value.clone()
+    # org_value = tensor_value.clone()
 
     # Batch processing to avoid OOM
     batch_num = 4
@@ -474,10 +474,10 @@ class MXFP_Linear(nn.Module):
         # Search and set data type and alpha in the first inference
         if self.search_tag is None:
             if self.w_bit < 16:
-                # deq_weight, _ = get_quant_mxfp(self.weight, quant_grid=self.weight_quant_grid, mode=None, zero_point=False, q_group_size=self.group_size)
+                deq_weight, _ = get_quant_mxfp(self.weight, quant_grid=self.weight_quant_grid, mode=None, zero_point=False, q_group_size=self.group_size)
                 # deq_weight, _ = mxfp_search(self.weight, quant_grid=self.weight_quant_grid, mode=None, zero_point=False, q_group_size=self.group_size)
                 # deq_weight, _ = dtype_search(self.weight, quant_grid=self.weight_quant_grid, mode=None, zero_point=False, q_group_size=self.group_size)
-                deq_weight, _ = dtype_search_v2(self.weight, quant_grid=self.weight_quant_grid, mode=None, zero_point=False, q_group_size=self.group_size)
+                # deq_weight, _ = dtype_search_v2(self.weight, quant_grid=self.weight_quant_grid, mode=None, zero_point=False, q_group_size=self.group_size)
                 # deq_weight, _ = dtype_search_olive(self.weight, quant_grid=self.weight_quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, n_bit=self.w_bit, exp_base=5)
 
                 # deq_weight, _ = mxfp_direct(self.weight, quant_grid=self.weight_quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, n_bit=self.w_bit)
@@ -493,12 +493,13 @@ class MXFP_Linear(nn.Module):
         # quantize input based on the selected data type and alpha
         else:
             if self.a_bit < 16:
-                # deq_input, _ = get_quant_mxfp(input, quant_grid=self.input_quant_grid, mode=None, zero_point=False, q_group_size=self.group_size)
+                deq_input, _ = get_quant_mxfp(input, quant_grid=self.input_quant_grid, mode=None, zero_point=False, q_group_size=self.group_size)
                 # deq_input, _ = mxfp_search(input, quant_grid=self.input_quant_grid, mode=None, zero_point=False, q_group_size=self.group_size)
                 # deq_input, _ = dtype_search(input, quant_grid=self.input_quant_grid, mode=None, zero_point=False, q_group_size=self.group_size)
+                # deq_input, _ = dtype_search_v2(input, quant_grid=self.input_quant_grid, mode=None, zero_point=False, q_group_size=self.group_size)
                 # deq_input, _ = dtype_search_olive(input, quant_grid=self.input_quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, n_bit=self.a_bit, exp_base=7)
 
-                deq_input, _ = mxfp_direct(input, quant_grid=self.input_quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, n_bit=self.a_bit)
+                # deq_input, _ = mxfp_direct(input, quant_grid=self.input_quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, n_bit=self.a_bit)
 
 
             else:

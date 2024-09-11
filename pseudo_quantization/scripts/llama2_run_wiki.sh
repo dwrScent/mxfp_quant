@@ -43,4 +43,4 @@ python -m awq.entry_wikitext --model_path $MODEL \
     --mxfp $MXFP_MODE \
     --ant_mode $ANT_MODE \
     --q_group_size $GROUP_SIZE \
-    | tee $OUTPUT_DIR/${OUTPUT_NAME}_${TASKS}_${QUANT_BIT_WIDTH}_${SHOTS}shots_${QUANT_MODE}_${ANT_MODE}_g${GROUP_SIZE}_${DESC}_$(date +%m%d%H%M).log 2>&1
+    | tee $OUTPUT_DIR/${OUTPUT_NAME}_${TASKS}_${QUANT_BIT_WIDTH}_${SHOTS}shots_${QUANT_MODE}_${ANT_MODE}_g${GROUP_SIZE}_${MXFP_MODE}_${DESC}_$(date +%m%d%H%M).log 2>&1

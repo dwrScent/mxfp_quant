@@ -151,7 +151,8 @@ def mxfp_search(tensor_value, quant_grid, mode="int", zero_point=True, q_group_s
     quant_mse_up = (tensor_deq_up-tensor_value).abs().pow(2).mean(dim=1, keepdim=True).to(torch.float32)
 
 
-    mask_down = torch.where(quant_mse_down < quant_mse_up, torch.tensor(1), torch.tensor(0))
+    # mask_down = torch.where(quant_mse_down < quant_mse_up, torch.tensor(1), torch.tensor(0))
+    mask_down = torch.where(quant_mse_down < quant_mse_up, torch.tensor(1, device=tensor_value.device, dtype=torch.int), torch.tensor(0, device=tensor_value.device, dtype=torch.int))
     tensor_deq = tensor_deq_down * mask_down + tensor_deq_up * (1 - mask_down)
     quant_mse_sum = quant_mse_down * mask_down + quant_mse_up * (1 - mask_down)
     scales = scales_down * mask_down + scales_up * (1 - mask_down)
@@ -305,7 +306,8 @@ def mxfp_search_olive(tensor_value, quant_grid, mode="int", zero_point=True, q_g
     quant_mse_up = (tensor_deq_up-tensor_value).abs().pow(2).mean(dim=1, keepdim=True).to(torch.float32)
 
 
-    mask_down = torch.where(quant_mse_down < quant_mse_up, torch.tensor(1), torch.tensor(0))
+    # mask_down = torch.where(quant_mse_down < quant_mse_up, torch.tensor(1), torch.tensor(0))
+    mask_down = torch.where(quant_mse_down < quant_mse_up, torch.tensor(1, device=tensor_value.device, dtype=torch.int), torch.tensor(0, device=tensor_value.device, dtype=torch.int))
     tensor_deq = tensor_deq_down * mask_down + tensor_deq_up * (1 - mask_down)
     quant_mse_sum = quant_mse_down * mask_down + quant_mse_up * (1 - mask_down)
     scales = scales_down * mask_down + scales_up * (1 - mask_down)

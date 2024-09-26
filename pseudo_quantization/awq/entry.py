@@ -1,4 +1,7 @@
 from lm_eval import evaluator
+from lm_eval.models.huggingface import HFLM
+from lm_eval.utils import handle_non_serializable, make_table, simple_parse_args_string
+
 from transformers import AutoModelForCausalLM, AutoTokenizer, AutoConfig, AutoModelForSeq2SeqLM
 import torch
 import argparse
@@ -13,7 +16,7 @@ from accelerate import (
 )
 from awq.utils.parallel import auto_parallel
 from awq.quantize.quantizer import pseudo_quant_output_mse, make_quant_linear,pseudo_quantize_model_weight
-from awq.utils.lm_eval_adaptor import LMEvalAdaptor
+# from awq.utils.lm_eval_adaptor import LMEvalAdaptor
 from awq.utils.utils import simple_dispatch_model
 
 import datetime
@@ -301,7 +304,8 @@ def main():
     # a hack here to auto set model group
     model, enc = build_model_and_enc(args.model_path)
 
-    lm_eval_model = LMEvalAdaptor(args.model_path, model, enc, args.batch_size)
+    # lm_eval_model = LMEvalAdaptor(args.model_path, model, enc, args.batch_size)
+    lm_eval_model = HFLM(pretrained=model, batch_size=args.batch_size)
     
     if args.tasks is not None:
         if args.tasks == "mmlu" :
@@ -385,12 +389,13 @@ def main():
                 model=lm_eval_model,
                 tasks=task_names,
                 batch_size=args.batch_size,
-                no_cache=True,
+                # no_cache=True,
                 num_fewshot=args.num_fewshot,
                 # limit=2,
             )
             print_time('Task finish!')
-            print(evaluator.make_table(results))
+            # print(evaluator.make_table(results))
+            print(make_table(results))
 
 if __name__ == '__main__':
     main()

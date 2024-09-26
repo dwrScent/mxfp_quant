@@ -16,7 +16,7 @@ dependencies = [
     "accelerate", "sentencepiece", "tokenizers>=0.12.1",
     "torch==2.0.1", "torchvision", 
     "transformers>=4.28.0", 
-    "lm_eval==0.3.0"
+    "lm_eval==0.4.4"
 ]
 
 [tool.setuptools.packages.find]

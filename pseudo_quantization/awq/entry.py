@@ -2,6 +2,8 @@ from lm_eval import evaluator
 from lm_eval.models.huggingface import HFLM
 from lm_eval.utils import handle_non_serializable, make_table, simple_parse_args_string
 
+from datasets import load_dataset
+
 from transformers import AutoModelForCausalLM, AutoTokenizer, AutoConfig, AutoModelForSeq2SeqLM
 import torch
 import argparse
@@ -21,7 +23,8 @@ from awq.utils.utils import simple_dispatch_model
 
 import datetime
 import re
-
+import tqdm
+from torch import nn
 
 from awq.models.opt_giant import OPTForCausalLM_giant
 from awq.models.bloom_giant import BloomForCausalLM_giant
@@ -379,7 +382,37 @@ def main():
             print("Category Average: acc = {}\n".format(float(sum(total_acc_list))/sum(task_num_list)))
             print("Category Average: acc_norm = {}\n".format(float(sum(total_acc_norm_list))/sum(task_num_list)))
 
-                    
+
+        # https://github.com/IST-DASLab/gptq/blob/2d65066eeb06a5c9ff5184d8cebdf33662c67faf/llama.py#L206
+        elif args.tasks in ['wikitext', 'c4', 'ptb']:
+            from .utils.dataload_utils import get_loaders
+            model.seqlen = 2048
+            _, testenc = get_loaders(args.tasks, model=args.model_path, seqlen=model.seqlen)
+            
+            testenc = testenc.input_ids.to(model.device)
+            nsamples = testenc.numel() // model.seqlen
+            model = model.eval()
+            nlls = []
+            for i in tqdm.tqdm(range(nsamples), desc="evaluating..."):
+                batch = testenc[:, (i * model.seqlen) : ((i + 1) * model.seqlen)].to(
+                    model.device
+                )
+                with torch.no_grad():
+                    lm_logits = model(batch).logits
+                shift_logits = lm_logits[:, :-1, :].contiguous().float()
+                shift_labels = testenc[
+                    :, (i * model.seqlen) : ((i + 1) * model.seqlen)
+                ][:, 1:]
+                loss_fct = nn.CrossEntropyLoss()
+                loss = loss_fct(
+                    shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1)
+                )
+                neg_log_likelihood = loss.float() * model.seqlen
+                nlls.append(neg_log_likelihood)
+
+            ppl = torch.exp(torch.stack(nlls).sum() / (nsamples * model.seqlen))
+            print(ppl.item())    
+
         else:
             # do other evaluations
             print_time('Start a task')

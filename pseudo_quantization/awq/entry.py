@@ -158,9 +158,9 @@ def build_model_and_enc(model_path):
     if args.load_quant:  # directly load quantized weights
         print("Loading pre-computed quantized weights...")
         with init_empty_weights():
-            kwargs_init = {"device_map": "balanced", "torch_dtype": torch.float16}
 
-            if quant_mode_config['quant_method'] =='giant' and quant_mode_config['quant_kv']:
+            if quant_mode_config['quant_kv']:
+                kwargs_init = {"device_map": "balanced", "torch_dtype": torch.float16}
                 config.a_bit = args.a_bit
                 config.w_bit = args.w_bit
                 config.k_bit = args.k_bit
@@ -186,6 +186,7 @@ def build_model_and_enc(model_path):
         model.tie_weights()
 
         # Infer device map
+        max_memory = {0: '38GiB', 1:'38GiB', 2: '38GiB', 3:'38GiB', 'cpu':'30GiB'}
         kwargs = {"max_memory": max_memory} if len(max_memory) else {}
         device_map = infer_auto_device_map(
             model,
@@ -210,6 +211,7 @@ def build_model_and_enc(model_path):
         )
         # Dispatch model
         model = simple_dispatch_model(model, device_map=device_map)
+        print(model, device_map, max_memory)
 
         if quant_mode_config['quant_method'] in ['ant', 'olive', 'int', 'mokey', 'giant', 'mxfp']:
             make_quant_linear(
@@ -311,7 +313,8 @@ def main():
     lm_eval_model = HFLM(pretrained=model, batch_size=args.batch_size)
     
     if args.tasks is not None:
-        if args.tasks == "mmlu" :
+        # TODO: lm-eval 0.4.0 does not need the prefix hendrycksTest. This part can be updated.
+        if args.tasks == "mmlu":
             # do evaluation on the Massive Multitask Language Understanding dataset
             task_dict = {"STEM":[], "humanities":[], "social sciences":[], "other (business, health, misc.)":[]}
             with open(os.getcwd() + '/awq/mmlu_data/categories.json', 'r') as f:
@@ -357,7 +360,7 @@ def main():
                         model=lm_eval_model,
                         tasks=task_names,
                         batch_size=args.batch_size,
-                        no_cache=True,
+                        # no_cache=True,
                         num_fewshot=args.num_fewshot,
                     )
                     # print(results)
@@ -382,9 +385,8 @@ def main():
             print("Category Average: acc = {}\n".format(float(sum(total_acc_list))/sum(task_num_list)))
             print("Category Average: acc_norm = {}\n".format(float(sum(total_acc_norm_list))/sum(task_num_list)))
 
-
-        # https://github.com/IST-DASLab/gptq/blob/2d65066eeb06a5c9ff5184d8cebdf33662c67faf/llama.py#L206
         elif args.tasks in ['wikitext', 'c4', 'ptb']:
+        # https://github.com/IST-DASLab/gptq/blob/2d65066eeb06a5c9ff5184d8cebdf33662c67faf/llama.py#L206
             from .utils.dataload_utils import get_loaders
             model.seqlen = 2048
             _, testenc = get_loaders(args.tasks, model=args.model_path, seqlen=model.seqlen)

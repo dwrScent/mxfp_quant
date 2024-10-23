@@ -62,11 +62,18 @@ def mxfp_direct(tensor_value, quant_grid, mode="int", zero_point=True, q_group_s
         mapping_list[mode] = (idx+1)
 
     max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+    assert torch.isnan(max_val).sum() == 0
+
+    max_val = torch.clamp(max_val, min=1e-5)
     mantissa_judge = max_val / torch.pow(2, torch.floor(torch.log2(max_val)))
+    assert torch.isnan(mantissa_judge).sum() == 0
 
     data_type_identify = torch.where(mantissa_judge < 1.125, mapping_list['pot'], data_type_identify)
     data_type_identify = torch.where((mantissa_judge >= 1.125) & (mantissa_judge < 1.625), mapping_list['float'], data_type_identify)
     data_type_identify = torch.where(mantissa_judge >= 1.625, mapping_list['int'], data_type_identify)
+
+    # print(mantissa_judge, data_type_identify, torch.sum(data_type_identify == 0), mapping_list)
+
 
     assert torch.sum(data_type_identify == 0) == 0
 

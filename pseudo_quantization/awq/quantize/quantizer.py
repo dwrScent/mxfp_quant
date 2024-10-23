@@ -13,7 +13,7 @@ from ..utils.cdf_graph import group_cdf, cdf_csv, pdf_csv
 from ..utils.plot_mean import group_mean_variance
 import math
 import kmeans_parallel
-from .kmeans import ant_kmeans_quant
+# from .kmeans import ant_kmeans_quant
 
 from transformers.models.opt.modeling_opt import OPTForCausalLM
 from transformers.models.llama.modeling_llama import LlamaForCausalLM

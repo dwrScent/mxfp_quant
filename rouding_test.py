@@ -198,7 +198,8 @@ def gemm_with_compensation(tensor_value: torch.float16, weight: torch.float16, q
     exponent = (tensor_value_int >> 10) & 0x1F  # 提取 5-bit exponent
     exponent_tmp = torch.where(exponent - 15 >= 0, exponent - 15, 0) # 有 2 个 2^0 的 case
     exponent_value = torch.pow(2, exponent_tmp)  
-    print(exponent_value)
+    
+    # print(exponent_value)
 
     # BUG: 最大值 rounding 方向的问题会影响这里的计算，要注意
     for i in range (M):
@@ -218,7 +219,9 @@ def gemm_with_compensation(tensor_value: torch.float16, weight: torch.float16, q
                 partial_sum_compensate += ((quantized_value[i][k]+compensate_value) * weight[k][j])
             output_tensor[i][j] = partial_sum * scales[i][0]
             output_tensor_compensate[i][j] = partial_sum_compensate * scales[i][0]
-    print(output_tensor, output_tensor_compensate)
+    # print('quantized output', output_tensor)
+    # print('output with compensate', output_tensor_compensate)
+    return output_tensor_compensate
 
 
 
@@ -235,7 +238,7 @@ tensor_deq, scales, rounding_mask_from_quant = get_quant_mxfp(X, quant_grid, q_g
 # 使用 bitwise 方法验证舍入方向
 rounding_mask_bitwise = get_rounding_mask_bitwise(X, scales, q_group_size=32, quant_grid=quant_grid)
 
-gemm_with_compensation(X, weight, q_group_size=32, quant_grid=quant_grid)
+output_tensor_compensate = gemm_with_compensation(X, weight, q_group_size=32, quant_grid=quant_grid)
 
 # 验证结果
 matching_mask = (rounding_mask_from_quant == rounding_mask_bitwise)
@@ -249,4 +252,6 @@ print(f"Mismatch percentage: {100 * num_mismatch / total_elements:.4f}%")
 output_golden = torch.matmul(X, weight)
 output_dequant = torch.matmul(tensor_deq, weight)
 
-print(output_golden, output_dequant)
+print('Init Output  ----->   ', output_golden)
+print('Quantized Output  ----->   ', output_dequant)
+print('Quantized Output with Compensation  ----->   ', output_tensor_compensate)

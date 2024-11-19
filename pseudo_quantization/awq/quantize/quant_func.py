@@ -204,6 +204,29 @@ def get_quant_mxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_grou
         zeros = 0
 
     # org_value = tensor_value.clone()
+    keep_outlier = True
+    if keep_outlier:
+        outlier_mask = torch.zeros_like(tensor_value, dtype=torch.bool).to(tensor_value.device)
+        _, indices = torch.topk(tensor_value.abs(), 1)
+        outlier_mask.scatter_(1, indices, 1)
+
+        # 对每 3 个 group，保留第 3 行（index % 3 == 2），其他两行清零
+        # mask = torch.arange(outlier_mask.shape[0], device=outlier_mask.device) % 3 != 0
+        # outlier_mask[mask] = 0
+
+        # 使用 olive 的方法得到 victim 的位置
+        # victim_odd = torch.roll(outlier_mask.view(-1), 1, -1)
+        # victim_odd[::2] = 0
+        # victim_even = torch.roll(outlier_mask.view(-1) & (~victim_odd), -1, -1)
+        # victim_even[1::2] = 0
+        # non_victim_mask = ~(victim_even | victim_odd)
+        # non_victim_mask = non_victim_mask.reshape(tensor_value.shape)
+
+        # print(outlier_mask.shape[0], "Original outlier_mask count of 1s:", outlier_mask.sum().item())
+        org_tensor = tensor_value.clone()
+        tensor_value = tensor_value * ~outlier_mask
+        # tensor_value = tensor_value * non_victim_mask
+
 
     # Batch processing to avoid OOM
     batch_num = 4
@@ -221,6 +244,9 @@ def get_quant_mxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_grou
     quant_mse_sum = torch.mean(quant_mse, dim=1, keepdim=True)
 
     # print('test', tensor_deq, scales, quant_mse, quant_mse_sum, quant_mse_sum.max())
+    if keep_outlier:
+        tensor_deq = tensor_deq * ~outlier_mask + org_tensor * outlier_mask
+
 
     assert torch.isnan(tensor_deq).sum() == 0
     assert torch.isnan(scales).sum() == 0

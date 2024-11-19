@@ -14,8 +14,11 @@ def encode_gen_no_zero(w_bit, return_list=False, a_stride=5):
     for coefficient in range(0, 128, a_stride):
         coefficient_list.append(coefficient)
     # supply some specific data type, merge them after removing duplicates
-    supply_list = [0, 5, 17, 20]
-    supply_list = [0, 17]
+    supply_list = []
+    if a_stride == 10:
+        # supply_list = [0, 5, 17, 20]
+        # supply_list = [0, 17]
+        supply_list = [5, 17]
     merged_list = list(set(coefficient_list + supply_list))
 
     codebook_dict = {}
@@ -159,17 +162,36 @@ class GIANT_Linear(nn.Module):
     @classmethod
     def from_linear(cls, linear, w_bit, a_bit, group_size, layer_id, layer_name, quant_kv, init_only=False, ant_config=None):
 
-        awq_linear = cls(w_bit, a_bit, group_size, linear.in_features, linear.out_features, linear.bias is not None, linear.weight.device, ant_config, layer_id, layer_name, quant_kv)
+        mant_linear = cls(w_bit, a_bit, group_size, linear.in_features, linear.out_features, linear.bias is not None, linear.weight.device, ant_config, layer_id, layer_name, quant_kv)
         if init_only:  # just prepare for loading sd
-            return awq_linear
+            return mant_linear
 
-        awq_linear.weight = linear.weight.data.clone().half()
+        mant_linear.weight = linear.weight.data.clone().half()
         if linear.bias is not None:
-            awq_linear.bias = linear.bias.clone().half()
+            mant_linear.bias = linear.bias.clone().half()
 
         if w_bit > 6:
-            awq_linear.ant_config['ant_mode'] = 'int'
-        return awq_linear
+            mant_linear.ant_config['ant_mode'] = 'int'
+        
+        use_8bit_fusion = False
+        # use_8bit_fusion = True
+        # If 8-bit fusion is enabled, configure accordingly
+        if use_8bit_fusion:
+            layer_8bits_name = 'q,k,v,up'  # Example of 8-bit fusion layers
+            full_layer_mapping = {
+                'q': 'self_attn.q_proj', 'k': 'self_attn.k_proj', 'v': 'self_attn.v_proj', 'o': 'self_attn.out_proj',
+                'up': 'mlp.up_proj', 'gate': 'mlp.gate_proj', 'down': 'mlp.down_proj',
+                'fc1': 'fc1', 'fc2': 'fc2'
+            }
+            # Convert the comma-separated names into a list
+            specified_8bit_layers = layer_8bits_name.split(',')
+            matching_full_names = [full_layer_mapping[layer] for layer in specified_8bit_layers if layer in full_layer_mapping]
+            is_8bit_layer = any(full_name == layer_name for full_name in matching_full_names)
+
+            if is_8bit_layer:
+                mant_linear.a_bit = 8
+
+        return mant_linear
     
     @torch.no_grad()
     def forward(self, x):
@@ -180,11 +202,22 @@ class GIANT_Linear(nn.Module):
 
         # print(self.layer_id, self.layer_name,'before forward move', input.device, self.weight.device)
 
+        # if self.layer_name == 'mlp.up_proj' or self.layer_name == 'mlp.gate_proj' or self.layer_name == 'mlp.down_proj' or self.layer_name == 'self_attn.q_proj' or self.layer_name == 'self_attn.k_proj' or self.layer_name == 'self_attn.v_proj':
+        # if self.layer_name == 'mlp.up_proj' or self.layer_name == 'mlp.gate_proj' or self.layer_name == 'mlp.down_proj' or self.layer_name == 'self_attn.q_proj' or self.layer_name == 'self_attn.k_proj':
+        # if self.layer_name == 'mlp.up_proj' or self.layer_name == 'mlp.gate_proj' or self.layer_name == 'self_attn.q_proj' or self.layer_name == 'self_attn.k_proj' or self.layer_name == 'self_attn.v_proj':
+        # if self.layer_name == 'fc1' or self.layer_name == 'self_attn.q_proj' or self.layer_name == 'self_attn.k_proj' or self.layer_name == 'self_attn.v_proj':
+        #     self.a_bit = 8
+        
+        # if self.layer_id >= 16 and self.layer_name == 'self_attn.out_proj':
+        #     self.a_bit = 8
+
+
         # quantize activation to INT8
         if self.a_bit < 16 and self.a_bit != -1:
             # input = pseudo_quantize_int(input, n_bit=8, zero_point=False, q_group_size=self.group_size)
 
-            input = pseudo_quantize_int(input, n_bit=self.a_bit, zero_point=False, q_group_size=self.group_size)
+            # input = pseudo_quantize_int(input, n_bit=self.a_bit, zero_point=False, q_group_size=self.group_size)
+            input = pseudo_quantize_int(input, n_bit=self.a_bit, zero_point=False, q_group_size=-1)
 
             # best_mse = float('inf')
             # best_alpha = 1.0
@@ -206,6 +239,8 @@ class GIANT_Linear(nn.Module):
         # if self.quant_kv:
         #     if self.layer_name == 'self_attn.k_proj' or self.layer_name == 'self_attn.v_proj':
         #         out = pseudo_quantize_int(out, n_bit=self.w_bit, zero_point=False, q_group_size=self.group_size)
+
+        print(f"layer: {self.layer_id}, tensor: {self.layer_name}, a bit_width: {self.a_bit} group: {self.group_size}")
 
         out = out + self.bias if self.bias is not None else out
 

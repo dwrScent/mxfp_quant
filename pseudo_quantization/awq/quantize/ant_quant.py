@@ -4,7 +4,6 @@ import numpy as np
 import os,sys
 import datetime
 from ..utils.make_distribution import  outlier_ratio_stat
-from .outlier import handle_outlier
 
 def print_time(print_str):
     timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')

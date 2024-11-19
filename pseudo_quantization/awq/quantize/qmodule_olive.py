@@ -280,8 +280,6 @@ class OliVe_Linear(nn.Module):
         self.input_outlier_grid = None
         self.input_alpha = -1
 
-
-
         assert self.in_features % self.group_size == 0
 
         self.register_buffer('weight', torch.zeros((out_features, in_features), dtype=torch.float16, device=dev))
@@ -294,51 +292,51 @@ class OliVe_Linear(nn.Module):
     @classmethod
     def from_linear(cls, linear, w_bit, a_bit, group_size, layer_id, layer_name, init_only=False, ant_config=None):
 
-        awq_linear = cls(w_bit, a_bit, group_size, linear.in_features, linear.out_features, linear.bias is not None, linear.weight.device, ant_config, layer_id, layer_name)
+        olive_linear = cls(w_bit, a_bit, group_size, linear.in_features, linear.out_features, linear.bias is not None, linear.weight.device, ant_config, layer_id, layer_name)
         if init_only:  # just prepare for loading sd
-            return awq_linear
+            return olive_linear
 
-        awq_linear.weight = linear.weight.data.clone().half()
+        olive_linear.weight = linear.weight.data.clone().half()
         if linear.bias is not None:
-            awq_linear.bias = linear.bias.clone().half()
+            olive_linear.bias = linear.bias.clone().half()
 
         if w_bit > 6:
-            awq_linear.ant_config['ant_mode'] = 'int'
-        return awq_linear
+            olive_linear.ant_config['ant_mode'] = 'int'
+        return olive_linear
     
     @torch.no_grad()
     def forward(self, x):
         out_shape = x.shape[:-1] + (self.out_features, )
         input = x.reshape(-1, x.shape[-1])
 
-        # if 'gate' in self.layer_name or 'q_proj' in self.layer_name or 'up' in self.layer_name or 'k_proj' in self.layer_name:
-        # if 'mlp' in self.layer_name:
-        #     self.w_bit = 8
-        #     self.a_bit = 8
-
         # Search and set data type and alpha during the first inference
         if self.weight_quant_grid is None:
+            # Group-wise quantization
             if self.group_size > -1:
                 # Channel-wise search
                 deq_weight = olive_quant(self, self.w_bit, self.weight, input, self.ant_config, -1, self.layer_id, self.layer_name, exp_base=5, is_input=False)
 
-                deq_weight = get_quant(self.weight, self.weight_quant_grid, self.weight_outlier_grid, alpha=self.weight_alpha, group_size=self.group_size)
+                deq_weight = get_quant(self.weight, self.weight_quant_grid, self.weight_outlier_grid, alpha=1.0, group_size=self.group_size)
+                # deq_weight = get_quant(self.weight, self.weight_quant_grid, self.weight_outlier_grid, alpha=self.weight_alpha, group_size=self.group_size)
                 self.weight = deq_weight
             else:
                 deq_weight = olive_quant(self, self.w_bit, self.weight, input, self.ant_config, -1, self.layer_id, self.layer_name, exp_base=5, is_input=False)
                 self.weight = deq_weight
 
+            if self.group_size > -1:
+                deq_input = olive_quant(self, self.a_bit, deq_weight, input, self.ant_config, -2, self.layer_id, self.layer_name, exp_base=5, is_input=True)
             # Tensor-wise search
-            deq_input = olive_quant(self, self.a_bit, deq_weight, input, self.ant_config, -2, self.layer_id, self.layer_name, exp_base=7, is_input=True)
+            else:
+                deq_input = olive_quant(self, self.a_bit, deq_weight, input, self.ant_config, -2, self.layer_id, self.layer_name, exp_base=7, is_input=True)
             print("olive search data type and alpha.")
             
-        # quantize input based on the selected data type and alpha
+        # Quantize input based on the selected data type and alpha
         else:
-            # OliVe Tensor-wise quantization for activation
-            deq_input = get_quant(input, self.input_quant_grid, self.input_outlier_grid, alpha=self.input_alpha, group_size=-2)
-
-            # deq_input = get_quant(input, self.input_quant_grid, self.input_outlier_grid, alpha=self.input_alpha, group_size=self.group_size)
-
+            if self.group_size > -1:    
+                deq_input = get_quant(input, self.input_quant_grid, self.input_outlier_grid, alpha=self.input_alpha, group_size=self.group_size)
+            else:
+                # OliVe Tensor-wise quantization for activation
+                deq_input = get_quant(input, self.input_quant_grid, self.input_outlier_grid, alpha=self.input_alpha, group_size=-2)
         out = F.linear(deq_input, self.weight)
         out = out + self.bias if self.bias is not None else out
         return out.reshape(out_shape)

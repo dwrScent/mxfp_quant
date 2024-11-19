@@ -2,18 +2,12 @@ import torch
 import torch.nn as nn
 from tqdm import tqdm
 import gc
-from .qmodule import ScaledActivation
 from ..utils.module import set_op_by_name
 
 from transformers.models.bloom.modeling_bloom import BloomBlock
 import os
 from .ant_quant import ant_quantization, ant_quantization_search, meta_flint_set
-from ..utils.make_distribution import group_dist_outlier, group_dist, make_heat_map, outlier_ratio_stat, outlier_count
-from ..utils.cdf_graph import group_cdf, cdf_csv, pdf_csv
-from ..utils.plot_mean import group_mean_variance
 import math
-import kmeans_parallel
-# from .kmeans import ant_kmeans_quant
 
 from transformers.models.opt.modeling_opt import OPTForCausalLM
 from transformers.models.llama.modeling_llama import LlamaForCausalLM
@@ -25,62 +19,21 @@ import copy
 EMBEDDING_KEYWORDS = ["embed"]
 LM_HEAD_KEYWORDS = ["lm_head", "embed_out", "output"]
 
-def scale_activations(module):
-    param = next(module.parameters())
-    dtype = param.dtype
-    device = param.device
-    if isinstance(module, BloomBlock):
-        if isinstance(module.mlp.gelu_impl, ScaledActivation):
-            return
-        c = module.mlp.dense_h_to_4h.out_features
-        act = ScaledActivation(
-            module.mlp.gelu_impl, 
-            torch.ones(c, dtype=dtype, device=device)
-        )
-        set_op_by_name(module, "mlp.gelu_impl", act)
-    elif 'mptblock' in str(module.__class__.__name__).lower():
-        if isinstance(module.ffn.act, ScaledActivation):
-            return
-        c = module.ffn.up_proj.out_features
-        act = ScaledActivation(
-            module.ffn.act, 
-            torch.ones(c, dtype=dtype, device=device)
-        )
-        set_op_by_name(module, "ffn.act", act)
-    elif 'falcon' in str(module.__class__).lower():
-        if isinstance(module.mlp.act, ScaledActivation):
-            return
-        c = module.mlp.dense_h_to_4h.out_features
-        act = ScaledActivation(
-            module.mlp.act, 
-            torch.ones(c, dtype=dtype, device=device)
-        )
-        set_op_by_name(module, "mlp.act", act)
-    elif 'bigcode' in str(module.__class__).lower():
-        if isinstance(module.mlp.act, ScaledActivation):
-            return
-        c = module.mlp.c_proj.out_features
-        act = ScaledActivation(
-            module.mlp.act, 
-            torch.ones(c, dtype=dtype, device=device)
-        )
-        set_op_by_name(module, "mlp.act", act)
-    elif 'neox' in str(module.__class__).lower():
-        if isinstance(module.mlp.act, ScaledActivation):
-            return
-        c = module.mlp.dense_h_to_4h.out_features
-        act = ScaledActivation(
-            module.mlp.act, 
-            torch.ones(c, dtype=dtype, device=device)
-        )
-        set_op_by_name(module, "mlp.act", act)
 
 def pseudo_quantize_tensor(
     w, n_bit=8, zero_point=True, q_group_size=-1, inplace=False, get_scale_zp=False
 ):
     org_w_shape = w.shape
+    # Padding if the last dimension is not divisible by q_group_size
     if q_group_size > 0:
-        assert org_w_shape[-1] % q_group_size == 0
+        # assert org_w_shape[-1] % q_group_size == 0
+        if org_w_shape[-1] % q_group_size != 0:
+            # return tensor
+            padding = (q_group_size - org_w_shape[-1] % q_group_size) % q_group_size
+            # Padding is only added to the last dimension
+            w = torch.nn.functional.pad(w, (0, padding), "constant", 0)
+            # torch.set_printoptions(profile="full")
+            print(f'padding last dimension from {org_w_shape[-1]} to {w.shape[-1]}')
         w = w.reshape(-1, q_group_size)
     assert w.dim() == 2
     if zero_point:
@@ -112,7 +65,14 @@ def pseudo_quantize_tensor(
         ) * scales
     assert torch.isnan(w).sum() == 0
 
-    w = w.reshape(org_w_shape)
+    # Remove padding to restore original shape
+    if org_w_shape[-1] % q_group_size != 0:
+        w = w.reshape(-1, org_w_shape[-1] + padding)
+        w = w[:, :org_w_shape[-1]]  
+    else:
+        w = w.reshape(org_w_shape)
+
+    # w = w.reshape(org_w_shape)
 
     if get_scale_zp:
         return w, scales.view(w.shape[0], -1), zeros.view(w.shape[0], -1)
@@ -130,46 +90,6 @@ def pseudo_quantize_model_weight(
     for i in tqdm(range(len(layers)), desc="pseudo weight quantization..."):
         named_linears = get_named_linears(layers[i])
         for n, m in named_linears.items():
-            if n == 'self_attn.q_proj':
-                # cdf_csv(m.weight.data, -2, i, n, 1000, 1, 'cdf_data_tensor.csv')  
-                pdf_csv(m.weight.data, -2, i, n, 1000, 1, 'pdf_data_tensor.csv')  
-
-                if i >= 12 and i <= 15:
-                    # cdf_csv(m.weight.data, -1, i, n, 1000, 64, 'cdf_data_chan.csv')  
-                    pdf_csv(m.weight.data, -1, i, n, 1000, 64, 'pdf_data_chan.csv')  
-                if i >= 12 and i <= 15:
-                    # cdf_csv(m.weight.data, 64, i, n, 1000, 1024, 'cdf_data_group.csv')  
-                    pdf_csv(m.weight.data, 256, i, n, 1000, 1024, 'pdf_data_group.csv')  
-
-                # Draw cdf
-                # if i >= 8 and i < 15:
-                #     print(m.weight.data.shape)
-                #     group_cdf(m.weight.data, -2, i, n, 1000, 'tensor', 1, accumulate=True)
-                #     group_cdf(m.weight.data, -1, i, n, 4096, 'chan', 1024,  accumulate=True)
-
-                #     # group_mean_variance(m.weight.data, -2, i, n, 1000, 'tensor', 1, accumulate=True)
-                #     # group_mean_variance(m.weight.data, -1, i, n, 4096, 'chan', 1024,  accumulate=True)
-
-                #     if 'mlp' in n:
-                #         group_cdf(m.weight.data, 64, i, n, 4096, 'group', 65536,  accumulate=True)
-                #         # group_mean_variance(m.weight.data, 64, i, n, 4096, 'group', 65536,  accumulate=True)
-                #     else:
-                #         group_cdf(m.weight.data, 64, i, n, 4096, 'group', 65536,  accumulate=True)
-                #         # group_mean_variance(m.weight.data, 64, i, n, 4096, 'group', 65536,  accumulate=True)
-                # elif i == 15:
-                #     group_cdf(m.weight.data, -2, i, n, 1000, 'tensor', 1, accumulate=True, plot_final=True)
-                #     group_cdf(m.weight.data, -1, i, n, 4096, 'chan', 1024,  accumulate=True, plot_final=True)
-
-                #     # group_mean_variance(m.weight.data, -2, i, n, 1000, 'tensor', 1, accumulate=True, plot_final=True)
-                #     # group_mean_variance(m.weight.data, -1, i, n, 4096, 'chan', 1024,  accumulate=True, plot_final=True)
-
-                #     if 'mlp' in n:
-                #         group_cdf(m.weight.data, 64, i, n, 4096, 'group', 65536,  accumulate=True, plot_final=True)
-                #         # group_mean_variance(m.weight.data, 64, i, n, 4096, 'group', 65536,  accumulate=True, plot_final=True)
-                #     else:
-                #         group_cdf(m.weight.data, 64, i, n, 4096, 'group', 65536,  accumulate=True, plot_final=True)
-                #         # group_mean_variance(m.weight.data, 64, i, n, 4096, 'group', 65536,  accumulate=True, plot_final=True)
-
             m.weight.data = pseudo_quantize_tensor(
                 m.weight.data, n_bit=w_bit, **q_config
             )
@@ -188,7 +108,6 @@ def pseudo_quant_stats(
 ):
     from ..utils.calib_data import get_calib_dataset
     from .pre_quant import get_blocks, get_named_linears
-    from .kmeans import use_kmeans_quantization
     from .ant_quant import generate_quant_grid, get_quant_weight
     from .qmodule_giant import encode_gen, encode_gen_no_zero
 
@@ -331,15 +250,12 @@ def pseudo_quant_stats(
                     # for mode in ["weighted_kmeans"]:
     
                     for idx, mode in enumerate(mode_list):
-                        if mode != "weighted_kmeans":
-                            quant_grid = quant_grid_set[mode]
-                            quant_grid, _ = quant_grid.sort()
-                            print(quant_grid)
-                            w_group_deq, _, labels, _ = get_quant_weight(org_group_w, quant_grid, mode=mode, q_group_size=group_size, get_labels=True)
-                            # w_group_deq, _ = get_quant_weight(org_group_w, quant_grid, mode=mode, q_group_size=group_size)
-                            w_group_deq = w_group_deq.half()
-                        else:
-                            w_group_deq = use_kmeans_quantization(org_group_w, w_bit=w_bit, x_feature=x_feature, zero_point=False, q_group_size=group_size, outlier_config=None, max_iter=max_iter)
+                        quant_grid = quant_grid_set[mode]
+                        quant_grid, _ = quant_grid.sort()
+                        print(quant_grid)
+                        w_group_deq, _, labels, _ = get_quant_weight(org_group_w, quant_grid, mode=mode, q_group_size=group_size, get_labels=True)
+                        # w_group_deq, _ = get_quant_weight(org_group_w, quant_grid, mode=mode, q_group_size=group_size)
+                        w_group_deq = w_group_deq.half()
 
                         deq_group_output = torch.mm(x, w_group_deq.T)
 
@@ -476,7 +392,6 @@ def pseudo_quant_output_mse(
 ):
     from ..utils.calib_data import get_calib_dataset
     from .pre_quant import get_blocks, get_named_linears
-    from .kmeans import use_kmeans_quantization
     from .ant_quant import generate_quant_grid, get_quant_weight
     from .qmodule_giant import encode_gen, encode_gen_no_zero
 
@@ -609,12 +524,9 @@ def pseudo_quant_output_mse(
                     # for mode in ["weighted_kmeans"]:
     
                     for idx, mode in enumerate(mode_list):
-                        if mode != "weighted_kmeans":
-                            quant_grid = quant_grid_set[mode]
-                            w_group_deq, _ = get_quant_weight(org_group_w, quant_grid, mode=mode, q_group_size=group_size)
-                            w_group_deq = w_group_deq.half()
-                        else:
-                            w_group_deq = use_kmeans_quantization(org_group_w, w_bit=w_bit, x_feature=x_feature, zero_point=False, q_group_size=group_size, outlier_config=None, max_iter=max_iter)
+                        quant_grid = quant_grid_set[mode]
+                        w_group_deq, _ = get_quant_weight(org_group_w, quant_grid, mode=mode, q_group_size=group_size)
+                        w_group_deq = w_group_deq.half()
 
                         deq_group_output = torch.mm(x, w_group_deq.T)
                         mse = (deq_group_output - org_group_output).pow(2).mean(0, keepdim=True)
@@ -679,7 +591,6 @@ def make_quant_linear(
     model, w_bit, a_bit, q_config, ant_config=None, outlier_config=None, quant_mode_config=None,
     init_only=False
 ):
-    from .qmodule import WQLinear
     from .pre_quant import get_blocks, get_named_linears
     # assert q_config["zero_point"], "We only support zero_point quantization now."
     
@@ -689,7 +600,6 @@ def make_quant_linear(
     for i in tqdm(range(len(layers)), desc=" make quant linear..." + ("(init only)" if init_only else "")):
         layer = layers[i]
         named_linears = get_named_linears(layer)
-        scale_activations(layer)
         for name, module in named_linears.items():
             # module.cuda()
             if quant_mode_config['quant_method'] == 'ant':

@@ -160,7 +160,7 @@ def build_model_and_enc(model_path):
         with init_empty_weights():
 
             if quant_mode_config['quant_kv']:
-                kwargs_init = {"device_map": "balanced", "torch_dtype": torch.float16}
+                kwargs = {"device_map": "balanced", "torch_dtype": torch.float16}
                 config.a_bit = args.a_bit
                 config.w_bit = args.w_bit
                 config.k_bit = args.k_bit
@@ -317,9 +317,9 @@ def main():
         if args.tasks == "mmlu":
             # do evaluation on the Massive Multitask Language Understanding dataset
             task_dict = {"STEM":[], "humanities":[], "social sciences":[], "other (business, health, misc.)":[]}
-            with open(os.getcwd() + '/awq/mmlu_data/categories.json', 'r') as f:
+            with open(os.getcwd() + '/awq/utils/mmlu_data/categories.json', 'r') as f:
                 categories = json.loads(f.read())
-            with open(os.getcwd() + '/awq/mmlu_data/subcategories.json', 'r') as f:
+            with open(os.getcwd() + '/awq/utils/mmlu_data/subcategories.json', 'r') as f:
                 subcategories = json.loads(f.read())
             
 

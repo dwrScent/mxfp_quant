@@ -37,58 +37,6 @@ def rounding_error_mask(value_a: torch.float16, rounding_direction_mask=None):
 
     return rounding_err_mask
 
-def get_quant_mxfp(tensor_value, quant_grid, q_group_size=32, print_stat=False):
-    """
-    Simplified quantization function with rounding direction tracking, considering the sign bit.
-    Returns tensor_deq and rounding_mask.
-    """
-    assert torch.isnan(tensor_value).sum() == 0
-    org_shape = tensor_value.shape
-    quant_grid = quant_grid.to(tensor_value.device)
-
-    if q_group_size > 0:
-        assert org_shape[-1] % q_group_size == 0
-        tensor_value = tensor_value.reshape(-1, q_group_size)
-
-    # Compute the scaling factor
-    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
-    max_quant_val = max(quant_grid)
-    exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
-    scales = torch.pow(2, exp)
-    zeros = 0
-
-    # Perform quantization
-    labels = (((tensor_value + zeros) / scales).unsqueeze(-1) - quant_grid).abs().argmin(dim=-1)
-    tensor_deq = quant_grid[labels] * scales - zeros
-
-    # Compute rounding mask, considering sign bit
-    quant_tensor = (tensor_value + zeros) / scales
-    quantized_value = quant_grid[labels]
-
-    # Initialize rounding_mask: -1 for round down, 1 for round up
-    rounding_mask = torch.zeros_like(quant_tensor, dtype=torch.int8)
-
-    # Positive values
-    positive_mask = tensor_value >= 0
-    rounding_mask[positive_mask & (quant_tensor < quantized_value)] = 1   # Round up
-    rounding_mask[positive_mask & (quant_tensor > quantized_value)] = -1  # Round down
-
-    # Negative values
-    negative_mask = tensor_value < 0
-    rounding_mask[negative_mask & (quant_tensor > quantized_value)] = 1   # Round up
-    rounding_mask[negative_mask & (quant_tensor < quantized_value)] = -1  # Round down
-
-    tensor_deq = tensor_deq.reshape(org_shape)
-    # rounding_mask = rounding_mask.reshape(org_shape)
-    assert torch.isnan(tensor_deq).sum() == 0
-    assert torch.isinf(tensor_deq).sum() == 0
-    
-    # print(torch.sum(rounding_mask == 0))
-    if print_stat:
-        print(rounding_mask)
-
-    return tensor_deq, scales, rounding_mask
-
 def get_rounding_mask_bitwise(tensor_value, scales, q_group_size=32, quant_grid=None, print_stat=False):
     """
     Determine rounding direction for each element using bit operation.
@@ -179,7 +127,7 @@ def get_rounding_mask_bitwise(tensor_value, scales, q_group_size=32, quant_grid=
 
     # exit(0)
 
-    return rounding_direction
+    return rounding_direction.reshape(org_shape)
 
 def gemm_with_compensation(tensor_value: torch.float16, weight: torch.float16, q_group_size=32, quant_grid=None, print_stat=False):
     assert torch.isnan(tensor_value).sum() == 0
@@ -315,59 +263,28 @@ def gemm_with_compensation_gpu(tensor_value: torch.float16, weight: torch.float1
 
     return output_deq + output_compensate
 
-def inject_outlier(tensor, outlier_fraction=0.01, outlier_range=(100, 300)):
-    assert 0 < outlier_fraction <= 1, "outlier_fraction must be between 0 and 1."
-    assert len(outlier_range) == 2 and outlier_range[0] < outlier_range[1], "Invalid outlier_range."
-
-    # Clone the tensor to avoid modifying the original
-    out_tensor = tensor.clone()
-
-    # Determine the number of rows to inject outliers into
-    num_rows = tensor.shape[0]
-    num_outlier_rows = max(1, int(num_rows * outlier_fraction))
-
-    # Inject one outlier into each of the first `num_outlier_rows` rows
-    for i in range(num_outlier_rows):
-        col_idx = torch.randint(0, tensor.shape[1], (1,)).item()  # Random column index
-        outlier_value = torch.randint(outlier_range[0], outlier_range[1], (1,), device=tensor.device).item()
-        out_tensor[i, col_idx] = outlier_value
-
-    return out_tensor
-
 # 示例测试
-# X = torch.randn(1, 32, dtype=torch.float16).cuda()
-X = torch.abs(torch.randn(128, 32, dtype=torch.float16).cuda()) 
-X = inject_outlier(X)
+X = torch.randn(128, 1024, dtype=torch.float16).cuda()
+# X = torch.abs(torch.randn(1, 32, dtype=torch.float16).cuda()) 
+
 # weight = torch.randn(32, 1, dtype=torch.float16).cuda()
-weight = torch.randn(32, 64, dtype=torch.float16).cuda()
+weight = torch.randn(1024, 1, dtype=torch.float16).cuda()
 quant_grid = torch.tensor([0.0, 0.5, -0.5, 1.0, -1.0, 1.5, -1.5, 2.0, -2.0, 3.0, -3.0, 4.0, -4.0, 6.0, -6.0], dtype=torch.float16).cuda()
 
-# 调用 get_quant_mxfp 得到量化后的 tensor
-tensor_deq, scales, rounding_mask_from_quant = get_quant_mxfp(X, quant_grid, q_group_size=32)
-
-# 使用 bitwise 方法验证舍入方向
-rounding_mask_bitwise = get_rounding_mask_bitwise(X, scales, q_group_size=32, quant_grid=quant_grid)
-
-# output_tensor_compensate = gemm_with_compensation(X, weight, q_group_size=32, quant_grid=quant_grid)
 output_tensor_compensate_gpu = gemm_with_compensation_gpu(X, weight, q_group_size=32, quant_grid=quant_grid)
+# exit()
+output_tensor_compensate = gemm_with_compensation(X, weight, q_group_size=32, quant_grid=quant_grid)
 
-# 验证结果
-matching_mask = (rounding_mask_from_quant == rounding_mask_bitwise)
-num_mismatch = (~matching_mask).sum().item()
-total_elements = rounding_mask_from_quant.numel()
-
-print(f"Total elements: {total_elements}")
-print(f"Number of mismatches in rounding direction: {num_mismatch}")
-print(f"Mismatch percentage: {100 * num_mismatch / total_elements:.4f}%")
+output_tensor_compensate = output_tensor_compensate.to(output_tensor_compensate_gpu.device)
+# print(output_tensor_compensate, output_tensor_compensate_gpu)
+print((output_tensor_compensate-output_tensor_compensate_gpu).mean())
+exit(0)
 
 output_golden = torch.matmul(X, weight)
-output_dequant = torch.matmul(tensor_deq, weight)
+
 
 print('Init Output  ----->   ', output_golden)
-print('Quantized Output  ----->   ', output_dequant)
-# print('Quantized Output with Compensation  ----->   ', output_tensor_compensate)
+print('Quantized Output with Compensation  ----->   ', output_tensor_compensate)
 
-# output_tensor_compensate = output_tensor_compensate.to(output_golden.device)
-print(f'output MSE, init    <---->    quantized {(output_golden - output_dequant).float().pow(2).mean()}')
-# print(f'output MSE, init    <---->    quantized with compensation {(output_golden - output_tensor_compensate).float().pow(2).mean()}')
-print(f'output MSE, init    <---->    quantized with compensation GPU {(output_golden - output_tensor_compensate_gpu).float().pow(2).mean()}')
+
+print(f'output MSE, init    <---->    quantized with compensation {(output_golden - output_tensor_compensate).float().pow(2).mean()}')

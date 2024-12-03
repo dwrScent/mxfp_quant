@@ -180,6 +180,8 @@ class ANT_Linear(nn.Module):
             "keep_num": 1, 
         }
 
+        self.ant_config['w_low'] = 100
+        self.ant_config['w_high'] = 105
 
         # Search and set data type and alpha during the first inference
         if self.weight_quant_grid is None:
@@ -199,7 +201,8 @@ class ANT_Linear(nn.Module):
                     deq_weight = get_quant_grid(self.weight, quant_grid_set[self.weight_mode], self.group_size, alpha=1.0)
 
             # Tensor-wise search
-            deq_input = ant_quant(self, self.a_bit, deq_weight, input, self.ant_config, -2, self.layer_id, self.layer_name, is_input=True)
+            # deq_input = ant_quant(self, self.a_bit, deq_weight, input, self.ant_config, -2, self.layer_id, self.layer_name, is_input=True)
+            deq_input = ant_quant(self, self.a_bit, deq_weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, is_input=True)
 
             # NOTE: pass the quantized and dequantized input in our experiment in search
             # deq_input = input
@@ -232,6 +235,8 @@ class ANT_Linear(nn.Module):
             deq_input = deq_input.reshape(org_shape)
 
         out = F.linear(deq_input, self.weight)
+
+        print(f"layer: {self.layer_id}, tensor: {self.layer_name}, a_bit_width: {self.a_bit}. group_size: {self.group_size}")
 
         out = out + self.bias if self.bias is not None else out
         return out.reshape(out_shape)

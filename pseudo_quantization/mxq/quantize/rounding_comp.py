@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 
 def rounding_error_mask(value_a: torch.float16, rounding_direction_mask=None):
     value_a_int = value_a.view(torch.int16)
@@ -181,97 +182,34 @@ def get_rounding_mask_bitwise(tensor_value, scales, q_group_size=32, quant_grid=
 
     return rounding_direction.reshape(org_shape)
 
-def gemm_with_compensation(tensor_value: torch.float16, weight: torch.float16, q_group_size=32, quant_grid=None, print_stat=False):
-    assert torch.isnan(tensor_value).sum() == 0
-    org_shape = tensor_value.shape
-    quant_grid = quant_grid.to(tensor_value.device)
-
-    if q_group_size > 0:
-        assert org_shape[-1] % q_group_size == 0
-        tensor_value = tensor_value.reshape(-1, q_group_size)
-
-    # Compute the scaling factor
-    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
-    max_quant_val = max(quant_grid)
-    exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
-    scales = torch.pow(2, exp)
-    zeros = 0
-
-    quant_tensor = (tensor_value + zeros) / scales
-
-    rounding_dir_mask = get_rounding_mask_bitwise(tensor_value, scales, q_group_size=q_group_size)
-    rounding_err_mask = rounding_error_mask(quant_tensor)
-
-    labels = (quant_tensor.unsqueeze(-1) - quant_grid).abs().argmin(dim=-1)
-    quantized_value = quant_grid[labels]
-    tensor_deq = quantized_value * scales - zeros
-
-    # Reshape
-    rounding_err_mask = rounding_err_mask.reshape(org_shape)
-    rounding_dir_mask = rounding_dir_mask.reshape(org_shape)
-    quantized_value = quantized_value.reshape(org_shape)
-    scales = scales.reshape(org_shape[0], -1)
-
-    error_indices = (rounding_err_mask == 1).nonzero(as_tuple=True)
-    if print_stat:
-        print(error_indices[1], rounding_err_mask)
-        print("Rounding Direction Mask:", rounding_dir_mask[error_indices])
-        print("Quantized Value (quant_tensor):", quant_tensor[error_indices])
-        print("Quantized Rounding Value (quantized_value):", quantized_value[error_indices])
-    # exit(0)
-
-    M, K, N = org_shape[0], org_shape[1], weight.shape[1]
-    output_tensor = torch.zeros((M, N), dtype=torch.float16, device=tensor_value.device)
-    output_tensor_compensate = torch.zeros((M, N), dtype=torch.float16, device=tensor_value.device)
-
-    tensor_value_int = quantized_value.view(torch.int16)
-    exponent = (tensor_value_int >> 10) & 0x1F  # 提取 5-bit exponent
-    exponent_tmp = torch.where(exponent - 15 >= 0, exponent - 15, 0) # 有 2 个 2^0 的 case
-    exponent_value = torch.pow(2, exponent_tmp)  
-
-    # BUG: 最大值 rounding 方向的问题会影响这里的计算，要注意; 2024-11-20 10:22:13 已修复
-    for i in range (M):
-        for j in range (N):
-            partial_sum = torch.tensor(0., dtype=torch.float32, device=tensor_value.device)
-            partial_sum_compensate = torch.tensor(0., dtype=torch.float32, device=tensor_value.device)
-            for k in range (K // q_group_size):
-                partial_sum = 0.
-                partial_sum_compensate = 0.
-                for k_gid in range (q_group_size):
-                    k_idx = k * q_group_size + k_gid
-                    compensate_value = torch.tensor(0., dtype=torch.float32, device=tensor_value.device)
-                    if rounding_err_mask[i][k_idx] == 1:
-                        rounding_dir = rounding_dir_mask[i][k_idx]
-                        # 补偿 0.125，不那么激进
-                        compensate_value = ((exponent_value[i][k_idx] * 0.125) * rounding_dir * (-1))
-                        if quantized_value[i][k_idx] < 0:
-                            compensate_value = - compensate_value
-                        # print(compensate_value)
-                    partial_sum += quantized_value[i][k_idx] * weight[k_idx][j]
-                    partial_sum_compensate += ((quantized_value[i][k_idx]+compensate_value) * weight[k_idx][j])
-                output_tensor[i][j] += partial_sum * scales[i][k]
-                output_tensor_compensate[i][j] += partial_sum_compensate * scales[i][k]
-    # print('quantized output', output_tensor)
-    # print('output with compensate', output_tensor_compensate)
-    assert torch.isnan(output_tensor_compensate).sum() == 0
-    assert torch.isinf(output_tensor_compensate).sum() == 0
-    return output_tensor_compensate
-
 def gemm_with_compensation_gpu(tensor_value: torch.float16, weight: torch.float16, q_group_size=32, quant_grid=None, print_stat=False):
     assert torch.isnan(tensor_value).sum() == 0
     org_shape = tensor_value.shape
-    quant_grid = quant_grid.to(tensor_value.device)
+    quant_grid = quant_grid.to(tensor_value.device, dtype=torch.float16)
 
     if q_group_size > 0:
         assert org_shape[-1] % q_group_size == 0
         tensor_value = tensor_value.reshape(-1, q_group_size)
 
+    keep_outlier = False
+    if keep_outlier:
+        outlier_mask = torch.zeros_like(tensor_value, dtype=torch.bool).to(tensor_value.device)
+        _, indices = torch.topk(tensor_value.abs(), 1)
+        outlier_mask.scatter_(1, indices, 1)
+        org_tensor = tensor_value.clone()
+        tensor_value = tensor_value * ~outlier_mask
+
     # Compute the scaling factor
     max_val = tensor_value.abs().amax(dim=1, keepdim=True)
     max_quant_val = max(quant_grid)
-    exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
-    scales = torch.pow(2, exp).to(torch.float16)
+    # exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
+    # scales = torch.pow(2, exp).to(torch.float16)
+
+    scales = (max_val/ max_quant_val).to(torch.float16)
+
     zeros = 0
+
+    # print('tensor_value, scales', tensor_value.shape, scales.shape)
 
     quant_tensor = (tensor_value + zeros) / scales
 
@@ -281,6 +219,9 @@ def gemm_with_compensation_gpu(tensor_value: torch.float16, weight: torch.float1
     labels = (quant_tensor.unsqueeze(-1) - quant_grid).abs().argmin(dim=-1)
     quantized_value = quant_grid[labels]
     tensor_deq = quantized_value * scales - zeros
+
+    if keep_outlier:
+        tensor_deq = tensor_deq * ~outlier_mask + org_tensor * outlier_mask
 
     if print_stat:
         error_indices = (rounding_err_mask == 1).nonzero(as_tuple=True)
@@ -290,15 +231,20 @@ def gemm_with_compensation_gpu(tensor_value: torch.float16, weight: torch.float1
         print("Quantized Rounding Value (quantized_value):", quantized_value[error_indices])
     # exit(0)
 
+    # print('quantized_value, tensor_deq', quantized_value.shape, tensor_deq.shape, quantized_value.dtype)
+
     tensor_value_int = quantized_value.view(torch.int16)
+    # print('tensor_value_int', tensor_value_int.shape, quantized_value.shape)
     exponent = (tensor_value_int >> 10) & 0x1F  # 提取 5-bit exponent
     exponent_tmp = torch.where(exponent - 15 >= 0, exponent - 15, 0) # 有 2 个 2^0 的 case
     exponent_value = torch.pow(2, exponent_tmp)  
+    # print('tensor_value_int', tensor_value_int.shape, exponent_tmp.shape, exponent.shape)
 
     negtive_mask = ((tensor_value_int >> 15) & 0x1 )
     pos_neg_mask = torch.where(negtive_mask == 1, -1, 1)
 
     # print(negtive_mask, tensor_value_int, quantized_value)
+    # print(exponent_value.shape, rounding_dir_mask.shape, rounding_err_mask.shape, pos_neg_mask.shape)
     compensate_value = ((exponent_value * 0.125 * rounding_dir_mask * rounding_err_mask * pos_neg_mask) * (-1)).to(torch.float16) # compensate 要和原本的误差值相反
     # print('compensate gpu', exponent_value, compensate_value, rounding_err_mask, compensate_value.shape, scales.shape, scales.dtype)
     # print(compensate_value.shape, scales.shape)
@@ -309,65 +255,14 @@ def gemm_with_compensation_gpu(tensor_value: torch.float16, weight: torch.float1
     tensor_deq = tensor_deq.reshape(org_shape)
     compensate_value_deq = compensate_value_deq.reshape(org_shape)
 
-    output_deq = torch.matmul(tensor_deq, weight)
-    output_compensate = torch.matmul(compensate_value_deq, weight)
+    # print('ours', scales, tensor_deq, tensor_value)
+
+    # output_deq = torch.matmul(tensor_deq, weight)
+    output_deq = F.linear(tensor_deq, weight)
+    # output_compensate = torch.matmul(compensate_value_deq, weight)
+    output_compensate = F.linear(compensate_value_deq, weight)
+
     # print(output_deq, output_deq.shape, output_compensate, output_compensate.shape)
 
-    return output_deq + output_compensate
-
-def inject_outlier(tensor, outlier_fraction=0.01, outlier_range=(100, 300)):
-    assert 0 < outlier_fraction <= 1, "outlier_fraction must be between 0 and 1."
-    assert len(outlier_range) == 2 and outlier_range[0] < outlier_range[1], "Invalid outlier_range."
-
-    # Clone the tensor to avoid modifying the original
-    out_tensor = tensor.clone()
-
-    # Determine the number of rows to inject outliers into
-    num_rows = tensor.shape[0]
-    num_outlier_rows = max(1, int(num_rows * outlier_fraction))
-
-    # Inject one outlier into each of the first `num_outlier_rows` rows
-    for i in range(num_outlier_rows):
-        col_idx = torch.randint(0, tensor.shape[1], (1,)).item()  # Random column index
-        outlier_value = torch.randint(outlier_range[0], outlier_range[1], (1,), device=tensor.device).item()
-        out_tensor[i, col_idx] = outlier_value
-
-    return out_tensor
-
-# 示例测试
-# X = torch.randn(1, 32, dtype=torch.float16).cuda()
-X = torch.abs(torch.randn(128, 32, dtype=torch.float16).cuda()) 
-X = inject_outlier(X)
-# weight = torch.randn(32, 1, dtype=torch.float16).cuda()
-weight = torch.randn(32, 64, dtype=torch.float16).cuda()
-quant_grid = torch.tensor([0.0, 0.5, -0.5, 1.0, -1.0, 1.5, -1.5, 2.0, -2.0, 3.0, -3.0, 4.0, -4.0, 6.0, -6.0], dtype=torch.float16).cuda()
-
-# 调用 get_quant_mxfp 得到量化后的 tensor
-tensor_deq, scales, rounding_mask_from_quant = get_quant_mxfp(X, quant_grid, q_group_size=32)
-
-# 使用 bitwise 方法验证舍入方向
-rounding_mask_bitwise = get_rounding_mask_bitwise(X, scales, q_group_size=32, quant_grid=quant_grid)
-
-# output_tensor_compensate = gemm_with_compensation(X, weight, q_group_size=32, quant_grid=quant_grid)
-output_tensor_compensate_gpu = gemm_with_compensation_gpu(X, weight, q_group_size=32, quant_grid=quant_grid)
-
-# 验证结果
-matching_mask = (rounding_mask_from_quant == rounding_mask_bitwise)
-num_mismatch = (~matching_mask).sum().item()
-total_elements = rounding_mask_from_quant.numel()
-
-print(f"Total elements: {total_elements}")
-print(f"Number of mismatches in rounding direction: {num_mismatch}")
-print(f"Mismatch percentage: {100 * num_mismatch / total_elements:.4f}%")
-
-output_golden = torch.matmul(X, weight)
-output_dequant = torch.matmul(tensor_deq, weight)
-
-print('Init Output  ----->   ', output_golden)
-print('Quantized Output  ----->   ', output_dequant)
-# print('Quantized Output with Compensation  ----->   ', output_tensor_compensate)
-
-# output_tensor_compensate = output_tensor_compensate.to(output_golden.device)
-print(f'output MSE, init    <---->    quantized {(output_golden - output_dequant).float().pow(2).mean()}')
-# print(f'output MSE, init    <---->    quantized with compensation {(output_golden - output_tensor_compensate).float().pow(2).mean()}')
-print(f'output MSE, init    <---->    quantized with compensation GPU {(output_golden - output_tensor_compensate_gpu).float().pow(2).mean()}')
+    return (output_deq + output_compensate)
+    # return output_deq

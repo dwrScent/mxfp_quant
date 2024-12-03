@@ -5,19 +5,15 @@ Fork from https://github.com/mit-han-lab/llm-awq
 
 ```shell
 
-conda create -n awq python=3.10 -y
-conda activate awq
+conda create -n mxq python=3.10 -y
+conda activate mxq
 pip install --upgrade pip  # enable PEP 660 support
 pip install -e .
 
-# CUDA 11.7，推荐使用 torch=2.0.1；没有测试过 torc=2.1.1
+# CUDA 12.3，推荐使用 torch=2.3.1
 
-# 构建 kmeans kernel
-cd awq/kmeans_kernel
-python setup.py install
-
-pip install seaborn -i https://pypi.tuna.tsinghua.edu.cn/simple
-pip install matplotlib -i https://pypi.tuna.tsinghua.edu.cn/simple
+pip install protobuf -i https://pypi.tuna.tsinghua.edu.cn/simple
+pip install transformers_stream_generator -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
 
 ## Usage

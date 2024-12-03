@@ -13,9 +13,9 @@ from transformers.models.opt.modeling_opt import OPTForCausalLM
 from transformers.models.llama.modeling_llama import LlamaForCausalLM
 from transformers.models.bert.modeling_bert import BertForSequenceClassification
 
-from awq.models.llama_giant import LlamaForCausalLM_giant
-from awq.models.opt_giant import OPTForCausalLM_giant
-from awq.models.bloom_giant import BloomForCausalLM_giant
+from mxq.models.llama_giant import LlamaForCausalLM_giant
+from mxq.models.opt_giant import OPTForCausalLM_giant
+from mxq.models.bloom_giant import BloomForCausalLM_giant
 
 def get_named_linears(module):
     return {name: m for name, m in module.named_modules() if isinstance(m, nn.Linear)}

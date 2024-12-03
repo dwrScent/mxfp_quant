@@ -16,19 +16,19 @@ from accelerate import (
     dispatch_model,
     load_checkpoint_in_model,
 )
-from awq.utils.parallel import auto_parallel
-from awq.quantize.quantizer import pseudo_quant_output_mse, make_quant_linear,pseudo_quantize_model_weight
-# from awq.utils.lm_eval_adaptor import LMEvalAdaptor
-from awq.utils.utils import simple_dispatch_model
+from mxq.utils.parallel import auto_parallel
+from mxq.quantize.quantizer import pseudo_quant_output_mse, make_quant_linear,pseudo_quantize_model_weight
+# from mxq.utils.lm_eval_adaptor import LMEvalAdaptor
+from mxq.utils.utils import simple_dispatch_model
 
 import datetime
 import re
 import tqdm
 from torch import nn
 
-from awq.models.opt_giant import OPTForCausalLM_giant
-from awq.models.bloom_giant import BloomForCausalLM_giant
-from awq.models.llama_giant import LlamaForCausalLM_giant
+from mxq.models.opt_giant import OPTForCausalLM_giant
+from mxq.models.bloom_giant import BloomForCausalLM_giant
+from mxq.models.llama_giant import LlamaForCausalLM_giant
 
 from transformers import OPTConfig, BloomConfig, LlamaConfig
 
@@ -317,9 +317,9 @@ def main():
         if args.tasks == "mmlu":
             # do evaluation on the Massive Multitask Language Understanding dataset
             task_dict = {"STEM":[], "humanities":[], "social sciences":[], "other (business, health, misc.)":[]}
-            with open(os.getcwd() + '/awq/utils/mmlu_data/categories.json', 'r') as f:
+            with open(os.getcwd() + '/mxq/utils/mmlu_data/categories.json', 'r') as f:
                 categories = json.loads(f.read())
-            with open(os.getcwd() + '/awq/utils/mmlu_data/subcategories.json', 'r') as f:
+            with open(os.getcwd() + '/mxq/utils/mmlu_data/subcategories.json', 'r') as f:
                 subcategories = json.loads(f.read())
             
 
@@ -393,8 +393,15 @@ def main():
             
             testenc = testenc.input_ids.to(model.device)
             nsamples = testenc.numel() // model.seqlen
+            nsamples = 10
             model = model.eval()
             nlls = []
+            for i in tqdm.tqdm(range(1), desc="Data Type Search..."):
+                batch = testenc[:, (i * model.seqlen) : ((i + 1) * model.seqlen)].to(
+                    model.device
+                )
+                with torch.no_grad():
+                    lm_logits_tmp = model(batch).logits
             for i in tqdm.tqdm(range(nsamples), desc="evaluating..."):
                 batch = testenc[:, (i * model.seqlen) : ((i + 1) * model.seqlen)].to(
                     model.device

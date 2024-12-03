@@ -9,6 +9,7 @@ import math
 from .quant_func import get_quant_mxfp
 
 from .ant_quant import float_value, int_value, normal_float_value
+from .rounding_comp import gemm_with_compensation_gpu
 
 
 def outlier_value(n_bit, signed=True, exp_bit=2, exp_base=5):
@@ -102,7 +103,7 @@ def mxfp_direct(tensor_value, quant_grid, mode="int", zero_point=True, q_group_s
 
 
 @torch.no_grad()
-def mxfp_search(tensor_value, quant_grid, mode="int", zero_point=True, q_group_size=-1, alpha=1.0, pos_value=None, get_labels=False):
+def mxfp_search(tensor_value, quant_grid, mode="int", zero_point=True, q_group_size=-1, alpha=1.0, pos_value=None, get_labels=False, keep_outlier=False):
     '''
     return : dequantized weight, mse?
     '''
@@ -133,7 +134,12 @@ def mxfp_search(tensor_value, quant_grid, mode="int", zero_point=True, q_group_s
 
     zeros = 0
 
-    # org_value = tensor_value.clone()
+    if keep_outlier:
+        outlier_mask = torch.zeros_like(tensor_value, dtype=torch.bool).to(tensor_value.device)
+        _, indices = torch.topk(tensor_value.abs(), 1)
+        outlier_mask.scatter_(1, indices, 1)
+        org_tensor = tensor_value.clone()
+        tensor_value = tensor_value * ~outlier_mask
 
     # Batch processing to avoid OOM
     batch_num = 4
@@ -154,6 +160,10 @@ def mxfp_search(tensor_value, quant_grid, mode="int", zero_point=True, q_group_s
         tensor_q_par = quant_grid[labels] * scales_up[idx*batch_size : (idx+1)*batch_size, :] - zeros
         tensor_deq_up[idx*batch_size : (idx+1)*batch_size, :] = tensor_q_par
 
+    if keep_outlier:
+        tensor_deq_down = tensor_deq_down * ~outlier_mask + org_tensor * outlier_mask
+        tensor_deq_up = tensor_deq_up * ~outlier_mask + org_tensor * outlier_mask
+
     quant_mse_down = (tensor_deq_down-tensor_value).abs().pow(2).mean(dim=1, keepdim=True).to(torch.float32)
     quant_mse_up = (tensor_deq_up-tensor_value).abs().pow(2).mean(dim=1, keepdim=True).to(torch.float32)
 
@@ -170,20 +180,22 @@ def mxfp_search(tensor_value, quant_grid, mode="int", zero_point=True, q_group_s
 
     tensor_deq = tensor_deq.reshape(org_shape)
 
+    print(f"Quantization MSE: {quant_mse_sum.mean().item()}, keep_outlier: {keep_outlier}")
+
     if get_labels:
         return tensor_deq, quant_mse_sum, labels, quant_grid * scales
     else:
         return tensor_deq, quant_mse_sum
 
 @torch.no_grad()
-def dtype_search(tensor_value, quant_grid, mode="int", zero_point=True, q_group_size=-1, alpha=1.0, pos_value=None, get_labels=False):
+def dtype_search(tensor_value, quant_grid, mode="int", zero_point=True, q_group_size=-1, alpha=1.0, pos_value=None, get_labels=False, keep_outlier=False):
     org_shape = tensor_value.shape
     
     quant_grid_fp4 = float_value(4, True)
     quant_grid_int4 = int_value(4, True)
 
-    tensor_deq_fp4, quant_mse_sum_fp4 = mxfp_search(tensor_value, quant_grid=quant_grid_fp4, q_group_size=q_group_size)
-    tensor_deq_int4, quant_mse_sum_int4 = mxfp_search(tensor_value, quant_grid=quant_grid_int4, q_group_size=q_group_size)
+    tensor_deq_fp4, quant_mse_sum_fp4 = mxfp_search(tensor_value, quant_grid=quant_grid_fp4, q_group_size=q_group_size, keep_outlier=keep_outlier)
+    tensor_deq_int4, quant_mse_sum_int4 = mxfp_search(tensor_value, quant_grid=quant_grid_int4, q_group_size=q_group_size, keep_outlier=keep_outlier)
 
     if q_group_size > 0:
         tensor_deq_fp4 = tensor_deq_fp4.reshape(-1, q_group_size)
@@ -199,7 +211,7 @@ def dtype_search(tensor_value, quant_grid, mode="int", zero_point=True, q_group_
     return tensor_deq, quant_mse_sum
     
 @torch.no_grad()
-def dtype_search_v2(tensor_value, quant_grid, mode="int", zero_point=True, q_group_size=-1, alpha=1.0, pos_value=None, get_labels=False):
+def dtype_search_v2(tensor_value, quant_grid, mode="int", zero_point=True, q_group_size=-1, alpha=1.0, pos_value=None, get_labels=False, keep_outlier=False):
     org_shape = tensor_value.shape
     ant_mode = 'float-int-pot'
     mode_list = ant_mode.split('-')
@@ -208,7 +220,7 @@ def dtype_search_v2(tensor_value, quant_grid, mode="int", zero_point=True, q_gro
     quant_mse_list = {}
 
     for mode in mode_list:
-        w_deq_list[mode], quant_mse_list[mode] = mxfp_search(tensor_value, quant_grid_set[mode], q_group_size=q_group_size)
+        w_deq_list[mode], quant_mse_list[mode] = mxfp_search(tensor_value, quant_grid_set[mode], q_group_size=q_group_size, keep_outlier=keep_outlier)
         exist_mode = mode
     
     if q_group_size > 0:
@@ -430,11 +442,11 @@ class MXFP_Linear(nn.Module):
         self.input_alpha = -1
 
         self.search_tag = None
+        self.keep_outlier = False
 
         # MXFP param
         self.weight_mxfp_mode = ant_config['weight_mxfp_mode']
         self.input_mxfp_mode = ant_config['input_mxfp_mode']
-
 
         assert self.in_features % self.group_size == 0
 
@@ -463,26 +475,25 @@ class MXFP_Linear(nn.Module):
         # w_exp_field = w_exp_field_map[w_bit]
         if w_bit < 16:
             mxfp_linear.weight_quant_grid = float_value(w_bit, True)
-        # mxfp_linear.weight_quant_grid = int_value(w_bit, True)
+            # mxfp_linear.weight_quant_grid = int_value(w_bit, True)
         # mxfp_linear.weight_quant_grid = normal_float_value(w_bit, True)
 
         # a_exp_field_map = {3: 2, 4: 2, 5: 2, 6: 3, 7: 3, 8: 4}
         # a_exp_field = a_exp_field_map[a_bit]
         if a_bit < 16:
             mxfp_linear.input_quant_grid = float_value(a_bit, True)
-        # mxfp_linear.input_quant_grid = int_value(a_bit, True)
+            # mxfp_linear.input_quant_grid = int_value(a_bit, True)
         # mxfp_linear.input_quant_grid = normal_float_value(a_bit, True)
-
 
         assert mxfp_linear.group_size == 32
             
         return mxfp_linear
     
-    def _quantize_data(self, data, mode, quant_grid, n_bit, exp_base):
+    def _quantize_data(self, data, mode, quant_grid, n_bit, exp_base, is_input):
         quantize_methods = {
-            'base': lambda: get_quant_mxfp(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size),
-            'scale_search': lambda: mxfp_search(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size),
-            'dtype_search': lambda: dtype_search_v2(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size),
+            'base': lambda: get_quant_mxfp(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, is_input=is_input, keep_outlier=self.keep_outlier),
+            'scale_search': lambda: mxfp_search(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, keep_outlier=self.keep_outlier),
+            'dtype_search': lambda: dtype_search_v2(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, keep_outlier=self.keep_outlier),
             'dtype_search_olive': lambda: dtype_search_olive(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, n_bit=n_bit, exp_base=exp_base),
             'naive_adapt': lambda: mxfp_direct(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, n_bit=n_bit),
         }
@@ -496,8 +507,7 @@ class MXFP_Linear(nn.Module):
         # Search and set data type and alpha in the first inference
         if self.search_tag is None:
             if self.w_bit < 16:
-                deq_weight, _ = self._quantize_data(self.weight, self.weight_mxfp_mode, self.weight_quant_grid, self.w_bit, 5)
-
+                deq_weight, _ = self._quantize_data(self.weight, self.weight_mxfp_mode, self.weight_quant_grid, self.w_bit, 5, False)
             else:
                 deq_weight = self.weight
             
@@ -505,7 +515,7 @@ class MXFP_Linear(nn.Module):
             self.weight = deq_weight
 
             if self.a_bit < 16:
-                deq_input, _ = self._quantize_data(input, self.input_mxfp_mode, self.input_quant_grid, self.a_bit, 7)
+                deq_input, _ = self._quantize_data(input, self.input_mxfp_mode, self.input_quant_grid, self.a_bit, 7, True)
             else:
                 deq_input = input
                 
@@ -514,13 +524,17 @@ class MXFP_Linear(nn.Module):
         # quantize input based on the selected data type and alpha
         else:
             if self.a_bit < 16:
-                deq_input, _ = self._quantize_data(input, self.input_mxfp_mode, self.input_quant_grid, self.a_bit, 7)
-
+                deq_input, _ = self._quantize_data(input, self.input_mxfp_mode, self.input_quant_grid, self.a_bit, 7, True)
+                pass
             else:
                 deq_input = input
 
+        # print(input.shape)
+        # out = gemm_with_compensation_gpu(input, self.weight, q_group_size=self.group_size, quant_grid=self.input_quant_grid)
         out = F.linear(deq_input, self.weight)
+
         # print('test', self.layer_name, out, out.max(), out.min())
+        print(f"layer: {self.layer_id}, tensor: {self.layer_name}, a_bit_width: {self.a_bit}. group_size: {self.group_size}")
 
         out = out + self.bias if self.bias is not None else out
         return out.reshape(out_shape)

@@ -3,6 +3,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 from .ant_quant import get_quant_weight
+from .utils_stats import calculate_max_error
 
 def pseudo_quantize_int(tensor, n_bit=8, zero_point=False, q_group_size=-1, get_scale=False):
     org_shape = tensor.shape
@@ -91,7 +92,6 @@ def pseudo_quantize_giant(tensor, n_bit=8, zero_point=False, q_group_size=-1, ge
     return quantized_part_deq
 
 
-
 @torch.no_grad()
 def get_quant_grid(tensor_value, quant_grid, group_size, alpha=1.0):
 
@@ -131,6 +131,11 @@ def get_quant_grid(tensor_value, quant_grid, group_size, alpha=1.0):
 
         max_val = tensor_value.abs().amax(dim=1, keepdim=True)
         scales = (max_val * alpha) / max_quant_val
+
+        if group_size > 0:
+            # scales = scales.to(dtype=torch.float8_e4m3fn).to(dtype=torch.float16)
+            scales = scales.to(dtype=torch.float8_e5m2).to(dtype=torch.float16)
+
         zeros = 0
 
         # Batch processing to avoid OOM
@@ -151,10 +156,13 @@ def get_quant_grid(tensor_value, quant_grid, group_size, alpha=1.0):
     # tensor_deq = tensor_deq.half()
     tensor_deq = tensor_deq.reshape(org_shape)
 
+    if group_size > 0:
+        calculate_max_error(tensor_value, tensor_deq, q_group_size=group_size)
+
     return tensor_deq
 
 @torch.no_grad()
-def get_quant_mxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_group_size=-1, alpha=1.0, pos_value=None, get_labels=False):
+def get_quant_mxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_group_size=-1, alpha=1.0, pos_value=None, get_labels=False, is_input=False, keep_outlier=False):
     '''
     return : dequantized weight, mse?
     '''
@@ -193,18 +201,23 @@ def get_quant_mxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_grou
         
         # Compute the scaling factor
         # pow(2, math.floor(math.log2(25)) - math.floor(math.log2(6)))
-        exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
         # exp = torch.ceil(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
+        
         # scales = (max_val * alpha) / max_quant_val
+
+        exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
         scales = torch.pow(2, exp)
 
         # exp_max_val = torch.floor(torch.log2(max_val))
         # mask = torch.where(tensor_value > torch.pow(2, exp_max_val), torch.tensor(1), torch.tensor(0))
 
         zeros = 0
-
     # org_value = tensor_value.clone()
-    keep_outlier = True
+
+    # if is_input:
+    #     keep_outlier = True
+    # else:
+    #     keep_outlier = True
     if keep_outlier:
         outlier_mask = torch.zeros_like(tensor_value, dtype=torch.bool).to(tensor_value.device)
         _, indices = torch.topk(tensor_value.abs(), 1)
@@ -224,9 +237,8 @@ def get_quant_mxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_grou
 
         # print(outlier_mask.shape[0], "Original outlier_mask count of 1s:", outlier_mask.sum().item())
         org_tensor = tensor_value.clone()
-        tensor_value = tensor_value * ~outlier_mask
-        # tensor_value = tensor_value * non_victim_mask
 
+        tensor_value = tensor_value * ~outlier_mask
 
     # Batch processing to avoid OOM
     batch_num = 4
@@ -253,6 +265,12 @@ def get_quant_mxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_grou
     assert torch.isnan(quant_mse).sum() == 0
 
     tensor_deq = tensor_deq.reshape(org_shape)
+
+    calculate_max_error(tensor_value, tensor_deq, q_group_size=q_group_size)
+
+    quant_obj = 'input' if is_input else 'weight'
+    print(f"Quantization MSE: {quant_mse_sum.mean().item()}, quant_obj: {quant_obj}, keep_outlier: {keep_outlier}")
+    # print('init', scales, tensor_deq, tensor_value)
 
     if get_labels:
         return tensor_deq, quant_mse_sum, labels, quant_grid * scales

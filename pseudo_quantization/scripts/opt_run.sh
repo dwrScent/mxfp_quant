@@ -32,7 +32,7 @@ fi
 mkdir -p $OUTPUT_DIR
 
 # python -m awq.opt_wikitext --model_path $MODEL \
-python -m awq.entry --model_path $MODEL \
+python -m mxq.entry --model_path $MODEL \
     --tasks $TASKS \
     --num_fewshot $SHOTS \
     --quant_bit_width $QUANT_BIT_WIDTH \

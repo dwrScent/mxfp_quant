@@ -11,9 +11,9 @@ MXFP_MODE=${8:-"w-base-a-base"}
 OPTION=${9:-"quant"}
 DESC=${10:-""}
 
-# MODEL=/localssd/wmhu/models/llama-3-${MODEL_SIZE}b-hf
+MODEL=/localssd/wmhu/models/llama-3-${MODEL_SIZE}b-hf
 # MODEL=/mnt/nvme0n1/ckpt/llama/Meta-Llama-3-${MODEL_SIZE}B-Instruct 
-MODEL=/cephfs/shared/model/Meta-Llama-3-${MODEL_SIZE}B-Instruct 
+# MODEL=/cephfs/shared/model/Meta-Llama-3-${MODEL_SIZE}B-Instruct 
 OUTPUT_NAME=llama-3-${MODEL_SIZE}b
 OUTPUT_DIR=""
 
@@ -35,7 +35,7 @@ fi
 mkdir -p $OUTPUT_DIR
 
 # python -m awq.entry_wikitext --model_path $MODEL \
-python -m awq.entry --model_path $MODEL \
+python -m mxq.entry --model_path $MODEL \
     --tasks $TASKS \
     --num_fewshot $SHOTS \
     --quant_bit_width $QUANT_BIT_WIDTH \

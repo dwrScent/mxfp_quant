@@ -16,7 +16,7 @@ output_dir="./log/bert_ptq/$task_name"
 mkdir -p $output_dir
 
 export CUDA_VISIBLE_DEVICES=$gpu_num
-python -m awq.entry_bert_mnli \
+python -m mxq.entry_bert_mnli \
   --do_eval \
   --model_name_or_path $path \
   --task_name $task_name \

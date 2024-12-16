@@ -11,6 +11,8 @@ from .quant_func import get_quant_mxfp
 from .ant_quant import float_value, int_value, normal_float_value
 from .rounding_comp import gemm_with_compensation_gpu
 
+from .utils_stats import calculate_scale_range
+
 
 def outlier_value(n_bit, signed=True, exp_bit=2, exp_base=5):
     B = n_bit - 1 if signed else n_bit
@@ -589,6 +591,8 @@ class MXFP_Linear(nn.Module):
 
         # Search and set data type and alpha in the first inference
         if self.search_tag is None:
+            calculate_scale_range(self.weight, self.weight_quant_grid, self.layer_id, self.layer_name, self.group_size, False)
+
             if self.w_bit < 16:
                 deq_weight, _ = self._quantize_data(self.weight, self.weight_mxfp_mode, self.weight_quant_grid, self.w_bit, 5, False)
             else:
@@ -607,6 +611,7 @@ class MXFP_Linear(nn.Module):
         # quantize input based on the selected data type and alpha
         else:
             if self.a_bit < 16:
+                calculate_scale_range(input, self.input_quant_grid, self.layer_id, self.layer_name, self.group_size, True)
                 deq_input, _ = self._quantize_data(input, self.input_mxfp_mode, self.input_quant_grid, self.a_bit, 7, True)
                 pass
             else:
@@ -615,6 +620,8 @@ class MXFP_Linear(nn.Module):
         # print(input.shape)
         # out = gemm_with_compensation_gpu(input, self.weight, q_group_size=self.group_size, quant_grid=self.input_quant_grid)
         out = F.linear(deq_input, self.weight)
+
+        assert torch.isnan(out).sum() == 0
 
         # print('test', self.layer_name, out, out.max(), out.min())
         print(f"layer: {self.layer_id}, tensor: {self.layer_name}, a_bit_width: {self.a_bit}. group_size: {self.group_size}")

@@ -166,7 +166,9 @@ def get_quant_mxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_grou
     '''
     return : dequantized weight, mse?
     '''
+    assert torch.isinf(tensor_value).sum() == 0
     assert torch.isnan(tensor_value).sum() == 0
+
     org_shape = tensor_value.shape
     quant_grid = quant_grid.to(tensor_value.device)
 
@@ -191,6 +193,8 @@ def get_quant_mxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_grou
 
     else:
         max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+        # avoid divide a too small value
+        max_val = max_val.clamp(min=1e-5)
 
         if pos_value is None or pos_value == True:
             max_quant_val = max(quant_grid)
@@ -205,8 +209,11 @@ def get_quant_mxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_grou
         
         # scales = (max_val * alpha) / max_quant_val
 
+        assert torch.isinf(max_val).sum() == 0
+
         exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
         scales = torch.pow(2, exp)
+        assert not (scales == 0).any(), "Scale should contain 0 values"
 
         # exp_max_val = torch.floor(torch.log2(max_val))
         # mask = torch.where(tensor_value > torch.pow(2, exp_max_val), torch.tensor(1), torch.tensor(0))
@@ -260,13 +267,14 @@ def get_quant_mxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_grou
         tensor_deq = tensor_deq * ~outlier_mask + org_tensor * outlier_mask
 
 
+    assert torch.isinf(tensor_deq).sum() == 0
     assert torch.isnan(tensor_deq).sum() == 0
     assert torch.isnan(scales).sum() == 0
     assert torch.isnan(quant_mse).sum() == 0
 
     tensor_deq = tensor_deq.reshape(org_shape)
 
-    calculate_max_error(tensor_value, tensor_deq, q_group_size=q_group_size)
+    # calculate_max_error(tensor_value, tensor_deq, q_group_size=q_group_size)
 
     quant_obj = 'input' if is_input else 'weight'
     print(f"Quantization MSE: {quant_mse_sum.mean().item()}, quant_obj: {quant_obj}, keep_outlier: {keep_outlier}")

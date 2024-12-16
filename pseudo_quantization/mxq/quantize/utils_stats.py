@@ -1,5 +1,5 @@
 import torch
-
+from collections import defaultdict
 def calculate_max_error(tensor_value, tensor_deq, q_group_size=-1):
     if q_group_size > 0:
         tensor_value = tensor_value.reshape(-1, q_group_size)
@@ -21,3 +21,46 @@ def calculate_max_error(tensor_value, tensor_deq, q_group_size=-1):
 
     print(f'Abs Error, mean: {error_mean}, max: {error_max}, min: {error_min}, MSE: {mse_error}')
     print(f'Relative Error, mean: {relative_error_mean}, max: {relative_error_max}, min: {relative_error_min}')
+
+# 全局统计字典，用于统计所有 tensor 的 exp 出现次数
+exp_stats = defaultdict(lambda: defaultdict(int))
+
+def calculate_scale_range(tensor_value, quant_grid, layer_id, layer_name, q_group_size, is_input):
+    org_shape = tensor_value.shape
+
+    if q_group_size > 0:
+        assert org_shape[-1] % q_group_size == 0
+        tensor_value = tensor_value.reshape(-1, q_group_size)
+
+    # print(tensor_value.dtype)
+    quant_grid = quant_grid.to(tensor_value.device)
+    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+    max_val = max_val.clamp(min=1e-5)
+    max_quant_val = max(quant_grid)
+    exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
+    # scales = torch.pow(2, exp)
+
+    # 统计 exp 数值的频率
+    unique_exp, counts = exp.unique(return_counts=True)
+    counts = counts.float() / 100000.
+
+    assert torch.all(counts > 0), "All counts should be greater than 0 after scaling."
+
+    # 将统计结果更新到全局字典中
+    unique_exp = unique_exp.cpu().tolist()
+    counts = counts.cpu().tolist()
+    key_name = f"weight_{layer_name}" if not is_input else f"input_{layer_name}"
+    layer_exp_stats = exp_stats[key_name]
+    for e, c in zip(unique_exp, counts):
+        layer_exp_stats[e] += c
+
+    # 输出当前 layer 的 exp 统计结果
+    total_counts = sum(layer_exp_stats.values())
+    exp_values = torch.tensor(list(layer_exp_stats.keys()))
+    exp_counts = torch.tensor(list(layer_exp_stats.values()))
+    percentages = (exp_counts / total_counts) * 100
+
+    if layer_id == 31:
+        print(f"Layer: {key_name}")
+        for e, c, p in zip(exp_values, exp_counts, percentages):
+            print(f"  exp: {e.item()}, count: {c.item()}, percentage: {p.item():.4f}%")

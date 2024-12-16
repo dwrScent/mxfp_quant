@@ -591,7 +591,7 @@ class MXFP_Linear(nn.Module):
 
         # Search and set data type and alpha in the first inference
         if self.search_tag is None:
-            calculate_scale_range(self.weight, self.weight_quant_grid, self.layer_id, self.layer_name, self.group_size, False)
+            # calculate_scale_range(self.weight, self.weight_quant_grid, self.layer_id, self.layer_name, self.group_size, False)
 
             if self.w_bit < 16:
                 deq_weight, _ = self._quantize_data(self.weight, self.weight_mxfp_mode, self.weight_quant_grid, self.w_bit, 5, False)
@@ -611,7 +611,7 @@ class MXFP_Linear(nn.Module):
         # quantize input based on the selected data type and alpha
         else:
             if self.a_bit < 16:
-                calculate_scale_range(input, self.input_quant_grid, self.layer_id, self.layer_name, self.group_size, True)
+                # calculate_scale_range(input, self.input_quant_grid, self.layer_id, self.layer_name, self.group_size, True)
                 deq_input, _ = self._quantize_data(input, self.input_mxfp_mode, self.input_quant_grid, self.a_bit, 7, True)
                 pass
             else:

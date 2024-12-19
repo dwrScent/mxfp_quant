@@ -27,7 +27,7 @@ module fp4_mac (
     );
 
     // 实例化 FP16 加法器
-    fp16_adder u2 (
+    fp32_adder u2 (
         .a(c),
         .b(mul_result),
         .c(c_tmp)

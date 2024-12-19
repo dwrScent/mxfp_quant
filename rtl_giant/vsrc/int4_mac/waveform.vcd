@@ -1,5 +1,5 @@
 $date
-	Wed Dec 18 17:17:11 2024
+	Thu Dec 19 17:43:54 2024
 $end
 $version
 	Icarus Verilog
@@ -7,26 +7,34 @@ $end
 $timescale
 	1ps
 $end
-$scope module int4_mac_acc32bit_tb $end
+$scope module mxint4_pot_scale_mac_i4o32 $end
 $var wire 32 ! c [31:0] $end
 $var reg 4 " a [3:0] $end
 $var reg 4 # b [3:0] $end
 $var reg 1 $ clk $end
 $var reg 1 % rst $end
+$var reg 8 & scale_a [7:0] $end
+$var reg 8 ' scale_b [7:0] $end
 $scope module uut $end
-$var wire 4 & a [3:0] $end
-$var wire 4 ' a_signed [3:0] $end
-$var wire 4 ( b [3:0] $end
-$var wire 4 ) b_signed [3:0] $end
+$var wire 4 ( a [3:0] $end
+$var wire 4 ) b [3:0] $end
 $var wire 1 $ clk $end
 $var wire 1 % rst $end
-$var wire 32 * product [31:0] $end
-$var reg 32 + c [31:0] $end
+$var wire 8 * scale_a [7:0] $end
+$var wire 8 + scale_b [7:0] $end
+$var wire 32 , scaled_result [31:0] $end
+$var wire 8 - mul_result [7:0] $end
+$var reg 32 . acc [31:0] $end
+$var reg 32 / c_out [31:0] $end
 $upscope $end
 $upscope $end
 $enddefinitions $end
 #0
 $dumpvars
+b0 /
+b0 .
+b0 -
+b0 ,
 b0 +
 b0 *
 b0 )
@@ -43,43 +51,45 @@ $end
 1$
 #10000
 0$
-b110 *
-b10 )
+b10 '
+b10 +
+b10 &
+b10 *
+b110 -
 b10 #
-b10 (
-b11 '
+b10 )
 b11 "
-b11 &
+b11 (
 0%
 #15000
-b110 !
-b110 +
+b11000 ,
+b110 .
 1$
 #20000
 0$
-b11 )
 b11 #
-b11 (
-b11111111111111111111111111111010 *
-b1110 '
+b11 )
+b11111010 -
 b1110 "
-b1110 &
+b1110 (
 #25000
-b0 !
-b0 +
+b11000 !
+b11000 /
+b0 ,
+b0 .
 1$
 #30000
 0$
-b1101 )
 b1101 #
-b1101 (
-b11111111111111111111111111110100 *
-b100 '
+b1101 )
+b11110100 -
 b100 "
-b100 &
+b100 (
 #35000
-b11111111111111111111111111110100 !
-b11111111111111111111111111110100 +
+b11111111111111111111111111010000 ,
+b11111111111111111111111111110100 .
+b0 !
+b0 /
 1$
 #40000
 0$

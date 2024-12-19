@@ -447,8 +447,8 @@ def mxfp_sub_group(tensor_value, quant_grid, sub_group_grid, mode="int", zero_po
     zeros = 0
 
     # MODE: [max, outlier]
-    # subgroup_mode = 'max'
-    subgroup_mode = 'outlier'
+    subgroup_mode = 'max'
+    # subgroup_mode = 'outlier'
 
     if subgroup_mode == 'max':
         # find the sub group with maximum value
@@ -527,7 +527,7 @@ def mxfp_sub_group_v2(tensor_value, quant_grid, sub_group_grid, mode="int", zero
     w_deq_list = {}
     quant_mse_list = {}
 
-    sub_group_size = 2
+    sub_group_size = 4
 
     for mode in mode_list:
         w_deq_list[mode], _ = get_quant_mxfp(tensor_value, quant_grid_set[mode], q_group_size=q_group_size, keep_outlier=keep_outlier)

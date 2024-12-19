@@ -161,6 +161,7 @@ def get_quant_grid(tensor_value, quant_grid, group_size, alpha=1.0):
 
     return tensor_deq
 
+
 @torch.no_grad()
 def get_quant_mxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_group_size=-1, alpha=1.0, pos_value=None, get_labels=False, is_input=False, keep_outlier=False):
     '''

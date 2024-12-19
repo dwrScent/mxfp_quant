@@ -64,3 +64,46 @@ def calculate_scale_range(tensor_value, quant_grid, layer_id, layer_name, q_grou
         print(f"Layer: {key_name}")
         for e, c, p in zip(exp_values, exp_counts, percentages):
             print(f"  exp: {e.item()}, count: {c.item()}, percentage: {p.item():.4f}%")
+
+outlier_stats = defaultdict(lambda: defaultdict(int))
+def calculate_outlier_exp(tensor_value, quant_grid, layer_id, layer_name, q_group_size, is_input):
+    org_shape = tensor_value.shape
+    if q_group_size > 0:
+        assert org_shape[-1] % q_group_size == 0
+        tensor_value = tensor_value.reshape(-1, q_group_size)
+
+    # print(tensor_value.dtype)
+    quant_grid = quant_grid.to(tensor_value.device)
+    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+    max_val = max_val.clamp(min=1e-5)
+
+    # max_quant_val = max(quant_grid)
+    # exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
+    # scales = torch.pow(2, exp)
+
+    exp_field = torch.floor(torch.log2(max_val))
+    exp_value = torch.pow(2, exp_field)
+
+    # 统计 tensor_value 中大于 exp_value 的元素数量
+    tensor_outlier_num = (tensor_value.abs() > exp_value).sum(dim=1)
+
+    # 分类统计 outlier 数量
+    key_name = f"weight_{layer_name}" if not is_input else f"input_{layer_name}"
+    layer_outlier_stats = outlier_stats[key_name]
+
+    # 统计分类
+    layer_outlier_stats["num_1"] += (tensor_outlier_num == 1).sum().item() / 100000.
+    layer_outlier_stats["num_2"] += (tensor_outlier_num == 2).sum().item() / 100000.
+    layer_outlier_stats["num_3"] += (tensor_outlier_num == 3).sum().item() / 100000.
+    layer_outlier_stats["num_4"] += (tensor_outlier_num == 4).sum().item() / 100000.
+    layer_outlier_stats["num_>4"] += (tensor_outlier_num > 4).sum().item() / 100000.
+
+    # 计算总数，用于求百分比
+    total_count = sum(layer_outlier_stats.values())
+
+    # 输出统计结果，包括数量和百分比
+    if layer_id == 31:
+        print(f"Layer: {key_name}")
+        for category, count in layer_outlier_stats.items():
+            percentage = (count / total_count) * 100 if total_count > 0 else 0.0
+            print(f"  {category}: {count:.6f}, {percentage:.2f}%")

@@ -665,11 +665,11 @@ class MXFP_Linear(nn.Module):
         self.input_alpha = -1
 
         self.search_tag = None
-        # self.keep_outlier = False
-        self.keep_outlier = True
+        self.keep_outlier = False
+        # self.keep_outlier = True
 
-        # self.print_stats = False
-        self.print_stats = True
+        self.print_stats = False
+        # self.print_stats = True
 
         # MXFP param
         self.weight_mxfp_mode = ant_config['weight_mxfp_mode']

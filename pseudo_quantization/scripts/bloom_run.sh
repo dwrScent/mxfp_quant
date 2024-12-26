@@ -13,14 +13,14 @@ MODEL=/localssd/wmhu/models/bloom-7b1/snapshots/e83e90ba86f87f74aa2731cdab25ccf3
 OUTPUT_NAME=bloom-7b1
 
 if [ "$OPTION" == "load" ]; then
-    OUTPUT_DIR=output/output_bloom_load
+    OUTPUT_DIR=output/output_bloom_load_$(date +%m%d)
     EXTRA_OPTION="--load_quant /localssd/wmhu/models/quant_cache/$OUTPUT_NAME-w4-g$GROUP_SIZE-$QUANT_MODE"
 elif [ "$OPTION" == "dump" ]; then
-    OUTPUT_DIR=output/output_bloom_dump
+    OUTPUT_DIR=output/output_bloom_dump_$(date +%m%d)
     mkdir -p quant_cache
     EXTRA_OPTION="--dump_quant quant_cache/$OUTPUT_NAME-w4-g$GROUP_SIZE-$QUANT_MODE"
 elif [ "$OPTION" == "quant" ]; then
-    OUTPUT_DIR=output/output_bloom
+    OUTPUT_DIR=output/output_bloom_$(date +%m%d)
     EXTRA_OPTION=""
 else
     echo "Invalid option: $OPTION. Only 'load', 'dump', and 'quant' are supported."

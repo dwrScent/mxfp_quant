@@ -463,14 +463,27 @@ def mxfp_sub_group(tensor_value, quant_grid, sub_group_grid, mode="int", zero_po
         outlier_group_mask = outlier_group_mask.repeat(1, sub_group_size)
         outlier_group_mask = outlier_group_mask.reshape(-1, q_group_size)
     elif subgroup_mode == 'outlier':
-        labels = (((tensor_value + zeros) / scales).unsqueeze(-1) - quant_grid).abs().argmin(dim=-1)
-        tensor_q = quant_grid[labels]
-        outlier_mask = torch.where(tensor_q >= 4.0, 1.0, 0.).to(tensor_value.device)
+        # labels = (((tensor_value + zeros) / scales).unsqueeze(-1) - quant_grid).abs().argmin(dim=-1)
+        # tensor_q = quant_grid[labels]
+        # assert torch.all(tensor_q < 8.0), "Tensor contains values greater than or equal to 8!"
+        # outlier_mask = torch.where(tensor_q >= 4.0, 1.0, 0.).to(tensor_value.device)
+
+        tensor_exp = tensor_value.view(torch.int16)
+        tensor_exp = (tensor_exp >> 10) & 0x1F
+        max_val_exp = max_val.view(torch.int16)
+        max_val_exp = (max_val_exp >> 10) & 0x1F
+        outlier_mask = (tensor_exp == max_val_exp)
+        # print(tensor_exp, max_val_exp, outlier_mask, outlier_mask.shape)
+        # exit(0)
+
         outlier_group_mask = outlier_mask.reshape(-1, sub_group_size).to(dtype=torch.int8)
         outlier_group_mask = outlier_group_mask.sum(dim=1, keepdim=True)
+        # print(outlier_group_mask, outlier_mask.sum(dim=1, keepdim=True))
         outlier_group_mask = torch.where(outlier_group_mask >= 1, 1, 0)
         outlier_group_mask = outlier_group_mask.repeat(1, sub_group_size)
         outlier_group_mask = outlier_group_mask.reshape(-1, q_group_size)
+    # print(outlier_group_mask.sum(), sub_group_grid, quant_grid)
+    # exit(0)
 
     
     # print(outlier_mask, outlier_mask.shape, outlier_mask.sum(), outlier_group_mask, outlier_group_mask.shape, outlier_group_mask.sum())
@@ -494,6 +507,8 @@ def mxfp_sub_group(tensor_value, quant_grid, sub_group_grid, mode="int", zero_po
         tensor_q_par = sub_group_grid[labels] * scales[idx*batch_size : (idx+1)*batch_size, :] - zeros
         tensor_deq_o_group[idx*batch_size : (idx+1)*batch_size, :] = tensor_q_par
 
+    # print('init tensor_deq', (tensor_deq-tensor_value).abs().pow(2).to(torch.float32).mean())
+
     tensor_deq = tensor_deq * (1-outlier_group_mask) + tensor_deq_o_group * outlier_group_mask
 
     # tensor_deq = org_value * mask + tensor_deq * (1-mask)
@@ -502,6 +517,7 @@ def mxfp_sub_group(tensor_value, quant_grid, sub_group_grid, mode="int", zero_po
 
     # calculate_max_error(tensor_value, tensor_deq, q_group_size=q_group_size)
     # print(quant_mse, quant_mse_sum, quant_mse_sum.mean())
+    # print('merge tensor_deq', quant_mse_sum.mean())
     # exit(0)
 
     assert torch.isnan(tensor_deq).sum() == 0
@@ -693,7 +709,8 @@ class MXFP_Linear(nn.Module):
         if init_only:  # just prepare for loading sd
             return mxfp_linear
 
-        mxfp_linear.weight = linear.weight.data.clone().half()
+        # mxfp_linear.weight = linear.weight.data.clone().half()
+        mxfp_linear.weight = linear.weight.data
         if linear.bias is not None:
             mxfp_linear.bias = linear.bias.clone().half()
 

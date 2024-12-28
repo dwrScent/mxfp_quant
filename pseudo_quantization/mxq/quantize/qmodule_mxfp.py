@@ -711,6 +711,7 @@ class MXFP_Linear(nn.Module):
 
         # mxfp_linear.weight = linear.weight.data.clone().half()
         mxfp_linear.weight = linear.weight.data
+        
         if linear.bias is not None:
             mxfp_linear.bias = linear.bias.clone().half()
 
@@ -718,19 +719,27 @@ class MXFP_Linear(nn.Module):
         # w_exp_field_map = {3: 2, 4: 2, 5: 2, 6: 3, 7: 3, 8: 4}
         # w_exp_field = w_exp_field_map[w_bit]
         flint_r_list = [0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, -0.5, -1.0, -1.5, -2.0, -2.5, -3.0, -3.5]
-        
+
         if w_bit < 16:
-            mxfp_linear.weight_quant_grid = float_value(w_bit, True)
+            if ant_config['ant_mode'] == 'int':
+                mxfp_linear.weight_quant_grid = int_value(w_bit, True)
+            elif ant_config['ant_mode'] == 'float':
+                mxfp_linear.weight_quant_grid = float_value(w_bit, True)
+            else:
+                raise NotImplementedError('Not support yet.')
             # mxfp_linear.weight_quant_grid = torch.tensor(flint_r_list)
-            # mxfp_linear.weight_quant_grid = int_value(w_bit, True)
         # mxfp_linear.weight_quant_grid = normal_float_value(w_bit, True)
 
         # a_exp_field_map = {3: 2, 4: 2, 5: 2, 6: 3, 7: 3, 8: 4}
         # a_exp_field = a_exp_field_map[a_bit]
         if a_bit < 16:
-            mxfp_linear.input_quant_grid = float_value(a_bit, True)
+            if ant_config['ant_mode'] == 'int':
+                mxfp_linear.input_quant_grid = int_value(w_bit, True)
+            elif ant_config['ant_mode'] == 'float':
+                mxfp_linear.input_quant_grid = float_value(w_bit, True)
+            else:
+                raise NotImplementedError('Not support yet.')
             # mxfp_linear.input_quant_grid = torch.tensor(flint_r_list)
-            # mxfp_linear.input_quant_grid = int_value(a_bit, True)
         # mxfp_linear.input_quant_grid = normal_float_value(a_bit, True)
 
         assert mxfp_linear.group_size == 32

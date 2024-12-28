@@ -163,7 +163,7 @@ def get_quant_grid(tensor_value, quant_grid, group_size, alpha=1.0):
 
 
 @torch.no_grad()
-def get_quant_mxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_group_size=-1, alpha=1.0, pos_value=None, get_labels=False, is_input=False, keep_outlier=False):
+def get_quant_mxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_group_size=-1, alpha=1.0, pos_value=None, get_labels=False, is_input=False, keep_outlier=False, print_stats=False):
     '''
     return : dequantized weight, mse?
     '''
@@ -278,7 +278,8 @@ def get_quant_mxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_grou
     # calculate_max_error(tensor_value, tensor_deq, q_group_size=q_group_size)
 
     quant_obj = 'input' if is_input else 'weight'
-    # print(f"Quantization MSE: {quant_mse_sum.mean().item()}, quant_obj: {quant_obj}, keep_outlier: {keep_outlier}")
+    if print_stats:
+        print(f"Quantization MSE: {quant_mse_sum.mean().item()}, quant_obj: {quant_obj}, keep_outlier: {keep_outlier}")
     # print('init', scales, tensor_deq, tensor_value)
 
     if get_labels:

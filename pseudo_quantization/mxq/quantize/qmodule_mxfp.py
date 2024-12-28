@@ -663,7 +663,8 @@ class MXFP_Linear(nn.Module):
         self.input_alpha = -1
 
         self.search_tag = None
-        self.keep_outlier = False
+        # self.keep_outlier = False
+        self.keep_outlier = True
 
         # MXFP param
         self.weight_mxfp_mode = ant_config['weight_mxfp_mode']
@@ -687,7 +688,9 @@ class MXFP_Linear(nn.Module):
         if init_only:  # just prepare for loading sd
             return mxfp_linear
 
-        mxfp_linear.weight = linear.weight.data.clone().half()
+        # mxfp_linear.weight = linear.weight.data.clone().half()
+        mxfp_linear.weight = linear.weight.data
+        
         if linear.bias is not None:
             mxfp_linear.bias = linear.bias.clone().half()
 
@@ -773,7 +776,7 @@ class MXFP_Linear(nn.Module):
         assert torch.isnan(out).sum() == 0
 
         # print('test', self.layer_name, out, out.max(), out.min())
-        print(f"layer: {self.layer_id}, tensor: {self.layer_name}, a_bit_width: {self.a_bit}. group_size: {self.group_size}")
+        # print(f"layer: {self.layer_id}, tensor: {self.layer_name}, a_bit_width: {self.a_bit}. group_size: {self.group_size}")
 
         out = out + self.bias if self.bias is not None else out
         return out.reshape(out_shape)

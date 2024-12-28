@@ -11,7 +11,8 @@ MXFP_MODE=${8:-"w-base-a-base"}
 OPTION=${9:-"quant"}
 DESC=${10:-""}
 
-MODEL=/localssd/wmhu/models/llama-3-${MODEL_SIZE}b-hf
+# MODEL=/localssd/wmhu/models/llama-3-${MODEL_SIZE}b-hf
+MODEL=/localssd/wmhu/models/llama-3-${MODEL_SIZE}b-instruct
 # MODEL=/mnt/nvme0n1/ckpt/llama/Meta-Llama-3-${MODEL_SIZE}B-Instruct 
 # MODEL=/cephfs/shared/model/Meta-Llama-3-${MODEL_SIZE}B-Instruct 
 OUTPUT_NAME=llama-3-${MODEL_SIZE}b
@@ -25,7 +26,7 @@ elif [ "$OPTION" == "dump" ]; then
     mkdir -p quant_cache
     EXTRA_OPTION="--dump_quant quant_cache/$OUTPUT_NAME-w4-g$GROUP_SIZE-$QUANT_MODE"
 elif [ "$OPTION" == "quant" ]; then
-    OUTPUT_DIR=output/output_llama3_mxfp_test
+    OUTPUT_DIR=output/output_llama3_mxfp_test_$(date +%m%d)
     EXTRA_OPTION=""
 else
     echo "Invalid option: $OPTION. Only 'load', 'dump', and 'quant' are supported."

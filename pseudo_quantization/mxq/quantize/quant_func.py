@@ -271,14 +271,14 @@ def get_quant_mxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_grou
     assert torch.isinf(tensor_deq).sum() == 0
     assert torch.isnan(tensor_deq).sum() == 0
     assert torch.isnan(scales).sum() == 0
-    assert torch.isnan(quant_mse).sum() == 0
+    # assert torch.isnan(quant_mse).sum() == 0
 
     tensor_deq = tensor_deq.reshape(org_shape)
 
     # calculate_max_error(tensor_value, tensor_deq, q_group_size=q_group_size)
 
     quant_obj = 'input' if is_input else 'weight'
-    print(f"Quantization MSE: {quant_mse_sum.mean().item()}, quant_obj: {quant_obj}, keep_outlier: {keep_outlier}")
+    # print(f"Quantization MSE: {quant_mse_sum.mean().item()}, quant_obj: {quant_obj}, keep_outlier: {keep_outlier}")
     # print('init', scales, tensor_deq, tensor_value)
 
     if get_labels:

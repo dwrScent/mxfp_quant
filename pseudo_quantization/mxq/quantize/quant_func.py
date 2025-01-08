@@ -139,7 +139,8 @@ def get_quant_grid(tensor_value, quant_grid, group_size, alpha=1.0):
         zeros = 0
 
         # Batch processing to avoid OOM
-        batch_num = 1
+        # batch_num = 4
+        batch_num = 16
         assert tensor_value.shape[0] % batch_num == 0
         batch_size = tensor_value.shape[0] // batch_num
         tensor_deq = torch.zeros_like(tensor_value)
@@ -249,7 +250,8 @@ def get_quant_mxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_grou
         tensor_value = tensor_value * ~outlier_mask
 
     # Batch processing to avoid OOM
-    batch_num = 4
+    # batch_num = 4
+    batch_num = 16
     assert tensor_value.shape[0] % batch_num == 0
     batch_size = tensor_value.shape[0] // batch_num
     tensor_deq = torch.zeros_like(tensor_value)

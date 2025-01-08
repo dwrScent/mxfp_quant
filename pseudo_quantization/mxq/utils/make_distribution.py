@@ -5,6 +5,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 import seaborn as sns
+from mpl_toolkits.mplot3d import Axes3D
+from datetime import datetime
 
 import os, sys
 import math
@@ -211,8 +213,74 @@ def group_dist(w_data, group_size=-1, layer_idx=0, layer_name="", max_fig=1000, 
         plt.savefig(f'{save_path}/layer{layer_idx}_{layer_name}_group_{idx}_{desc}.png')
         plt.clf()
 
+def distri_3d(w_data, group_size=-1, layer_idx=0, layer_name="", max_fig=1000, desc=""):
+    if group_size > 0 and w_data.shape[-1] % group_size != 0:
+        print(f"Input channel: {w_data.shape[-1]} is not divisible by group_size: {group_size}")
+        return
+    
+    # Prepare data based on group_size
+    w_data_group = w_data.reshape(-1, group_size) if group_size > 0 else w_data
+
+    # Prepare 3D visualization
+    fig = plt.figure(figsize=(10, 7))
+    ax = fig.add_subplot(111, projection='3d')
+
+    # Prepare X, Y, and Z values
+    group_indices = np.arange(w_data_group.shape[0])
+    element_indices = np.arange(w_data_group.shape[1])
+    X, Y = np.meshgrid(element_indices, group_indices)
+    Z = np.abs(w_data_group.cpu().numpy())  # Use absolute value for better visualization
+
+    # Plot surface
+    percentile_range = [10, 99.7]  # 10%到99%的分位数范围
+    z_min, z_max = np.percentile(Z, percentile_range)  
+    surface = ax.plot_surface(X, Y, Z, cmap='viridis', edgecolor='none', alpha=0.8, vmin=z_min, vmax=z_max)
+    # surface = ax.plot_surface(X, Y, Z, cmap='viridis', edgecolor='none', alpha=0.8, norm=LogNorm(vmin=z_min, vmax=z_max))
+    # fig.colorbar(surface, ax=ax, shrink=0.5, aspect=10)  # 添加颜色条
+    fig.colorbar(surface, ax=ax, shrink=0.5, aspect=10, extend='both')  # extend='both' 确保颜色条包含超出范围的值
+
+    # 标注最大值
+    max_idx = np.unravel_index(Z.argmax(), Z.shape)
+    ax.text(X[max_idx], Y[max_idx], Z.max(), f'max: {Z.max():.2f}', color='red')
+        # 添加分位数信息到图像顶部
+    fig.text(
+        0.5, 0.8,  # 中心对齐，位于顶部
+        f"Percentile Range: {percentile_range[0]}% = {z_min:.4f}, {percentile_range[1]}% = {z_max:.4f}",
+        fontsize=12,
+        color='red',
+        ha='center',  # 水平居中
+        va='top',  # 垂直顶部对齐
+        bbox=dict(boxstyle="round", edgecolor="black", facecolor="white", alpha=0.8)
+    )
+
+    # elev (Elevation): 从 z 轴方向观察的角度（俯仰角），默认值是 30°。越小视角越接近xy平面，值越大越类似俯视
+    # azim (Azimuth): 绕 z 轴旋转的角度（方位角）。
+    ax.view_init(elev=10, azim=20)
+
+    ax.set_xlabel('Input Dimension')
+    ax.set_ylabel('Output Dimension (Group Index)')
+    ax.set_zlabel('Absolute Value of W')
+    ax.set_title(f"Layer {layer_idx} - {layer_name} - 3D Distribution")
+
+    # Save figure
+    current_time = datetime.now().strftime("_%m%d%H%M")  # 格式: 月日时分 (_01071127)
+
+    save_path = os.path.join(os.getcwd(), 'distri_img')
+    os.makedirs(save_path, exist_ok=True)
+    # file_name = f"layer{layer_idx}_{layer_name}_3d_{desc}.png"
+    file_name = f"layer{layer_idx}_{layer_name}_3d_{desc}_{current_time}.png"
+    plt.savefig(os.path.join(save_path, file_name), dpi=600)
+    plt.close()
+
+    print(f"3D distribution plot saved at: {os.path.join(save_path, file_name)}")
+
+
 if __name__ == '__main__':
-    w = torch.normal(2, 5, size=(8, 1024))
+    w = torch.normal(0, 1, size=(4096, 4096))
+    w_non_zero_mask = (w > 0.)
+    w_non_zero = w_non_zero_mask * w + ~w_non_zero_mask * (1.0)
+    print(w_non_zero.abs().min(), w.max(), w)
+    distri_3d(w)
 
     # group_dist_outlier(w, group_size=16)
             # if i % 10 == 0:

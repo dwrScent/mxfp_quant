@@ -139,7 +139,8 @@ class ANT_Linear(nn.Module):
         if init_only:  # just prepare for loading state dictionary
             return ant_linear
 
-        ant_linear.weight = linear.weight.data.clone().half()
+        # ant_linear.weight = linear.weight.data.clone().half()
+        ant_linear.weight = linear.weight.data
         if linear.bias is not None:
             ant_linear.bias = linear.bias.clone().half()
 
@@ -201,11 +202,11 @@ class ANT_Linear(nn.Module):
                     deq_weight = get_quant_grid(self.weight, quant_grid_set[self.weight_mode], self.group_size, alpha=1.0)
 
             # Tensor-wise search
-            # deq_input = ant_quant(self, self.a_bit, deq_weight, input, self.ant_config, -2, self.layer_id, self.layer_name, is_input=True)
-            deq_input = ant_quant(self, self.a_bit, deq_weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, is_input=True)
+            deq_input = ant_quant(self, self.a_bit, deq_weight, input, self.ant_config, -2, self.layer_id, self.layer_name, is_input=True)
+            # deq_input = ant_quant(self, self.a_bit, deq_weight, input, self.ant_config, self.group_size, self.layer_id, self.layer_name, is_input=True)
 
             # NOTE: pass the quantized and dequantized input in our experiment in search
-            # deq_input = input
+            deq_input = input
             self.weight = deq_weight            
             print("ant search data type and alpha.")
 
@@ -213,24 +214,27 @@ class ANT_Linear(nn.Module):
         else:
             org_shape = input.shape
             # ANT falls back to INT when the bit width >= 6
-            if self.a_bit > 6:
-                # Channel-wise for weight and Tensor-wise for activation (ANT init configuration)
-                if self.group_size == -1:
-                    deq_input = pseudo_quantize_int(input, n_bit=self.a_bit, zero_point=False, q_group_size=-2, alpha=self.input_alpha)
-                elif self.group_size > 0:
-                    # Do not use alpha in group-wise quantization, set it to 1.0
-                    deq_input = pseudo_quantize_int(input, n_bit=self.a_bit, zero_point=False, q_group_size=self.group_size, alpha=1.0)
+            if self.a_bit < 16:
+                if self.a_bit > 6:
+                    # Channel-wise for weight and Tensor-wise for activation (ANT init configuration)
+                    if self.group_size == -1:
+                        deq_input = pseudo_quantize_int(input, n_bit=self.a_bit, zero_point=False, q_group_size=-2, alpha=self.input_alpha)
+                    elif self.group_size > 0:
+                        # Do not use alpha in group-wise quantization, set it to 1.0
+                        deq_input = pseudo_quantize_int(input, n_bit=self.a_bit, zero_point=False, q_group_size=self.group_size, alpha=1.0)
+                    else:
+                        raise NotImplementedError('Not supported yet')
                 else:
-                    raise NotImplementedError('Not supported yet')
+                    # Channel-wise for weight and Tensor-wise for activation (ANT init configuration)
+                    if self.group_size == -1:
+                        deq_input = get_quant_grid(input, self.input_quant_grid, -2, alpha=self.input_alpha)
+                    elif self.group_size > 0:
+                        quant_grid_set = generate_quant_grid(self.a_bit, ant_mode=self.input_mode)
+                        deq_input = get_quant_grid(input, quant_grid_set[self.input_mode], self.group_size, alpha=1.0)
+                    else:
+                        raise NotImplementedError('Not supported yet')
             else:
-                # Channel-wise for weight and Tensor-wise for activation (ANT init configuration)
-                if self.group_size == -1:
-                    deq_input = get_quant_grid(input, self.input_quant_grid, -2, alpha=self.input_alpha)
-                elif self.group_size > 0:
-                    quant_grid_set = generate_quant_grid(self.a_bit, ant_mode=self.input_mode)
-                    deq_input = get_quant_grid(input, quant_grid_set[self.input_mode], self.group_size, alpha=1.0)
-                else:
-                    raise NotImplementedError('Not supported yet')
+                deq_input = input
 
             deq_input = deq_input.reshape(org_shape)
 

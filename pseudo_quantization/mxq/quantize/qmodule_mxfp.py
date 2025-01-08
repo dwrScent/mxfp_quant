@@ -12,6 +12,7 @@ from .ant_quant import float_value, int_value, normal_float_value
 from .rounding_comp import gemm_with_compensation_gpu
 
 from .utils_stats import calculate_scale_range, calculate_outlier_exp
+from ..utils.make_distribution import distri_3d
 
 
 def outlier_value(n_bit, signed=True, exp_bit=2, exp_base=5):
@@ -142,7 +143,8 @@ def mxfp_search(tensor_value, quant_grid, mode="int", zero_point=True, q_group_s
         tensor_value = tensor_value * ~outlier_mask
 
     # Batch processing to avoid OOM
-    batch_num = 4
+    # batch_num = 4
+    batch_num = 16
     assert tensor_value.shape[0] % batch_num == 0
     batch_size = tensor_value.shape[0] // batch_num
 
@@ -490,7 +492,8 @@ def mxfp_sub_group(tensor_value, quant_grid, sub_group_grid, mode="int", zero_po
     # exit(0)
 
     # Batch processing to avoid OOM
-    batch_num = 4
+    # batch_num = 4
+    batch_num = 16
     assert tensor_value.shape[0] % batch_num == 0
     batch_size = tensor_value.shape[0] // batch_num
     tensor_deq = torch.zeros_like(tensor_value)
@@ -772,6 +775,9 @@ class MXFP_Linear(nn.Module):
             # calculate_scale_range(self.weight, self.weight_quant_grid, self.layer_id, self.layer_name, self.group_size, False)
             # calculate_outlier_exp(self.weight, self.weight_quant_grid, self.layer_id, self.layer_name, self.group_size, False)
 
+            # for weight
+            # distri_3d(self.weight, layer_idx=self.layer_id, layer_name=self.layer_name)
+
             if self.w_bit < 16:
                 deq_weight, _ = self._quantize_data(self.weight, self.weight_mxfp_mode, self.weight_quant_grid, self.w_bit, 5, False)
             else:
@@ -791,20 +797,20 @@ class MXFP_Linear(nn.Module):
         else:
             if self.a_bit < 16:
                 # calculate_scale_range(input, self.input_quant_grid, self.layer_id, self.layer_name, self.group_size, True)
-                # calculate_outlier_exp(input, self.input_quant_grid, self.layer_id, self.layer_name, self.group_size, True)
-                
+
                 deq_input, _ = self._quantize_data(input, self.input_mxfp_mode, self.input_quant_grid, self.a_bit, 7, True)
                 pass
             else:
+                # calculate_outlier_exp(input, self.input_quant_grid, self.layer_id, self.layer_name, self.group_size, True)
                 deq_input = input
 
-        # print(input.shape)
-        # out = gemm_with_compensation_gpu(input, self.weight, q_group_size=self.group_size, quant_grid=self.input_quant_grid)
-        out = F.linear(deq_input, self.weight)
+                # distri_3d(deq_input, layer_idx=self.layer_id, layer_name=self.layer_name)
 
+        # out = gemm_with_compensation_gpu(input, self.weight, q_group_size=self.group_size, quant_grid=self.input_quant_grid)
+
+        out = F.linear(deq_input, self.weight)
         assert torch.isnan(out).sum() == 0
 
-        # print('test', self.layer_name, out, out.max(), out.min())
         if self.print_stats:
             print(f"layer: {self.layer_id}, tensor: {self.layer_name}, a_bit_width: {self.a_bit}. group_size: {self.group_size}")
 

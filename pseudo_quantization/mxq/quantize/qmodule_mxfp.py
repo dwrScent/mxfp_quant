@@ -448,8 +448,8 @@ def mxfp_sub_group(tensor_value, quant_grid, sub_group_grid, mode="int", zero_po
     zeros = 0
 
     # MODE: [max, outlier]
-    subgroup_mode = 'max'
-    # subgroup_mode = 'outlier'
+    # subgroup_mode = 'max'
+    subgroup_mode = 'outlier'
 
     if subgroup_mode == 'max':
         # find the sub group with maximum value

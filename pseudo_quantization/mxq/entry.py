@@ -394,6 +394,7 @@ def main():
             testenc = testenc.input_ids.to(model.device)
             nsamples = testenc.numel() // model.seqlen
             # nsamples = 10
+            # nsamples = 30
             model = model.eval()
             nlls = []
             for i in tqdm.tqdm(range(1), desc="Data Type Search..."):

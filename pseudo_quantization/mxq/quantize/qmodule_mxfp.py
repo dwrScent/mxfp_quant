@@ -737,9 +737,9 @@ class MXFP_Linear(nn.Module):
         # a_exp_field = a_exp_field_map[a_bit]
         if a_bit < 16:
             if ant_config['ant_mode'] == 'int':
-                mxfp_linear.input_quant_grid = int_value(w_bit, True)
+                mxfp_linear.input_quant_grid = int_value(a_bit, True)
             elif ant_config['ant_mode'] == 'float':
-                mxfp_linear.input_quant_grid = float_value(w_bit, True)
+                mxfp_linear.input_quant_grid = float_value(a_bit, True)
             else:
                 raise NotImplementedError('Not support yet.')
             # mxfp_linear.input_quant_grid = torch.tensor(flint_r_list)

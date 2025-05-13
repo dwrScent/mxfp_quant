@@ -28,7 +28,7 @@ from torch import nn
 
 from mxq.models.opt_giant import OPTForCausalLM_giant
 from mxq.models.bloom_giant import BloomForCausalLM_giant
-from mxq.models.llama_giant import LlamaForCausalLM_giant
+from mxq.models.llama_mxfp import LlamaForCausalLM_mxfp
 
 from transformers import OPTConfig, BloomConfig, LlamaConfig
 
@@ -155,6 +155,7 @@ def build_model_and_enc(model_path):
     config = AutoConfig.from_pretrained(model_path)
     enc = AutoTokenizer.from_pretrained(model_path, use_fast=False)
 
+
     if args.load_quant:  # directly load quantized weights
         print("Loading pre-computed quantized weights...")
         with init_empty_weights():
@@ -174,7 +175,7 @@ def build_model_and_enc(model_path):
                     model = BloomForCausalLM_giant.from_pretrained(
                         model_path, config=config, **kwargs)
                 elif isinstance(config, LlamaConfig):
-                    model = LlamaForCausalLM_giant.from_pretrained(
+                    model = LlamaForCausalLM_mxfp.from_pretrained(
                         model_path, config=config, **kwargs)
                 else:
                     raise NotImplementedError('not support yet')
@@ -237,14 +238,13 @@ def build_model_and_enc(model_path):
                 model = BloomForCausalLM_giant.from_pretrained(
                     model_path, config=config, **kwargs)
             elif isinstance(config, LlamaConfig):
-                model = LlamaForCausalLM_giant.from_pretrained(
+                model = LlamaForCausalLM_mxfp.from_pretrained(
                     model_path, config=config, **kwargs)
             else:
                 raise NotImplementedError('not support yet')
         else:
             model = AutoModelForCausalLM.from_pretrained(
                 model_path, config=config, **kwargs)
-
         # weight quantization
         if args.w_bit and args.w_bit != -1:
             if args.q_backend == "fake":
@@ -309,8 +309,11 @@ def main():
     # a hack here to auto set model group
     model, enc = build_model_and_enc(args.model_path)
 
+
     # lm_eval_model = LMEvalAdaptor(args.model_path, model, enc, args.batch_size)
     lm_eval_model = HFLM(pretrained=model, batch_size=args.batch_size)
+
+
     
     if args.tasks is not None:
         # TODO: lm-eval 0.4.0 does not need the prefix hendrycksTest. This part can be updated.

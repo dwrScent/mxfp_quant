@@ -13,7 +13,7 @@ from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_m
 from ..utils.make_distribution import group_dist
 from ..utils.cdf_graph import group_cdf, cdf_csv
 
-from ..quantize.quant_func import pseudo_quantize_giant
+from ..quantize.quant_func import get_quant_mxfp
 from ..quantize.quant_func import pseudo_quantize_int, get_quant_grid
 from ..quantize.ant_quant import generate_quant_grid, ant_quantization
 
@@ -21,7 +21,7 @@ from ..quantize.ant_quant import generate_quant_grid, ant_quantization
 _CONFIG_FOR_DOC = "LlamaConfig"
 
 
-class LlamaRotaryEmbedding_giant(nn.Module):
+class LlamaRotaryEmbedding_mxfp(nn.Module):
     def __init__(self, dim, max_position_embeddings=2048, base=10000, device=None, scaling_factor=1.0):
         super().__init__()
         self.scaling_factor = scaling_factor
@@ -75,7 +75,7 @@ class LlamaRotaryEmbedding_giant(nn.Module):
             sin = emb.sin()
         return cos.to(dtype=x.dtype), sin.to(dtype=x.dtype)
     
-class LlamaAttention_giant(nn.Module):
+class LlamaAttention_mxfp(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
 
     def __init__(self, config: LlamaConfig, layer_idx: Optional[int] = None):
@@ -114,14 +114,14 @@ class LlamaAttention_giant(nn.Module):
         # Quantization args
         self.quant_attention = True
         self.group_size = config.group_size
-        self.print_stats = True
-        # self.print_stats = False
+        # self.print_stats = True
+        self.print_stats = False
         self.q_bit = config.a_bit
         self.k_bit = config.k_bit
         self.v_bit = config.v_bit
         # self.v_group_elem_num = 0
         # self.v_update_mode = 'lazy_update'
-        # self.data_type = 'giant'
+        # self.data_type = 'mxfp'
         self.data_type = 'float'
 
         self.quant_grid_set = generate_quant_grid(n_bit=4, signed=True, ant_mode='float')
@@ -132,7 +132,7 @@ class LlamaAttention_giant(nn.Module):
 
     def _init_rope(self):
         if self.config.rope_scaling is None:
-            self.rotary_emb = LlamaRotaryEmbedding_giant(
+            self.rotary_emb = LlamaRotaryEmbedding_mxfp(
                 self.head_dim,
                 max_position_embeddings=self.max_position_embeddings,
                 base=self.rope_theta,
@@ -175,25 +175,20 @@ class LlamaAttention_giant(nn.Module):
         query_states = query_states.reshape(query_states.shape[1], -1)
         key_states = key_states.reshape(key_states.shape[1], -1)
 
-        # cdf_csv(key_states, -2, self.layer_idx, 'key', 1000, 1, 'cdf_key_tensor.csv')  
-        # if self.layer_idx >= 12 and self.layer_idx <= 15:
-        #     cdf_csv(key_states, -1, self.layer_idx, 'key', 1000, 64, 'cdf_key_chan.csv')  
-        # if self.layer_idx >= 12 and self.layer_idx <= 15:
-        #     cdf_csv(key_states, 64, self.layer_idx, 'key', 1000, 512, 'cdf_key_group.csv')
-
         # Quantize query and key states
         if self.data_type == 'float':
-            quant_grid_set = generate_quant_grid(4, ant_mode='float')
+            quant_grid_set = generate_quant_grid(self.q_bit, ant_mode='float')
             query_states = get_quant_grid(query_states, quant_grid_set['float'], group_size, 1)
         else:
             query_states = pseudo_quantize_int(query_states, n_bit=self.q_bit, zero_point=False, q_group_size=group_size)
-
-        if self.data_type == 'giant':
-            key_states = pseudo_quantize_giant(key_states, n_bit=self.k_bit, zero_point=False, q_group_size=group_size)
+        
+        if self.data_type == 'mxfp':
+            quant_grid_set = generate_quant_grid(4, ant_mode='float')
+            key_states, _ = get_quant_mxfp(key_states, quant_grid_set['float'], group_size, 1)
         elif self.data_type == 'int':
             key_states = pseudo_quantize_int(key_states, n_bit=self.k_bit, zero_point=False, q_group_size=group_size)
         elif self.data_type == 'float':
-            quant_grid_set = generate_quant_grid(4, ant_mode='float')
+            quant_grid_set = generate_quant_grid(self.k_bit, ant_mode='float')
             key_states = get_quant_grid(key_states, quant_grid_set['float'], group_size, 1)
         else:
             raise ImportError('not support yet')
@@ -220,50 +215,28 @@ class LlamaAttention_giant(nn.Module):
             # value_states.shape (b, n, s, d)
             v_cache_shape = value_states.shape
             
-            if v_seq_len % group_size == 0:
-                # recover the shape of value cache and reshape to 2d for quantization -> (s, b*n*d)
-                value_states = value_states.transpose(1, 2).reshape(v_seq_len, -1)
-                value_trans = value_states.t()
+            # recover the shape of value cache and reshape to 2d for quantization -> (s, b*n*d)
+            value_states = value_states.transpose(1, 2).reshape(v_seq_len, -1)
+            value_trans = value_states.t()
 
-                # quantize the latest V cache group
-                if self.data_type == 'giant':
-                    quantized_part_deq = pseudo_quantize_giant(value_trans[:, (v_seq_len-group_size):], n_bit=self.v_bit, zero_point=False, q_group_size=group_size)
-                elif self.data_type == 'int':
-                    quantized_part_deq = pseudo_quantize_int(value_trans[:, (v_seq_len-group_size):], n_bit=self.v_bit, zero_point=False, q_group_size=group_size)
-                elif self.data_type == 'float':
-                    quant_grid_set = generate_quant_grid(self.v_bit, ant_mode='float')
-                    quantized_part_deq = get_quant_grid(value_trans[:, (v_seq_len-group_size):], quant_grid_set['float'], group_size, 1)
-                else:
-                    raise ImportError('not support yet')
-
-                value_trans = torch.cat([value_trans[:, :(v_seq_len-group_size)], quantized_part_deq], dim=1)
-
-                # reshape
-                value_states = value_trans.t()
-                value_states = value_states.reshape(v_cache_shape[0], v_cache_shape[2], v_cache_shape[1], v_cache_shape[3]).transpose(1, 2)
+            # quantize the latest V cache group
+            if self.data_type == 'mxfp':
+                quant_grid_set = generate_quant_grid(4, ant_mode='float')
+                quantized_part_deq, _ = get_quant_mxfp(value_trans[:, (v_seq_len-group_size):], quant_grid_set['float'], group_size, 1)
+            elif self.data_type == 'int':
+                quantized_part_deq = pseudo_quantize_int(value_trans[:, (v_seq_len-group_size):], n_bit=self.v_bit, zero_point=False, q_group_size=group_size)
+            elif self.data_type == 'float':
+                quant_grid_set = generate_quant_grid(self.v_bit, ant_mode='float')
+                quantized_part_deq = get_quant_grid(value_trans[:, (v_seq_len-group_size):], quant_grid_set['float'], group_size, 1)
             else:
-                # quantize the V vector to INT8
-                value_states = value_states.transpose(1, 2).reshape(v_seq_len, -1)
-                value_trans = value_states.t()
+                raise ImportError('not support yet')
 
-                # quantize the latest V cache group
-                quantized_part = value_trans[:, (v_seq_len-1):]
-                # print(quantized_part.shape, self.v_channel_scale.shape, self.v_channel_scale)
+            value_trans = torch.cat([value_trans[:, :(v_seq_len-group_size)], quantized_part_deq], dim=1)
 
-                max_int = 2 ** (8 - 1) - 1
-                min_int = - 2 ** (8 - 1)
+            # reshape
+            value_states = value_trans.t()
+            value_states = value_states.reshape(v_cache_shape[0], v_cache_shape[2], v_cache_shape[1], v_cache_shape[3]).transpose(1, 2)
 
-                quantized_part = (torch.clamp(torch.round(quantized_part /  self.v_channel_scale) +
-                                0, min_int, max_int) - 0) *  self.v_channel_scale
-                assert torch.isnan(quantized_part).sum() == 0
-
-                # quantized_part = pseudo_quantize_int(value_trans[:, (v_seq_len-1):], n_bit=8, zero_point=False, q_group_size=group_size)
-                # print(quantized_part.shape)
-                value_trans = torch.cat([value_trans[:, :(v_seq_len-1)], quantized_part], dim=1)
-
-                # reshape
-                value_states = value_trans.t()
-                value_states = value_states.reshape(v_cache_shape[0], v_cache_shape[2], v_cache_shape[1], v_cache_shape[3]).transpose(1, 2)
             
             if self.print_stats:
                 print(f"decode mse v: {mse(org_v, value_states)} v_bit: {self.v_bit} q_group_size: {self.group_size} quant_dtype: {self.data_type}")
@@ -276,12 +249,6 @@ class LlamaAttention_giant(nn.Module):
             value_states = value_states.transpose(1, 2).reshape(v_seq_len, -1)
             value_trans = value_states.t().contiguous()
 
-            # cdf_csv(value_trans, -2, self.layer_idx, 'value', 1000, 1, 'cdf_value_tensor.csv')  
-            # if self.layer_idx >= 12 and self.layer_idx <= 15:
-            #     cdf_csv(value_trans, -1, self.layer_idx, 'value', 1000, 64, 'cdf_value_chan.csv')  
-            # if self.layer_idx >= 12 and self.layer_idx <= 15:
-            #     cdf_csv(value_trans, 64, self.layer_idx, 'value', 1000, 512, 'cdf_value_group.csv')
-
             # quantize the V cache, leave the (org_v_shape[-2] % group_size) tokens
             quant_elem_num = (v_seq_len // group_size) * group_size
 
@@ -289,39 +256,21 @@ class LlamaAttention_giant(nn.Module):
             # print(self.v_channel_scale.shape, value_trans.shape, value_trans.abs().amax(dim=1, keepdim=True))
             self.v_channel_scale = value_trans.abs().amax(dim=1, keepdim=True) / 127
 
-            if self.data_type == 'giant':
-                quantized_part_deq = pseudo_quantize_giant(quantized_part, n_bit=self.v_bit, zero_point=False, q_group_size=group_size)
+            if self.data_type == 'mxfp':
+                quant_grid_set = generate_quant_grid(4, ant_mode='float')   
+                quantized_part_deq, _ = get_quant_mxfp(quantized_part, quant_grid_set['float'], group_size, 1)
             elif self.data_type == 'int':
                 quantized_part_deq = pseudo_quantize_int(quantized_part, n_bit=self.v_bit, zero_point=False, q_group_size=group_size)
             elif self.data_type == 'float':
-                quant_grid_set = generate_quant_grid(4, ant_mode='float')
+                quant_grid_set = generate_quant_grid(self.v_bit, ant_mode='float')
                 quantized_part_deq = get_quant_grid(quantized_part, quant_grid_set['float'], group_size, 1)
             else:
                 raise ImportError('not support yet')
-            # # intervals = [0, 0.05, 0.25, 0.5, 1.0]
-            # # interval_counts = torch.zeros(len(intervals) - 1, dtype=torch.int32)
-            
-            # # interval_counts[0] = torch.sum((value_var >= intervals[0]) & (value_var < intervals[1]))
-            # # interval_counts[1] = torch.sum((value_var >= intervals[1]) & (value_var < intervals[2]))
-            # # interval_counts[2] = torch.sum((value_var >= intervals[2]) & (value_var < intervals[3]))
-            # # interval_counts[3] = torch.sum((value_var >= intervals[3]) & (value_var <= intervals[4]))
-
-            # # # 打印区间统计
-            # # total = value_var.size(0)
-            # # for i in range(len(intervals) - 1):
-            # #     count = interval_counts[i].item()
-            # #     percentage = (count / total) * 100
-            # #     print(f"Interval {intervals[i]} - {intervals[i+1]}: {count} values ({percentage:.2f}%)")
-            # # print(f"Normalized variance of value_states:\n{value_var}, {value_var.max()}, {value_var.min()}")
-            # # group_dist(quantized_part_group, group_size=group_size, layer_idx=self.layer_idx, layer_name='value', max_fig=1000)
 
             value_trans = torch.cat([quantized_part_deq, value_trans[:, quant_elem_num:]], dim=1)
             # reshape
             value_states = value_trans.t().contiguous()
             value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
-
-
-            # exit(0)
 
             if self.print_stats:
                 print(f"prefill mse v: {mse(org_v, value_states)}  v_bit: {self.v_bit} q_group_size: {self.group_size} quant_dtype: {self.data_type}")
@@ -331,14 +280,13 @@ class LlamaAttention_giant(nn.Module):
         else:
             raise ValueError(f'Error value token shape {org_v_shape}')
 
-
     def quantize_attention_weights(self, attn_weights, group_size):
         mse = nn.MSELoss()
         org_weight_shape = attn_weights.shape
         org_weights = attn_weights.clone()
         attn_weights = attn_weights.reshape(attn_weights.shape[1], -1)
         if self.data_type == 'float':
-            quant_grid_set = generate_quant_grid(4, ant_mode='float')
+            quant_grid_set = generate_quant_grid(self.q_bit, ant_mode='float')
             attn_weights = get_quant_grid(attn_weights, quant_grid_set['float'], group_size, 1)
         else:
             attn_weights = pseudo_quantize_int(attn_weights, n_bit=self.q_bit, zero_point=False, q_group_size=group_size)
@@ -354,7 +302,7 @@ class LlamaAttention_giant(nn.Module):
         org_outputs = attn_output.clone()
         attn_output = attn_output.reshape(attn_output.shape[1], -1)
         if self.data_type == 'float':
-            quant_grid_set = generate_quant_grid(4, ant_mode='float')
+            quant_grid_set = generate_quant_grid(self.q_bit, ant_mode='float')
             attn_output = get_quant_grid(attn_output, quant_grid_set['float'], group_size, 1)
         else:
             attn_output = pseudo_quantize_int(attn_output, n_bit=self.q_bit, zero_point=False, q_group_size=group_size)
@@ -375,6 +323,7 @@ class LlamaAttention_giant(nn.Module):
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         bsz, q_len, _ = hidden_states.size()
+
 
         if self.config.pretraining_tp > 1:
             key_value_slicing = (self.num_key_value_heads * self.head_dim) // self.config.pretraining_tp
@@ -399,7 +348,6 @@ class LlamaAttention_giant(nn.Module):
             value_states = self.v_proj(hidden_states)
 
         if self.quant_attention == True:
-            # print(f'qk pre quant, {query_states.device}, {key_states.device}')
             org_v_shape = value_states.shape
             query_states, key_states = self.quantize_query_key(query_states, key_states, self.group_size)
 
@@ -477,12 +425,12 @@ class LlamaAttention_giant(nn.Module):
         return attn_output, attn_weights, past_key_value
 
 LLAMA_ATTENTION_CLASSES = {
-    "eager": LlamaAttention_giant,
+    "eager": LlamaAttention_mxfp,
     "flash_attention_2": LlamaFlashAttention2,
     "sdpa": LlamaSdpaAttention,
 }
 
-class LlamaRMSNorm_giant(nn.Module):
+class LlamaRMSNorm_mxfp(nn.Module):
     def __init__(self, hidden_size, eps=1e-6):
         """
         LlamaRMSNorm is equivalent to T5LayerNorm
@@ -504,9 +452,9 @@ class LlamaRMSNorm_giant(nn.Module):
         return self.weight * hidden_states.to(dtype=input_dtype, device=self.weight.device)
 
 
-ALL_LAYERNORM_LAYERS.append(LlamaRMSNorm_giant)
+ALL_LAYERNORM_LAYERS.append(LlamaRMSNorm_mxfp)
 
-class LlamaMLP_giant(nn.Module):
+class LlamaMLP_mxfp(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
@@ -542,16 +490,18 @@ class LlamaMLP_giant(nn.Module):
 
         return down_proj
     
-class LlamaDecoderLayer_giant(nn.Module):
+class LlamaDecoderLayer_mxfp(nn.Module):
     def __init__(self, config: LlamaConfig, layer_idx: int):
         super().__init__()
         self.hidden_size = config.hidden_size
 
-        self.self_attn = LLAMA_ATTENTION_CLASSES[config._attn_implementation](config=config, layer_idx=layer_idx)
 
-        self.mlp = LlamaMLP_giant(config)
-        self.input_layernorm = LlamaRMSNorm_giant(config.hidden_size, eps=config.rms_norm_eps)
-        self.post_attention_layernorm = LlamaRMSNorm_giant(config.hidden_size, eps=config.rms_norm_eps)
+        # self.self_attn = LLAMA_ATTENTION_CLASSES[config._attn_implementation](config=config, layer_idx=layer_idx)
+        self.self_attn = LLAMA_ATTENTION_CLASSES['eager'](config=config, layer_idx=layer_idx)
+
+        self.mlp = LlamaMLP_mxfp(config)
+        self.input_layernorm = LlamaRMSNorm_mxfp(config.hidden_size, eps=config.rms_norm_eps)
+        self.post_attention_layernorm = LlamaRMSNorm_mxfp(config.hidden_size, eps=config.rms_norm_eps)
 
     def forward(
         self,
@@ -626,7 +576,7 @@ class LlamaDecoderLayer_giant(nn.Module):
         return outputs
 
 
-class LlamaModel_giant(LlamaPreTrainedModel):
+class LlamaModel_mxfp(LlamaPreTrainedModel):
     """
     Transformer decoder consisting of *config.num_hidden_layers* layers. Each layer is a [`LlamaDecoderLayer`]
 
@@ -641,9 +591,9 @@ class LlamaModel_giant(LlamaPreTrainedModel):
 
         self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
         self.layers = nn.ModuleList(
-            [LlamaDecoderLayer_giant(config, layer_idx) for layer_idx in range(config.num_hidden_layers)]
+            [LlamaDecoderLayer_mxfp(config, layer_idx) for layer_idx in range(config.num_hidden_layers)]
         )
-        self.norm = LlamaRMSNorm_giant(config.hidden_size, eps=config.rms_norm_eps)
+        self.norm = LlamaRMSNorm_mxfp(config.hidden_size, eps=config.rms_norm_eps)
         self.gradient_checkpointing = False
 
         # Initialize weights and apply final processing
@@ -847,14 +797,15 @@ class LlamaModel_giant(LlamaPreTrainedModel):
         return causal_mask
 
 
-class LlamaForCausalLM_giant(LlamaPreTrainedModel):
+class LlamaForCausalLM_mxfp(LlamaPreTrainedModel):
     _tied_weights_keys = ["lm_head.weight"]
 
     def __init__(self, config):
         super().__init__(config)
-        self.model = LlamaModel_giant(config)
+        self.model = LlamaModel_mxfp(config)
         self.vocab_size = config.vocab_size
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+
 
         # Initialize weights and apply final processing
         self.post_init()

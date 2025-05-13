@@ -132,8 +132,10 @@ def float_value(n_bit, signed=True, exp_field=2):
 
     # mapping, total_bit: exponent_bit
     exp_field_map = {3: 2, 4: 2, 5: 2, 6: 3, 7: 3, 8: 4}
+    bias_field_map = {3: 0, 4: 0, 5: 0, 6: 4, 7: 4, 8: 8}
     if n_bit in exp_field_map:
         exp_field = exp_field_map[n_bit]
+        bias = bias_field_map[n_bit]
     else:
         raise ValueError("Not support this bit width")
     exp_bit = exp_field
@@ -150,15 +152,15 @@ def float_value(n_bit, signed=True, exp_field=2):
                 min_to_zero = False
             else:
                 if subnormal:
-                    values.append((2 ** i) * (j * 2 ** (-man_bit)))
+                    values.append((2 ** (i - bias)) * (j * 2 ** (-man_bit)))
                 else:
-                    values.append((2 ** (i - 1)) * (1 + j * 2 ** (-man_bit)))
+                    values.append((2 ** (i - 1 - bias)) * (1 + j * 2 ** (-man_bit)))
 
                 if signed:
                     if subnormal:
-                        values.append(-(2 ** i) * (j * 2 ** (-man_bit)))
+                        values.append(-(2 ** (i - bias)) * (j * 2 ** (-man_bit)))
                     else:
-                        values.append(-(2 ** (i - 1)) * (1 + j * 2 ** (-man_bit)))
+                        values.append(-(2 ** (i - 1 - bias)) * (1 + j * 2 ** (-man_bit)))
         subnormal = False
 
     return torch.tensor(values)

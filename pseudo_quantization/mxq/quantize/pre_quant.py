@@ -14,6 +14,7 @@ from transformers.models.llama.modeling_llama import LlamaForCausalLM
 from transformers.models.bert.modeling_bert import BertForSequenceClassification
 
 from mxq.models.llama_giant import LlamaForCausalLM_giant
+from mxq.models.llama_mxfp import LlamaForCausalLM_mxfp
 from mxq.models.opt_giant import OPTForCausalLM_giant
 from mxq.models.bloom_giant import BloomForCausalLM_giant
 
@@ -22,7 +23,7 @@ def get_named_linears(module):
 
 
 def get_blocks(model):
-    if isinstance(model, LlamaForCausalLM) or isinstance(model, LlamaForCausalLM_giant):
+    if isinstance(model, LlamaForCausalLM) or isinstance(model, LlamaForCausalLM_giant) or isinstance(model, LlamaForCausalLM_mxfp):
         layers = model.model.layers
     elif isinstance(model, OPTForCausalLM) or isinstance(model, OPTForCausalLM_giant):
         layers = model.model.decoder.layers

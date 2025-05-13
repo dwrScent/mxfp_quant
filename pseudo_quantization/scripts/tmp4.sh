@@ -1,0 +1,2 @@
+CUDA_VISIBLE_DEVICES=2,3 ./scripts/llama2_run.sh 70 wikitext 0 mxfp float 32 w4a16k16v16 w-sub_group_v2-a-base quant sub-adap
+CUDA_VISIBLE_DEVICES=2,3 ./scripts/llama2_run.sh 70 wikitext 0 mxfp float 32 w4a16k16v16 w-dtype_search-a-base quant group-adap

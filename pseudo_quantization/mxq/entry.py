@@ -51,6 +51,7 @@ parser.add_argument('--auto_parallel', action='store_true',
 parser.add_argument('--quant_bit_width', type=str, default='w16a16k16v16')
 parser.add_argument('--w_bit', type=int, default=None)
 parser.add_argument('--a_bit', type=int, default=16)
+parser.add_argument('--q_bit', type=int, default=16)
 parser.add_argument('--k_bit', type=int, default=16)
 parser.add_argument('--v_bit', type=int, default=16)
 parser.add_argument('--q_group_size', type=int, default=-1)
@@ -133,11 +134,12 @@ outlier_config = {
 def extract_bitwidths(quantization_string):
     w_bits = int(re.search(r'w(-?\d+)', quantization_string).group(1))
     a_bits = int(re.search(r'a(-?\d+)', quantization_string).group(1))
+    q_bits = int(re.search(r'q(-?\d+)', quantization_string).group(1))
     k_bits = int(re.search(r'k(-?\d+)', quantization_string).group(1))
     v_bits = int(re.search(r'v(-?\d+)', quantization_string).group(1))
-    return w_bits, a_bits, k_bits, v_bits
+    return w_bits, a_bits, q_bits, k_bits, v_bits
 
-args.w_bit, args.a_bit, args.k_bit, args.v_bit = extract_bitwidths(args.quant_bit_width)
+args.w_bit, args.a_bit, args.q_bit, args.k_bit, args.v_bit = extract_bitwidths(args.quant_bit_width)
 if args.k_bit < 16 or args.v_bit < 16:
     quant_mode_config['quant_kv'] = True
 print("Quantization config:", q_config)
@@ -164,6 +166,7 @@ def build_model_and_enc(model_path):
                 kwargs = {"device_map": "balanced", "torch_dtype": torch.float16}
                 config.a_bit = args.a_bit
                 config.w_bit = args.w_bit
+                config.q_bit = args.q_bit
                 config.k_bit = args.k_bit
                 config.v_bit = args.v_bit
                 config.group_size = args.q_group_size
@@ -227,6 +230,7 @@ def build_model_and_enc(model_path):
         if quant_mode_config['quant_kv']:
             config.a_bit = args.a_bit
             config.w_bit = args.w_bit
+            config.q_bit = args.q_bit
             config.k_bit = args.k_bit
             config.v_bit = args.v_bit
             config.group_size = args.q_group_size
@@ -397,7 +401,7 @@ def main():
             testenc = testenc.input_ids.to(model.device)
             nsamples = testenc.numel() // model.seqlen
             # nsamples = 10
-            # nsamples = 30
+            nsamples = 30
             model = model.eval()
             nlls = []
             for i in tqdm.tqdm(range(1), desc="Data Type Search..."):

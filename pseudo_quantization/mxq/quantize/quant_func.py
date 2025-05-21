@@ -132,9 +132,9 @@ def get_quant_grid(tensor_value, quant_grid, group_size, alpha=1.0):
         max_val = tensor_value.abs().amax(dim=1, keepdim=True)
         scales = (max_val * alpha) / max_quant_val
 
-        if group_size > 0:
+        # if group_size > 0:
             # scales = scales.to(dtype=torch.float8_e4m3fn).to(dtype=torch.float16)
-            scales = scales.to(dtype=torch.float8_e5m2).to(dtype=torch.float16)
+            # scales = scales.to(dtype=torch.float8_e5m2).to(dtype=torch.float16)
 
         zeros = 0
 
@@ -157,8 +157,8 @@ def get_quant_grid(tensor_value, quant_grid, group_size, alpha=1.0):
     # tensor_deq = tensor_deq.half()
     tensor_deq = tensor_deq.reshape(org_shape)
 
-    if group_size > 0:
-        calculate_max_error(tensor_value, tensor_deq, q_group_size=group_size)
+    # if group_size > 0:
+    #     calculate_max_error(tensor_value, tensor_deq, q_group_size=group_size)
 
     return tensor_deq
 
@@ -178,59 +178,38 @@ def get_quant_mxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_grou
         assert org_shape[-1] % q_group_size == 0
         tensor_value = tensor_value.reshape(-1, q_group_size)
 
-    zero_point = False
+    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+    # avoid divide a too small value
+    max_val = max_val.clamp(min=1e-5)
 
-    if zero_point:
-        # assert 0, "Not support zero point in ant quant now."
-        max_val = tensor_value.amax(dim=1, keepdim=True)
-        min_val = tensor_value.amin(dim=1, keepdim=True)
-            # max_quant_val = max(abs(quant_grid)) * 2
-        max_quant_val = max(quant_grid)
-        min_quant_val = min(quant_grid)
-        exp = torch.floor(torch.log2((max_val - min_val).clamp(min=1e-5))) / torch.floor(torch.log2(max_quant_val - min_quant_val))
-        scales = torch.pow(2, exp)
-        # fp16 z.p.
-        # zeros = (- (max_quant_val + min_quant_val)) / 2  
-        zeros = (- (max_val + min_val)) / 2
+    max_quant_val = max(quant_grid)
+    
+    # Compute the scaling factor
+    # pow(2, math.floor(math.log2(25)) - math.floor(math.log2(6)))
+    # exp = torch.ceil(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
+    
+    scales = (max_val * alpha) / max_quant_val
 
-    else:
-        max_val = tensor_value.abs().amax(dim=1, keepdim=True)
-        # avoid divide a too small value
-        max_val = max_val.clamp(min=1e-5)
+    # scales = scales.to(torch.float8_e3m4)
 
-        if pos_value is None or pos_value == True:
-            max_quant_val = max(quant_grid)
-        elif pos_value == False:
-            max_quant_val = abs(min(quant_grid))
-        else:
-            raise NotImplementedError 
-        
-        # Compute the scaling factor
-        # pow(2, math.floor(math.log2(25)) - math.floor(math.log2(6)))
-        # exp = torch.ceil(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
-        
-        # scales = (max_val * alpha) / max_quant_val
 
-        assert torch.isinf(max_val).sum() == 0
+    assert torch.isinf(max_val).sum() == 0
 
-        exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
-        scales = torch.pow(2, exp)
-        assert not (scales == 0).any(), "Scale should contain 0 values"
+    exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
+    scales = torch.pow(2, exp)
+    assert not (scales == 0).any(), "Scale should contain 0 values"
 
-        # exp_max_val = torch.floor(torch.log2(max_val))
-        # mask = torch.where(tensor_value > torch.pow(2, exp_max_val), torch.tensor(1), torch.tensor(0))
+    # exp_max_val = torch.floor(torch.log2(max_val))
+    # mask = torch.where(tensor_value > torch.pow(2, exp_max_val), torch.tensor(1), torch.tensor(0))
 
-        zeros = 0
+    zeros = 0
     # org_value = tensor_value.clone()
 
-    # if is_input:
-    #     keep_outlier = True
-    # else:
-    #     keep_outlier = True
     if keep_outlier:
         outlier_mask = torch.zeros_like(tensor_value, dtype=torch.bool).to(tensor_value.device)
         _, indices = torch.topk(tensor_value.abs(), 1)
         outlier_mask.scatter_(1, indices, 1)
+
 
         # 对每 3 个 group，保留第 3 行（index % 3 == 2），其他两行清零
         # mask = torch.arange(outlier_mask.shape[0], device=outlier_mask.device) % 3 != 0

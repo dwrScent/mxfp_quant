@@ -113,16 +113,21 @@ class LlamaAttention_mxfp(nn.Module):
 
         # Quantization args
         self.quant_attention = True
+        # self.quant_attention = False
         self.group_size = config.group_size
-        # self.print_stats = True
-        self.print_stats = False
-        self.q_bit = config.a_bit
+        self.print_stats = True
+        # self.print_stats = False
+        self.q_bit = config.q_bit
         self.k_bit = config.k_bit
         self.v_bit = config.v_bit
         # self.v_group_elem_num = 0
         # self.v_update_mode = 'lazy_update'
-        # self.data_type = 'mxfp'
-        self.data_type = 'float'
+        self.data_type = 'mxfp'
+        # self.data_type = 'float'
+        # self.data_type = 'int'
+
+        # self.keep_outlier = True
+        self.keep_outlier = False
 
         self.quant_grid_set = generate_quant_grid(n_bit=4, signed=True, ant_mode='float')
 
@@ -176,23 +181,34 @@ class LlamaAttention_mxfp(nn.Module):
         key_states = key_states.reshape(key_states.shape[1], -1)
 
         # Quantize query and key states
-        if self.data_type == 'float':
-            quant_grid_set = generate_quant_grid(self.q_bit, ant_mode='float')
-            query_states = get_quant_grid(query_states, quant_grid_set['float'], group_size, 1)
-        else:
-            query_states = pseudo_quantize_int(query_states, n_bit=self.q_bit, zero_point=False, q_group_size=group_size)
+        if self.q_bit < 16:
+            if self.data_type == 'float':
+                quant_grid_set = generate_quant_grid(self.q_bit, ant_mode='float')
+                query_states = get_quant_grid(query_states, quant_grid_set['float'], group_size, 1)
+            elif self.data_type == 'mxfp':
+                quant_grid_set = generate_quant_grid(self.q_bit, ant_mode='float')
+                query_states, _ = get_quant_mxfp(query_states, quant_grid_set['float'], q_group_size=group_size, keep_outlier=self.keep_outlier)
+            else:
+                query_states = pseudo_quantize_int(query_states, n_bit=self.q_bit, zero_point=False, q_group_size=group_size)
         
-        if self.data_type == 'mxfp':
-            quant_grid_set = generate_quant_grid(4, ant_mode='float')
-            key_states, _ = get_quant_mxfp(key_states, quant_grid_set['float'], group_size, 1)
-        elif self.data_type == 'int':
-            key_states = pseudo_quantize_int(key_states, n_bit=self.k_bit, zero_point=False, q_group_size=group_size)
-        elif self.data_type == 'float':
-            quant_grid_set = generate_quant_grid(self.k_bit, ant_mode='float')
-            key_states = get_quant_grid(key_states, quant_grid_set['float'], group_size, 1)
-        else:
-            raise ImportError('not support yet')
-        # key_states = quantized_part_deq
+        if self.k_bit < 16:
+            key_pt_quantization = True
+            # key_pt_quantization = False
+            if key_pt_quantization == False:
+                key_states = key_states.t().contiguous()
+            if self.data_type == 'mxfp':
+                quant_grid_set = generate_quant_grid(self.k_bit, ant_mode='float')
+                key_states, _ = get_quant_mxfp(key_states, quant_grid_set['float'], q_group_size=group_size, keep_outlier=self.keep_outlier)
+            elif self.data_type == 'int':
+                key_states = pseudo_quantize_int(key_states, n_bit=self.k_bit, zero_point=False, q_group_size=group_size)
+            elif self.data_type == 'float':
+                quant_grid_set = generate_quant_grid(self.k_bit, ant_mode='float')
+                key_states = get_quant_grid(key_states, quant_grid_set['float'], group_size, 1)
+            else:
+                raise ImportError('not support yet')
+            # key_states = quantized_part_deq
+            if key_pt_quantization == False:
+                key_states = key_states.t().contiguous()
 
         # Restore original shapes
         query_states = query_states.reshape(org_q_shape)
@@ -221,8 +237,8 @@ class LlamaAttention_mxfp(nn.Module):
 
             # quantize the latest V cache group
             if self.data_type == 'mxfp':
-                quant_grid_set = generate_quant_grid(4, ant_mode='float')
-                quantized_part_deq, _ = get_quant_mxfp(value_trans[:, (v_seq_len-group_size):], quant_grid_set['float'], group_size, 1)
+                quant_grid_set = generate_quant_grid(self.v_bit, ant_mode='float')
+                quantized_part_deq, _ = get_quant_mxfp(value_trans[:, (v_seq_len-group_size):], quant_grid_set['float'], q_group_size=group_size, keep_outlier=self.keep_outlier)
             elif self.data_type == 'int':
                 quantized_part_deq = pseudo_quantize_int(value_trans[:, (v_seq_len-group_size):], n_bit=self.v_bit, zero_point=False, q_group_size=group_size)
             elif self.data_type == 'float':
@@ -247,18 +263,28 @@ class LlamaAttention_mxfp(nn.Module):
         elif org_v_shape[-2] > 1:
             # recover the shape of value cache and reshape to 2d for quantization -> (s, b*n*d)
             value_states = value_states.transpose(1, 2).reshape(v_seq_len, -1)
-            value_trans = value_states.t().contiguous()
+
+            value_pc_quantization = True
+            # value_pc_quantization = False
+            if value_pc_quantization:
+                value_trans = value_states.t().contiguous()
+            else:
+                value_trans = value_states
 
             # quantize the V cache, leave the (org_v_shape[-2] % group_size) tokens
             quant_elem_num = (v_seq_len // group_size) * group_size
 
-            quantized_part = value_trans[:, :quant_elem_num]
+            if value_pc_quantization:
+                quantized_part = value_trans[:, :quant_elem_num]
+            # IF no transpose
+            else:
+                quantized_part = value_trans[:quant_elem_num, :]
             # print(self.v_channel_scale.shape, value_trans.shape, value_trans.abs().amax(dim=1, keepdim=True))
             self.v_channel_scale = value_trans.abs().amax(dim=1, keepdim=True) / 127
 
             if self.data_type == 'mxfp':
-                quant_grid_set = generate_quant_grid(4, ant_mode='float')   
-                quantized_part_deq, _ = get_quant_mxfp(quantized_part, quant_grid_set['float'], group_size, 1)
+                quant_grid_set = generate_quant_grid(self.v_bit, ant_mode='float')   
+                quantized_part_deq, _ = get_quant_mxfp(quantized_part, quant_grid_set['float'], q_group_size=group_size, keep_outlier=self.keep_outlier)
             elif self.data_type == 'int':
                 quantized_part_deq = pseudo_quantize_int(quantized_part, n_bit=self.v_bit, zero_point=False, q_group_size=group_size)
             elif self.data_type == 'float':
@@ -266,14 +292,16 @@ class LlamaAttention_mxfp(nn.Module):
                 quantized_part_deq = get_quant_grid(quantized_part, quant_grid_set['float'], group_size, 1)
             else:
                 raise ImportError('not support yet')
-
-            value_trans = torch.cat([quantized_part_deq, value_trans[:, quant_elem_num:]], dim=1)
-            # reshape
-            value_states = value_trans.t().contiguous()
+            if value_pc_quantization:
+                value_trans = torch.cat([quantized_part_deq, value_trans[:, quant_elem_num:]], dim=1)
+                value_states = value_trans.t().contiguous()
+            else:
+                value_trans = torch.cat([quantized_part_deq, value_trans[quant_elem_num:, :]], dim=0)
+                value_states = value_trans
             value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
 
             if self.print_stats:
-                print(f"prefill mse v: {mse(org_v, value_states)}  v_bit: {self.v_bit} q_group_size: {self.group_size} quant_dtype: {self.data_type}")
+                print(f"Prefill mse v: {mse(org_v, value_states)}  v_bit: {self.v_bit} q_group_size: {self.group_size} quant_dtype: {self.data_type}")
 
             return value_states
 
@@ -288,6 +316,9 @@ class LlamaAttention_mxfp(nn.Module):
         if self.data_type == 'float':
             quant_grid_set = generate_quant_grid(self.q_bit, ant_mode='float')
             attn_weights = get_quant_grid(attn_weights, quant_grid_set['float'], group_size, 1)
+        elif self.data_type == 'mxfp':
+            quant_grid_set = generate_quant_grid(self.q_bit, ant_mode='float')
+            attn_weights, _ = get_quant_mxfp(attn_weights, quant_grid_set['float'], q_group_size=group_size, keep_outlier=self.keep_outlier)
         else:
             attn_weights = pseudo_quantize_int(attn_weights, n_bit=self.q_bit, zero_point=False, q_group_size=group_size)
         attn_weights = attn_weights.reshape(org_weight_shape)
@@ -304,6 +335,9 @@ class LlamaAttention_mxfp(nn.Module):
         if self.data_type == 'float':
             quant_grid_set = generate_quant_grid(self.q_bit, ant_mode='float')
             attn_output = get_quant_grid(attn_output, quant_grid_set['float'], group_size, 1)
+        elif self.data_type == 'mxfp':
+            quant_grid_set = generate_quant_grid(self.q_bit, ant_mode='float')
+            attn_output, _ = get_quant_mxfp(attn_output, quant_grid_set['float'], q_group_size=group_size, keep_outlier=self.keep_outlier)
         else:
             attn_output = pseudo_quantize_int(attn_output, n_bit=self.q_bit, zero_point=False, q_group_size=group_size)
         attn_output = attn_output.reshape(org_outputs_shape)
@@ -369,7 +403,7 @@ class LlamaAttention_mxfp(nn.Module):
             cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}
             key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
 
-        if self.quant_attention == True:
+        if self.quant_attention == True and self.v_bit < 16:
             # print(f'v pre quant, {value_states.device}')
             value_states = self.quantize_value(value_states, org_v_shape, self.group_size, bsz, q_len)
             # Update the V cache
@@ -392,7 +426,7 @@ class LlamaAttention_mxfp(nn.Module):
         attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
         attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
         # quantize attention weights
-        if self.quant_attention == True:
+        if self.quant_attention == True and self.q_bit < 16:
             attn_weights = self.quantize_attention_weights(attn_weights, self.group_size)
 
 
@@ -400,7 +434,7 @@ class LlamaAttention_mxfp(nn.Module):
         # print(value_states, value_states.shape, attn_output, torch.isnan(value_states).sum(), torch.isnan(attn_output).sum())
         
         # quantize attention output
-        if self.quant_attention == True:
+        if self.quant_attention == True and self.q_bit < 16:
             attn_output = self.quantize_attention_output(attn_output, self.group_size)
 
         if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):

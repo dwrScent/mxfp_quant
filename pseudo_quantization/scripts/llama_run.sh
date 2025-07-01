@@ -11,7 +11,7 @@ OPTION=${9:-"quant"}
 DESC=${10:-""}
 
 # MODEL=/cephfs/shared/model/llama-${MODEL_SIZE}b-hf-transformers-4.29
-MODEL=/localssd/wmhu/models/llama-${MODEL_SIZE}b-hf-transformers-4.29
+MODEL=/localssd/wmhu/model/llama-${MODEL_SIZE}b-hf-transformers-4.29
 OUTPUT_NAME=llama-${MODEL_SIZE}b
 if [ "$OPTION" == "load" ]; then
     OUTPUT_DIR=output/output_giant_load_$(date +%m%d)

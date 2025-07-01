@@ -11,7 +11,7 @@ MXFP_MODE=${8:-"w-base-a-base"}
 OPTION=${9:-"quant"}
 DESC=${10:-""}
 
-MODEL=/localssd/wmhu/models/opt-${MODEL_SIZE}b
+MODEL=/localssd/wmhu/model/opt-${MODEL_SIZE}b
 OUTPUT_NAME=opt-${MODEL_SIZE}b
 
 if [ "$OPTION" == "load" ]; then

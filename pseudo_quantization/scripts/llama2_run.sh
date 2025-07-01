@@ -12,7 +12,7 @@ DESC=${10:-""}
 
 # MODEL=/localssd/wmhu/models/llama-${MODEL_SIZE}b-hf-transformers-4.29
 # MODEL=/mnt/nvme0n1/ckpt/llama/llama-2-${MODEL_SIZE}b-hf
-MODEL=/localssd/wmhu/models/llama-2-${MODEL_SIZE}b-hf
+MODEL=/localssd/wmhu/model/llama-2-${MODEL_SIZE}b-hf
 # MODEL=/cephfs/shared/model/llama-2-${MODEL_SIZE}b-hf
 OUTPUT_NAME=llama-2-${MODEL_SIZE}b
 

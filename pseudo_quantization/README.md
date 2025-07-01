@@ -23,24 +23,24 @@ Evaluate LLaMa on multiple tasks with MXFP.
 
 ```bash
 # baseline MXFP4
-CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 mxfp float 32 w4a4k16v16 w-base-a-base quant
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 mxfp float 32 w4a4q16k16v16 w-base-a-base quant
 # group-wise data type search [E3M0, E2M1, E1M2]
-CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 mxfp int 32 w4a4k16v16 w-dtype_search-a-dtype_search quant
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 mxfp int 32 w4a4q16k16v16 w-dtype_search-a-dtype_search quant
 # MX+, E0M3 for maximum value in group
-CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 mxfp int 32 w4a4k16v16 w-sub_group-a-sub_group quant
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 mxfp int 32 w4a4q16k16v16 w-sub_group-a-sub_group quant
 # sub-group adaptive data types [E2M1, E1M2], default subgroup size is 4
-CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 mxfp int 32 w4a4k16v16 w-sub_group_v2-a-sub_group_v2 quant
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 mxfp int 32 w4a4q16k16v16 w-sub_group_v2-a-sub_group_v2 quant
 
 
 # baseline FP4-G32 with FP16 scale
-CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 ant float 32 w4a4k16v16 w-base-a-base quant mxfp_base
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 ant float 32 w4a4q16k16v16 w-base-a-base quant mxfp_base
 
 # oehter models or sizes
-CUDA_VISIBLE_DEVICES=0,1 ./scripts/llama2_run.sh 70 wikitext 0 mxfp float 32 w4a4k16v16 w-base-a-base quant
-CUDA_VISIBLE_DEVICES=0,1 ./scripts/llama3_run.sh 70 wikitext 0 mxfp float 32 w4a4k16v16 w-base-a-base quant
-CUDA_VISIBLE_DEVICES=0 ./scripts/opt_run.sh 6.7 wikitext 0 mxfp float 32 w4a4k16v16 w-base-a-base quant
+CUDA_VISIBLE_DEVICES=0,1 ./scripts/llama2_run.sh 70 wikitext 0 mxfp float 32 w4a4q16k16v16 w-base-a-base quant
+CUDA_VISIBLE_DEVICES=0,1 ./scripts/llama3_run.sh 70 wikitext 0 mxfp float 32 w4a4q16k16v16 w-base-a-base quant
+CUDA_VISIBLE_DEVICES=0 ./scripts/opt_run.sh 6.7 wikitext 0 mxfp float 32 w4a4q16k16v16 w-base-a-base quant
 # zero-show tasks with MXFP4
-CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 arc_easy,hellaswag,piqa,winogrande 0 mxfp float 32 w4a4k16v16 w-base-a-base quant
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 arc_easy,hellaswag,piqa,winogrande 0 mxfp float 32 w4a4q16k16v16 w-base-a-base quant
 ```
 
 ## Setting

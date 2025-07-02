@@ -1,13 +1,10 @@
-import inspect
 import math
 import warnings
 from typing import List, Optional, Tuple, Union
 
 import torch
-import torch.nn.functional as F
-import torch.utils.checkpoint
 from torch import nn
-from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
+from torch.nn import CrossEntropyLoss
 
 from transformers.activations import ACT2FN
 from transformers.cache_utils import Cache, DynamicCache
@@ -18,7 +15,6 @@ from transformers.modeling_attn_mask_utils import (
 from transformers.modeling_outputs import (
     BaseModelOutputWithPast,
     CausalLMOutputWithPast,
-    SequenceClassifierOutputWithPast,
 )
 from transformers.models.mistral.modeling_mistral import (
     MISTRAL_INPUTS_DOCSTRING,
@@ -26,12 +22,8 @@ from transformers.models.mistral.modeling_mistral import (
     MistralSdpaAttention,
     MistralPreTrainedModel,
 )
-from transformers.modeling_utils import PreTrainedModel
 from transformers.utils import (
-    add_start_docstrings,
     add_start_docstrings_to_model_forward,
-    is_flash_attn_2_available,
-    is_flash_attn_greater_or_equal_2_10,
     logging,
     replace_return_docstrings,
 )
@@ -39,7 +31,7 @@ from transformers.models.mistral.configuration_mistral import MistralConfig
 from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 from ..quantize.quant_func import get_quant_mxfp
 from ..quantize.quant_func import pseudo_quantize_int, get_quant_grid
-from ..quantize.ant_quant import generate_quant_grid, ant_quantization
+from ..quantize.ant_quant import generate_quant_grid
 
 logger = logging.get_logger(__name__)
 

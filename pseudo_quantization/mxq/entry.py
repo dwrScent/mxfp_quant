@@ -181,6 +181,9 @@ def build_model_and_enc(model_path):
                 elif isinstance(config, LlamaConfig):
                     model = LlamaForCausalLM_mxfp.from_pretrained(
                         model_path, config=config, **kwargs)
+                elif isinstance(config, MistralConfig):
+                    model = MistralForCausalLM_mxfp.from_pretrained(
+                    model_path, config=config, **kwargs)
                 else:
                     raise NotImplementedError('not support yet')
             else:

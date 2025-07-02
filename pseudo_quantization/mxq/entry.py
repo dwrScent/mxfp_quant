@@ -29,8 +29,9 @@ from torch import nn
 from mxq.models.opt_giant import OPTForCausalLM_giant
 from mxq.models.bloom_giant import BloomForCausalLM_giant
 from mxq.models.llama_mxfp import LlamaForCausalLM_mxfp
+from mxq.models.mistal_mxfp import MistralForCausalLM_mxfp
 
-from transformers import OPTConfig, BloomConfig, LlamaConfig
+from transformers import OPTConfig, BloomConfig, LlamaConfig, MistralConfig
 
 def print_time(print_str):
     timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -180,6 +181,9 @@ def build_model_and_enc(model_path):
                 elif isinstance(config, LlamaConfig):
                     model = LlamaForCausalLM_mxfp.from_pretrained(
                         model_path, config=config, **kwargs)
+                elif isinstance(config, MistralConfig):
+                    model = MistralForCausalLM_mxfp.from_pretrained(
+                    model_path, config=config, **kwargs)
                 else:
                     raise NotImplementedError('not support yet')
             else:
@@ -243,6 +247,9 @@ def build_model_and_enc(model_path):
                     model_path, config=config, **kwargs)
             elif isinstance(config, LlamaConfig):
                 model = LlamaForCausalLM_mxfp.from_pretrained(
+                    model_path, config=config, **kwargs)
+            elif isinstance(config, MistralConfig):
+                model = MistralForCausalLM_mxfp.from_pretrained(
                     model_path, config=config, **kwargs)
             else:
                 raise NotImplementedError('not support yet')

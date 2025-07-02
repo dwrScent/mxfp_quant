@@ -1,6 +1,6 @@
 #!/bin/bash
 
-MODEL_SIZE=${1:-"8"}
+MODEL_SIZE=${1:-"7"}
 TASKS=${2:-"arc_challenge"}
 SHOTS=${3:-"0"}
 QUANT_MODE=${4:-"ant"}
@@ -11,11 +11,11 @@ MXFP_MODE=${8:-"w-base-a-base"}
 OPTION=${9:-"quant"}
 DESC=${10:-""}
 
-MODEL=/localssd/wmhu/model/llama-3-${MODEL_SIZE}b-hf
+MODEL=/state/partition/zhzhang/Mistral-${MODEL_SIZE}B-v0.1
 # MODEL=/localssd/wmhu/model/llama-3-${MODEL_SIZE}b-instruct
 # MODEL=/mnt/nvme0n1/ckpt/llama/Meta-Llama-3-${MODEL_SIZE}B-Instruct 
 # MODEL=/cephfs/shared/model/Meta-Llama-3-${MODEL_SIZE}B-Instruct 
-OUTPUT_NAME=llama-3-${MODEL_SIZE}b
+OUTPUT_NAME=Mistral-${MODEL_SIZE}B
 OUTPUT_DIR=""
 
 if [ "$OPTION" == "load" ]; then

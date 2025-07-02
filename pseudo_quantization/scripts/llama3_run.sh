@@ -11,12 +11,11 @@ MXFP_MODE=${8:-"w-base-a-base"}
 OPTION=${9:-"quant"}
 DESC=${10:-""}
 
-MODEL=/state/partition/zhzhang/Mistral-7B-v0.1
-# MODEL=/state/partition/llama/llama-7b-hf
+MODEL=/localssd/wmhu/model/llama-3-${MODEL_SIZE}b-hf
 # MODEL=/localssd/wmhu/model/llama-3-${MODEL_SIZE}b-instruct
 # MODEL=/mnt/nvme0n1/ckpt/llama/Meta-Llama-3-${MODEL_SIZE}B-Instruct 
 # MODEL=/cephfs/shared/model/Meta-Llama-3-${MODEL_SIZE}B-Instruct 
-OUTPUT_NAME=llama-7b-hf
+OUTPUT_NAME=llama-3-${MODEL_SIZE}b
 OUTPUT_DIR=""
 
 if [ "$OPTION" == "load" ]; then

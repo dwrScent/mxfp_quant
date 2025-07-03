@@ -14,7 +14,6 @@ pip install -e .
 pip install protobuf -i https://pypi.tuna.tsinghua.edu.cn/simple
 pip install transformers_stream_generator -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
-
 ## Usage
 
 Before running the scripts, you need to change the $MODEL$ (in scripts) and the path of the calibration dataset (in `get_calib_dataset`).
@@ -24,12 +23,12 @@ Evaluate LLaMa on multiple tasks with MXFP.
 ```bash
 # baseline MXFP4
 CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 mxfp float 32 w4a4q16k16v16 w-base-a-base quant
-# group-wise data type search [E3M0, E2M1, E1M2]
+# group-wise data type search [E3M0, E2M1, E1M2], basic data type is MXINT
 CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 mxfp int 32 w4a4q16k16v16 w-dtype_search-a-dtype_search quant
 # MX+, E0M3 for maximum value in group
-CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 mxfp int 32 w4a4q16k16v16 w-sub_group-a-sub_group quant
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 mxfp float 32 w4a4q16k16v16 w-sub_group-a-sub_group quant
 # sub-group adaptive data types [E2M1, E1M2], default subgroup size is 4
-CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 mxfp int 32 w4a4q16k16v16 w-sub_group_v2-a-sub_group_v2 quant
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 mxfp float 32 w4a4q16k16v16 w-sub_group_v2-a-sub_group_v2 quant
 
 
 # baseline FP4-G32 with FP16 scale
@@ -48,3 +47,5 @@ CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 arc_easy,hellaswag,piqa,winogra
 
 ## TODO list
 
++ [ ] Add the sub-group size to the shell option
++ [ ] Divide the mode better (max-aware, outlier-aware, adaptive)

@@ -21,14 +21,17 @@ Before running the scripts, you need to change the $MODEL$ (in scripts) and the 
 Evaluate LLaMa on multiple tasks with MXFP.
 
 ```bash
-# baseline MXFP4
+# baseline MXFP4 
 CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 mxfp float 32 w4a4q16k16v16 w-base-a-base quant
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama2_run.sh 7 wikitext 0 mxfp float 32 w4a4q16k16v16 w-base-a-base quant
 # group-wise data type search [E3M0, E2M1, E1M2], basic data type is MXINT
 CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 mxfp int 32 w4a4q16k16v16 w-dtype_search-a-dtype_search quant
-# MX+, E0M3 for maximum value in group
-CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 mxfp float 32 w4a4q16k16v16 w-sub_group-a-sub_group quant
+# MX+, E0M3 for maximum value in group; sub_group_size=1, sub_group_mode=max
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 mxfp float 32 w4a4q16k16v16 w-sub_group+1+max-a-sub_group+1+max quant
+# sub_group_size=4, sub_group_mode=max
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 mxfp float 32 w4a4q16k16v16 w-sub_group+4+max-a-sub_group+4+max quant
 # sub-group adaptive data types [E2M1, E1M2], default subgroup size is 4
-CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 mxfp float 32 w4a4q16k16v16 w-sub_group_v2-a-sub_group_v2 quant
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 mxfp float 32 w4a4q16k16v16 w-sub_group_adaptive+4+max-a-sub_group_adaptive+4+max quant
 
 
 # baseline FP4-G32 with FP16 scale
@@ -47,5 +50,5 @@ CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 arc_easy,hellaswag,piqa,winogra
 
 ## TODO list
 
-+ [ ] Add the sub-group size to the shell option
-+ [ ] Divide the mode better (max-aware, outlier-aware, adaptive)
++ [x] Add the sub-group size to the shell option, 2025-07-06 10:15:48 :white_check_mark:
++ [x] Divide the mode better (max-aware, outlier-aware, adaptive), 2025-07-06 10:15:44 :white_check_mark:

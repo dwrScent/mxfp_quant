@@ -424,13 +424,13 @@ def dtype_search_olive(tensor_value, quant_grid, mode="int", zero_point=True, q_
     return tensor_deq, quant_mse
 
 @torch.no_grad()
-def mxfp_sub_group(tensor_value, quant_grid, sub_group_grid, mode="int", zero_point=True, q_group_size=-1, alpha=1.0, pos_value=None, get_labels=False, is_input=False, keep_outlier=False, print_stats=False):
+def mxfp_sub_group(tensor_value, quant_grid, sub_group_grid, mode="int", zero_point=True, q_group_size=-1, sub_group_size=1, sub_group_mode='max', alpha=1.0, pos_value=None, get_labels=False, is_input=False, keep_outlier=False, print_stats=False):
     assert torch.isnan(tensor_value).sum() == 0
     org_shape = tensor_value.shape
     quant_grid = quant_grid.to(tensor_value.device)
     sub_group_grid = sub_group_grid.to(tensor_value.device)
 
-    sub_group_size = 1
+    # sub_group_size = 1
 
     if q_group_size > 0:
         assert org_shape[-1] % q_group_size == 0
@@ -450,10 +450,10 @@ def mxfp_sub_group(tensor_value, quant_grid, sub_group_grid, mode="int", zero_po
     zeros = 0
 
     # MODE: [max, outlier]
-    subgroup_mode = 'max'
+    # subgroup_mode = 'max'
     # subgroup_mode = 'outlier'
 
-    if subgroup_mode == 'max':
+    if sub_group_mode == 'max':
         # find the sub group with maximum value
         outlier_mask = torch.zeros_like(tensor_value, dtype=torch.bool).to(tensor_value.device)
         _, indices = torch.topk(tensor_value.abs(), 1)
@@ -464,7 +464,7 @@ def mxfp_sub_group(tensor_value, quant_grid, sub_group_grid, mode="int", zero_po
 
         outlier_group_mask = outlier_group_mask.repeat(1, sub_group_size)
         outlier_group_mask = outlier_group_mask.reshape(-1, q_group_size)
-    elif subgroup_mode == 'outlier':
+    elif sub_group_mode == 'outlier':
         # labels = (((tensor_value + zeros) / scales).unsqueeze(-1) - quant_grid).abs().argmin(dim=-1)
         # tensor_q = quant_grid[labels]
         # assert torch.all(tensor_q < 8.0), "Tensor contains values greater than or equal to 8!"
@@ -540,7 +540,7 @@ def mxfp_sub_group(tensor_value, quant_grid, sub_group_grid, mode="int", zero_po
         return tensor_deq, quant_mse_sum
 
 @torch.no_grad()
-def mxfp_sub_group_v2(tensor_value, quant_grid, sub_group_grid, mode="int", zero_point=True, q_group_size=-1, alpha=1.0, pos_value=None, get_labels=False, is_input=False, keep_outlier=False, print_stats=False):
+def mxfp_sub_group_adaptive(tensor_value, quant_grid, sub_group_grid, mode="int", zero_point=True, q_group_size=-1, sub_group_size=1, alpha=1.0, pos_value=None, get_labels=False, is_input=False, keep_outlier=False, print_stats=False):
     org_shape = tensor_value.shape
     ant_mode = 'float-int'
     mode_list = ant_mode.split('-')
@@ -548,7 +548,7 @@ def mxfp_sub_group_v2(tensor_value, quant_grid, sub_group_grid, mode="int", zero
     w_deq_list = {}
     quant_mse_list = {}
 
-    sub_group_size = 4
+    # sub_group_size = 4
 
     for mode in mode_list:
         w_deq_list[mode], _ = get_quant_mxfp(tensor_value, quant_grid_set[mode], q_group_size=q_group_size, keep_outlier=keep_outlier, print_stats=print_stats)
@@ -592,7 +592,7 @@ def mxfp_sub_group_v2(tensor_value, quant_grid, sub_group_grid, mode="int", zero
     return tensor_deq, quant_mse
 
 @torch.no_grad()
-def mxfp_sub_group_v3(tensor_value, quant_grid, sub_group_grid, mode="int", zero_point=True, q_group_size=-1, alpha=1.0, pos_value=None, get_labels=False, is_input=False, keep_outlier=False, print_stats=False):
+def mxfp_sub_group_v3(tensor_value, quant_grid, sub_group_grid, mode="int", zero_point=True, q_group_size=-1, sub_group_size=1, alpha=1.0, pos_value=None, get_labels=False, is_input=False, keep_outlier=False, print_stats=False):
     org_shape = tensor_value.shape
     ant_mode = 'float-int'
     mode_list = ant_mode.split('-')
@@ -694,6 +694,11 @@ class MXFP_Linear(nn.Module):
         self.weight_mxfp_mode = ant_config['weight_mxfp_mode']
         self.input_mxfp_mode = ant_config['input_mxfp_mode']
 
+        self.weight_sub_group_size = ant_config.get('weight_sub_group_size')
+        self.weight_sub_group_mode = ant_config.get('weight_sub_group_mode')
+        self.input_sub_group_size = ant_config.get('input_sub_group_size')
+        self.input_sub_group_mode = ant_config.get('input_sub_group_mode')
+
         assert self.in_features % self.group_size == 0
 
         self.exp_bit_width = None
@@ -749,18 +754,19 @@ class MXFP_Linear(nn.Module):
             
         return mxfp_linear
     
-    def _quantize_data(self, data, mode, quant_grid, n_bit, exp_base, is_input):
+    def _quantize_data(self, data, mode, quant_grid, n_bit, exp_base, is_input, sub_group_size, sub_group_mode):
+        # sub group with E0M3
         sub_group_grid = [0, -4.0, -4.5, -5.0, -5.5, -6.0, -6.5, -7.0, -7.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5]
         # sub_group_grid = [0, -2.0, -2.5, -3.0, -3.5, -4.0, -5.0, -6.0, -7.0, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 6.0, 7.0]
-        sub_group_grid = torch.tensor(sub_group_grid)
+        sub_group_grid = torch.tensor(sub_group_grid)       
         quantize_methods = {
             'base': lambda: get_quant_mxfp(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, is_input=is_input, keep_outlier=self.keep_outlier, print_stats=self.print_stats),
             'scale_search': lambda: mxfp_search(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, keep_outlier=self.keep_outlier, print_stats=self.print_stats),
             'dtype_search': lambda: dtype_search_v2(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, keep_outlier=self.keep_outlier),
             'dtype_search_olive': lambda: dtype_search_olive(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, n_bit=n_bit, exp_base=exp_base),
             'naive_adapt': lambda: mxfp_direct(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, n_bit=n_bit),
-            'sub_group': lambda: mxfp_sub_group(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, print_stats=self.print_stats),
-            'sub_group_v2': lambda: mxfp_sub_group_v2(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, print_stats=self.print_stats),
+            'sub_group': lambda: mxfp_sub_group(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, sub_group_mode=sub_group_mode, print_stats=self.print_stats),
+            'sub_group_adaptive': lambda: mxfp_sub_group_adaptive(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, print_stats=self.print_stats),
             'sub_group_v3': lambda: mxfp_sub_group_v3(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, print_stats=self.print_stats),
         }
         return quantize_methods.get(mode, lambda: NotImplementedError(f'not support this mxfp mode: {mode}'))()
@@ -779,7 +785,7 @@ class MXFP_Linear(nn.Module):
             # distri_3d(self.weight, layer_idx=self.layer_id, layer_name=self.layer_name)
 
             if self.w_bit < 16:
-                deq_weight, _ = self._quantize_data(self.weight, self.weight_mxfp_mode, self.weight_quant_grid, self.w_bit, 5, False)
+                deq_weight, _ = self._quantize_data(self.weight, self.weight_mxfp_mode, self.weight_quant_grid, self.w_bit, 5, False, self.weight_sub_group_size, self.weight_sub_group_mode)
             else:
                 deq_weight = self.weight
             
@@ -787,7 +793,7 @@ class MXFP_Linear(nn.Module):
             self.weight = deq_weight
 
             if self.a_bit < 16:
-                deq_input, _ = self._quantize_data(input, self.input_mxfp_mode, self.input_quant_grid, self.a_bit, 7, True)
+                deq_input, _ = self._quantize_data(input, self.input_mxfp_mode, self.input_quant_grid, self.a_bit, 7, True, self.input_sub_group_size, self.input_sub_group_mode)
             else:
                 deq_input = input
                 
@@ -798,7 +804,7 @@ class MXFP_Linear(nn.Module):
             if self.a_bit < 16:
                 # calculate_scale_range(input, self.input_quant_grid, self.layer_id, self.layer_name, self.group_size, True)
 
-                deq_input, _ = self._quantize_data(input, self.input_mxfp_mode, self.input_quant_grid, self.a_bit, 7, True)
+                deq_input, _ = self._quantize_data(input, self.input_mxfp_mode, self.input_quant_grid, self.a_bit, 7, True, self.input_sub_group_size, self.input_sub_group_mode)
                 pass
             else:
                 # calculate_outlier_exp(input, self.input_quant_grid, self.layer_id, self.layer_name, self.group_size, True)

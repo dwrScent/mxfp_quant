@@ -60,6 +60,7 @@ parser.add_argument('--no_zero_point', action='store_true',
                     help="disable zero_point")
 parser.add_argument('--q_backend', type=str,
                     default="fake", choices=["fake", "real"])
+
 # max memory to offload larger models to CPU
 parser.add_argument(
     "--max_memory",
@@ -106,24 +107,52 @@ quant_mode_config = {
     "quant_kv": False,
 }
 def parse_mxfp_modes(mode_str):
-    pattern = r'w-(\w+)-a-(\w+)'
-    match = re.match(pattern, mode_str)
-    if match:
-        weight_mxfp_mode = match.group(1)
-        input_mxfp_mode = match.group(2)
-        return weight_mxfp_mode, input_mxfp_mode
+    """
+    兼容两种输入格式：
+    1. w-base-a-base
+    2. w-sub_group+4+max-a-sub_group+4+max
+    """
+    # 详细格式匹配
+    detailed_pattern = r'w-(\w+)\+(\d+)\+(\w+)-a-(\w+)\+(\d+)\+(\w+)'
+    # 简单格式匹配
+    simple_pattern = r'w-(\w+)-a-(\w+)'
+
+    if re.match(detailed_pattern, mode_str):
+        match = re.match(detailed_pattern, mode_str)
+        return {
+            "weight_mxfp_mode": match.group(1),
+            "weight_sub_group_size": int(match.group(2)),
+            "weight_sub_group_mode": match.group(3),
+            "input_mxfp_mode": match.group(4),
+            "input_sub_group_size": int(match.group(5)),
+            "input_sub_group_mode": match.group(6),
+        }
+    elif re.match(simple_pattern, mode_str):
+        match = re.match(simple_pattern, mode_str)
+        return {
+            "weight_mxfp_mode": match.group(1),
+            "weight_sub_group_size": None,
+            "weight_sub_group_mode": None,
+            "input_mxfp_mode": match.group(2),
+            "input_sub_group_size": None,
+            "input_sub_group_mode": None,
+        }
     else:
         raise ValueError(f"Invalid mode string: {mode_str}")
 
-weight_mxfp_mode, input_mxfp_mode = parse_mxfp_modes(args.mxfp_mode)  
+mxfp_config = parse_mxfp_modes(args.mxfp_mode)
 ant_config = {
     "ant_mode": args.ant_mode,  
     "ant_search_granularity": 1,  
     "w_low": args.w_low,
     "w_high": args.w_high,
     "ant_asym": args.ant_asym,
-    "weight_mxfp_mode": weight_mxfp_mode,
-    "input_mxfp_mode": input_mxfp_mode,
+    "weight_mxfp_mode": mxfp_config["weight_mxfp_mode"],
+    "input_mxfp_mode": mxfp_config["input_mxfp_mode"],
+    "weight_sub_group_size": mxfp_config.get("weight_sub_group_size"),
+    "weight_sub_group_mode": mxfp_config.get("weight_sub_group_mode"),
+    "input_sub_group_size": mxfp_config.get("input_sub_group_size"),
+    "input_sub_group_mode": mxfp_config.get("input_sub_group_mode"),
 }
 
 outlier_config = {

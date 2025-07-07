@@ -250,7 +250,7 @@ def build_model_and_enc(model_path):
         model = simple_dispatch_model(model, device_map=device_map)
         print(model, device_map, max_memory)
 
-        if quant_mode_config['quant_method'] in ['ant', 'olive', 'int', 'mokey', 'giant', 'mxfp']:
+        if quant_mode_config['quant_method'] in ['ant', 'olive', 'int', 'mokey', 'giant', 'mxfp', 'nvfp']:
             make_quant_linear(
                 model, args.w_bit, args.a_bit, q_config, ant_config=ant_config, quant_mode_config=quant_mode_config
             )
@@ -293,7 +293,7 @@ def build_model_and_enc(model_path):
                 quant_mode = quant_mode_config['quant_method']
                 print_time('Start pseudo quantize')
 
-                if quant_mode in ['ant', 'olive', 'mxfp']:
+                if quant_mode in ['ant', 'olive', 'mxfp', 'nvfp']:
                     make_quant_linear(
                         model, args.w_bit, args.a_bit, q_config, ant_config=ant_config, quant_mode_config=quant_mode_config
                     )

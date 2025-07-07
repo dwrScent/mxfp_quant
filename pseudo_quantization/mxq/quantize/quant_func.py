@@ -267,3 +267,107 @@ def get_quant_mxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_grou
         return tensor_deq, quant_mse_sum, labels, quant_grid * scales
     else:
         return tensor_deq, quant_mse_sum
+    
+
+@torch.no_grad()
+def get_quant_nvfp(tensor_value, quant_grid, mode="int", zero_point=True, q_group_size=-1, alpha=1.0, pos_value=None, get_labels=False, is_input=False, keep_outlier=False, print_stats=False):
+    '''
+    return : dequantized weight, mse?
+    '''
+    assert torch.isinf(tensor_value).sum() == 0
+    assert torch.isnan(tensor_value).sum() == 0
+
+    org_shape = tensor_value.shape
+    quant_grid = quant_grid.to(tensor_value.device)
+
+    if q_group_size > 0:
+        assert org_shape[-1] % q_group_size == 0
+        tensor_value = tensor_value.reshape(-1, q_group_size)
+
+    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+    # avoid divide a too small value
+    max_val = max_val.clamp(min=1e-5)
+
+    max_quant_val = max(quant_grid)
+    assert torch.isinf(max_val).sum() == 0
+    
+    # Compute the scaling factor
+    # pow(2, math.floor(math.log2(25)) - math.floor(math.log2(6)))
+    # exp = torch.ceil(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
+    
+    scales = (max_val * alpha) / max_quant_val
+
+    # scales = scales.to(torch.float8_e3m4)
+    scales = scales.to(torch.float8_e4m3fnuz)
+    scales = scales.to(torch.float16)
+
+    assert not (scales == 0).any(), "Scale should contain 0 values"
+
+    # exp_max_val = torch.floor(torch.log2(max_val))
+    # mask = torch.where(tensor_value > torch.pow(2, exp_max_val), torch.tensor(1), torch.tensor(0))
+
+    zeros = 0
+    # org_value = tensor_value.clone()
+
+    if keep_outlier:
+        outlier_mask = torch.zeros_like(tensor_value, dtype=torch.bool).to(tensor_value.device)
+        _, indices = torch.topk(tensor_value.abs(), 1)
+        outlier_mask.scatter_(1, indices, 1)
+
+
+        # 对每 3 个 group，保留第 3 行（index % 3 == 2），其他两行清零
+        # mask = torch.arange(outlier_mask.shape[0], device=outlier_mask.device) % 3 != 0
+        # outlier_mask[mask] = 0
+
+        # 使用 olive 的方法得到 victim 的位置
+        # victim_odd = torch.roll(outlier_mask.view(-1), 1, -1)
+        # victim_odd[::2] = 0
+        # victim_even = torch.roll(outlier_mask.view(-1) & (~victim_odd), -1, -1)
+        # victim_even[1::2] = 0
+        # non_victim_mask = ~(victim_even | victim_odd)
+        # non_victim_mask = non_victim_mask.reshape(tensor_value.shape)
+
+        # print(outlier_mask.shape[0], "Original outlier_mask count of 1s:", outlier_mask.sum().item())
+        org_tensor = tensor_value.clone()
+
+        tensor_value = tensor_value * ~outlier_mask
+
+    # Batch processing to avoid OOM
+    # batch_num = 4
+    batch_num = 16
+    assert tensor_value.shape[0] % batch_num == 0
+    batch_size = tensor_value.shape[0] // batch_num
+    tensor_deq = torch.zeros_like(tensor_value)
+    for idx in range(batch_num):
+        tensor_par = tensor_value[idx*batch_size : (idx+1)*batch_size, :]
+        labels = (((tensor_par + zeros) / scales[idx*batch_size : (idx+1)*batch_size, :]).unsqueeze(-1) - quant_grid).abs().argmin(dim=-1)
+        tensor_q_par = quant_grid[labels] * scales[idx*batch_size : (idx+1)*batch_size, :] - zeros
+        tensor_deq[idx*batch_size : (idx+1)*batch_size, :] = tensor_q_par
+
+    # tensor_deq = org_value * mask + tensor_deq * (1-mask)
+    quant_mse = (tensor_deq-tensor_value).abs().pow(2).to(torch.float32)
+    quant_mse_sum = torch.mean(quant_mse, dim=1, keepdim=True)
+
+    # print('test', tensor_deq, scales, quant_mse, quant_mse_sum, quant_mse_sum.max())
+    if keep_outlier:
+        tensor_deq = tensor_deq * ~outlier_mask + org_tensor * outlier_mask
+
+
+    assert torch.isinf(tensor_deq).sum() == 0
+    assert torch.isnan(tensor_deq).sum() == 0
+    assert torch.isnan(scales).sum() == 0
+    # assert torch.isnan(quant_mse).sum() == 0
+
+    tensor_deq = tensor_deq.reshape(org_shape)
+
+    # calculate_max_error(tensor_value, tensor_deq, q_group_size=q_group_size)
+
+    quant_obj = 'input' if is_input else 'weight'
+    if print_stats:
+        print(f"Quantization MSE: {quant_mse_sum.mean().item()}, quant_obj: {quant_obj}, keep_outlier: {keep_outlier}")
+    # print('init', scales, tensor_deq, tensor_value)
+
+    if get_labels:
+        return tensor_deq, quant_mse_sum, labels, quant_grid * scales
+    else:
+        return tensor_deq, quant_mse_sum

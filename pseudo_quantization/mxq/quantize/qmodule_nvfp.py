@@ -68,7 +68,7 @@ def nvfp_direct(tensor_value, quant_grid, mode="int", zero_point=True, q_group_s
     max_val = tensor_value.abs().amax(dim=1, keepdim=True)
     assert torch.isnan(max_val).sum() == 0
 
-    max_val = torch.clamp(max_val, min=1e-5)
+    max_val = torch.clamp(max_val, min=1e-2)
     mantissa_judge = max_val / torch.pow(2, torch.floor(torch.log2(max_val)))
     assert torch.isnan(mantissa_judge).sum() == 0
 
@@ -117,6 +117,7 @@ def nvfp_search(tensor_value, quant_grid, mode="int", zero_point=True, q_group_s
         tensor_value = tensor_value.reshape(-1, q_group_size)
 
     max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+    max_val = torch.clamp(max_val, min=1e-2)
 
     if pos_value is None or pos_value == True:
         max_quant_val = max(quant_grid)
@@ -437,6 +438,7 @@ def nvfp_sub_group(tensor_value, quant_grid, sub_group_grid, mode="int", zero_po
         tensor_value = tensor_value.reshape(-1, q_group_size)
 
     max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+    max_val = torch.clamp(max_val, min=1e-2)
 
     max_quant_val = max(quant_grid)
         
@@ -694,8 +696,8 @@ class NVFP_Linear(nn.Module):
         # self.print_stats = True
 
         # NVFP param
-        self.weight_nvfp_mode = ant_config['weight_nvfp_mode']
-        self.input_nvfp_mode = ant_config['input_nvfp_mode']
+        self.weight_nvfp_mode = ant_config['weight_mxfp_mode']
+        self.input_nvfp_mode = ant_config['input_mxfp_mode']
 
         self.weight_sub_group_size = ant_config.get('weight_sub_group_size')
         self.weight_sub_group_mode = ant_config.get('weight_sub_group_mode')

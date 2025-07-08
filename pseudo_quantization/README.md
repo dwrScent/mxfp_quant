@@ -42,7 +42,9 @@ CUDA_VISIBLE_DEVICES=0,1 ./scripts/llama2_run.sh 70 wikitext 0 mxfp float 32 w4a
 CUDA_VISIBLE_DEVICES=0,1 ./scripts/llama3_run.sh 70 wikitext 0 mxfp float 32 w4a4q16k16v16 w-base-a-base quant
 CUDA_VISIBLE_DEVICES=0 ./scripts/opt_run.sh 6.7 wikitext 0 mxfp float 32 w4a4q16k16v16 w-base-a-base quant
 # zero-show tasks with MXFP4
-CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 arc_easy,hellaswag,piqa,winogrande 0 mxfp float 32 w4a4q16k16v16 w-base-a-base quant
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 arc_easy,hellaswag,piqa,winogrande,arc_challenge,boolq 0 mxfp float 32 w4a4q16k16v16 w-base-a-base quant
+# backup
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 lambada 0 mxfp float 32 w4a4q16k16v16 w-base-a-base quant
 ```
 
 ## Setting

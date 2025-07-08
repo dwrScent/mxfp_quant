@@ -371,3 +371,132 @@ def get_quant_nvfp(tensor_value, quant_grid, mode="int", zero_point=True, q_grou
         return tensor_deq, quant_mse_sum, labels, quant_grid * scales
     else:
         return tensor_deq, quant_mse_sum
+
+@torch.no_grad()
+def get_quant_smxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_group_size=-1, alpha=1.0, pos_value=None, get_labels=False, is_input=False, keep_outlier=False, print_stats=False):
+    '''
+    return : dequantized weight, mse?
+    '''
+    assert torch.isinf(tensor_value).sum() == 0
+    assert torch.isnan(tensor_value).sum() == 0
+    org_shape = tensor_value.shape # Original shape, e.g., (128, 512)
+    quant_grid = quant_grid.to(tensor_value.device)
+    
+    # Reshape for q_group_size processing
+    # Example: if org_shape=(128, 512) and q_group_size=16, then tensor_value_reshaped will be (128*32, 16)
+    if q_group_size > 0:
+        assert org_shape[-1] % q_group_size == 0, f"Last dimension {org_shape[-1]} must be divisible by q_group_size {q_group_size}"
+        tensor_value_reshaped = tensor_value.reshape(-1, q_group_size)
+    else:
+        # If q_group_size is not set, treat the whole last dim as one group (though this specific code
+        # will error out below if sub_group_size is not -1, as it expects q_group_size to be even)
+        tensor_value_reshaped = tensor_value.reshape(-1, org_shape[-1])
+        
+    num_q_groups = tensor_value_reshaped.shape[0] # Number of total q_groups
+
+    # Calculate scales for each q_group
+    max_val = tensor_value_reshaped.abs().amax(dim=1, keepdim=True) # Max value per q_group
+    max_val = max_val.clamp(min=1e-5) # Avoid division by too small value
+    max_quant_val = max(quant_grid)
+    
+    exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
+    scales = torch.pow(2, exp) # scales shape: (num_q_groups, 1)
+    
+    assert not (scales == 0).any(), "Scale should contain 0 values"
+    
+    zeros = 0 # Assuming zero_point=False, otherwise integrate it here
+    
+    # Handle outliers (still at q_group level)
+    if keep_outlier:
+        outlier_mask = torch.zeros_like(tensor_value_reshaped, dtype=torch.bool, device=tensor_value_reshaped.device)
+        # Using topk to find the largest absolute value in each q_group and mark it as outlier
+        _, indices = torch.topk(tensor_value_reshaped.abs(), 1, dim=1) # indices shape: (num_q_groups, 1)
+        outlier_mask.scatter_(1, indices, 1) # Mark the outlier position with True
+        org_tensor_for_outlier = tensor_value_reshaped.clone() # Keep original values for outliers
+        tensor_value_processed = tensor_value_reshaped * ~outlier_mask # Zero out outliers
+    else:
+        tensor_value_processed = tensor_value_reshaped.clone()
+
+    # Define the two new grids for sub-group quantization
+    grid1_tensor = torch.tensor([0.0, 0.5, 1.0, 1.5, -0.0, -0.5, -1.0, -1.5], device=tensor_value.device, dtype=tensor_value.dtype)
+    grid2_tensor = torch.tensor([2.0, 2.5, 3.0, 3.5, -2.0, -2.5, -3.0, -3.5], device=tensor_value.device, dtype=tensor_value.dtype)
+    
+    # Check if q_group_size is defined and is an even number for sub-grouping
+    # This now effectively becomes the main path. If not met, it will raise an error.
+    sub_group_size = 2
+    if q_group_size > 0 and q_group_size % sub_group_size == 0:
+        num_sub_groups_per_q_group = q_group_size // sub_group_size
+    else:
+        raise ValueError("q_group_size must be an even number (>0) for sub-grouping with fixed size 2.")
+    
+    # Reshape tensor_value_processed to expose sub-groups
+    # From (num_q_groups, q_group_size) to (num_q_groups, num_sub_groups_per_q_group, sub_group_size)
+    tensor_processed_subgrouped = tensor_value_processed.reshape(num_q_groups, num_sub_groups_per_q_group, sub_group_size)
+    
+    # Scale each q_group by its corresponding scale.
+    # scales shape: (num_q_groups, 1, 1). This allows broadcasting with tensor_processed_subgrouped.
+    # Example: (N, 1, 1) * (N, S, 2) -> (N, S, 2)
+    normalized_sub_groups = (tensor_processed_subgrouped + zeros) / scales.unsqueeze(-1)
+
+    # --- Quantize with grid1_tensor ---
+    # Reshape normalized_sub_groups for element-wise comparison with grid1_tensor
+    # From (num_q_groups, num_sub_groups_per_q_group, sub_group_size)
+    # To (num_q_groups, num_sub_groups_per_q_group, sub_group_size, 1) for broadcasting with grid1_tensor
+    
+    # (N, S, 2, 1) - (4,) -> (N, S, 2, 4)
+    # labels_grid1 shape: (num_q_groups, num_sub_groups_per_q_group, sub_group_size)
+    labels_grid1 = ((normalized_sub_groups.unsqueeze(-1) - grid1_tensor).abs().argmin(dim=-1))
+    
+    # quantized_normalized_grid1 shape: (num_q_groups, num_sub_groups_per_q_group, sub_group_size)
+    quantized_normalized_grid1 = grid1_tensor[labels_grid1]
+    
+    # dequantized_grid1 shape: (num_q_groups, num_sub_groups_per_q_group, sub_group_size)
+    dequantized_grid1 = quantized_normalized_grid1 * scales.unsqueeze(-1) - zeros
+    
+    # Calculate MSE for grid1
+    # MSE will be (num_q_groups, num_sub_groups_per_q_group), representing MSE for each sub-group
+    mse_grid1 = (dequantized_grid1 - tensor_processed_subgrouped).abs().pow(2).mean(dim=-1)
+
+    # --- Quantize with grid2_tensor ---
+    labels_grid2 = ((normalized_sub_groups.unsqueeze(-1) - grid2_tensor).abs().argmin(dim=-1))
+    quantized_normalized_grid2 = grid2_tensor[labels_grid2]
+    dequantized_grid2 = quantized_normalized_grid2 * scales.unsqueeze(-1) - zeros
+    mse_grid2 = (dequantized_grid2 - tensor_processed_subgrouped).abs().pow(2).mean(dim=-1)
+
+    # Choose the grid that yields lower MSE for each sub-group
+    # selection_mask shape: (num_q_groups, num_sub_groups_per_q_group)
+    selection_mask = (mse_grid1 <= mse_grid2).unsqueeze(-1) # Add a new dim for broadcasting with data
+    
+    # tensor_deq_subgrouped shape: (num_q_groups, num_sub_groups_per_q_group, sub_group_size)
+    tensor_deq_subgrouped = torch.where(selection_mask, dequantized_grid1, dequantized_grid2)
+
+    # Flatten back to the original q_group_size shape
+    tensor_deq = tensor_deq_subgrouped.reshape(num_q_groups, q_group_size)
+    
+    # Apply outlier handling if enabled
+    if keep_outlier:
+        tensor_deq = tensor_deq * ~outlier_mask + org_tensor_for_outlier * outlier_mask
+
+    # Calculate final MSE (mean across elements in each q_group)
+    # quant_mse shape: (num_q_groups, q_group_size)
+    quant_mse = (tensor_deq - tensor_value_reshaped).abs().pow(2).to(torch.float32)
+    # quant_mse_sum shape: (num_q_groups, 1)
+    quant_mse_sum = torch.mean(quant_mse, dim=1, keepdim=True)
+    
+    assert torch.isinf(tensor_deq).sum() == 0
+    assert torch.isnan(tensor_deq).sum() == 0
+    assert torch.isnan(scales).sum() == 0
+    
+    # Reshape quantized tensor back to original input shape
+    tensor_deq = tensor_deq.reshape(org_shape)
+    
+    quant_obj = 'input' if is_input else 'weight'
+    if print_stats:
+        print(f"Quantization MSE: {quant_mse_sum.mean().item()}, quant_obj: {quant_obj}, keep_outlier: {keep_outlier}")
+    
+    if get_labels:
+        print("Warning: 'get_labels=True' is complex with sub-group logic. Returning dummy labels.")
+        dummy_labels = torch.zeros(tensor_value_reshaped.shape, dtype=torch.long, device=tensor_value.device)
+        return tensor_deq, quant_mse_sum, dummy_labels, scales.reshape(org_shape[0], 1)
+    else:
+        return tensor_deq, quant_mse_sum

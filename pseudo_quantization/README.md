@@ -33,7 +33,6 @@ CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 mxfp float 32 w4a4q1
 # sub-group adaptive data types [E2M1, E1M2], default subgroup size is 4
 CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 mxfp float 32 w4a4q16k16v16 w-sub_group_adaptive+4+max-a-sub_group_adaptive+4+max quant
 
-
 # baseline FP4-G32 with FP16 scale
 CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 ant float 32 w4a4q16k16v16 w-base-a-base quant mxfp_base
 
@@ -43,8 +42,16 @@ CUDA_VISIBLE_DEVICES=0,1 ./scripts/llama3_run.sh 70 wikitext 0 mxfp float 32 w4a
 CUDA_VISIBLE_DEVICES=0 ./scripts/opt_run.sh 6.7 wikitext 0 mxfp float 32 w4a4q16k16v16 w-base-a-base quant
 # zero-show tasks with MXFP4
 CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 arc_easy,hellaswag,piqa,winogrande,arc_challenge,boolq 0 mxfp float 32 w4a4q16k16v16 w-base-a-base quant
-# backup
+# backup tasks
 CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 lambada 0 mxfp float 32 w4a4q16k16v16 w-base-a-base quant
+
+```
+
+### Other baselines
+```shell
+# Run NVFP
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 nvfp float 16 w4a4q16k16v16 w-base-a-base quant
+# SMXFP
 ```
 
 ## Setting

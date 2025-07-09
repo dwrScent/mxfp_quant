@@ -492,8 +492,8 @@ def mxfp_sub_group(tensor_value, quant_grid, sub_group_grid, mode="int", zero_po
     # exit(0)
 
     # Batch processing to avoid OOM
-    # batch_num = 4
-    batch_num = 16
+    batch_num = 4
+    # batch_num = 16
     assert tensor_value.shape[0] % batch_num == 0
     batch_size = tensor_value.shape[0] // batch_num
     tensor_deq = torch.zeros_like(tensor_value)

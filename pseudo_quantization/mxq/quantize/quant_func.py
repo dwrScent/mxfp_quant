@@ -197,7 +197,9 @@ def get_quant_mxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_grou
 
     exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
     scales = torch.pow(2, exp)
+
     assert not (scales == 0).any(), "Scale should contain 0 values"
+    assert torch.isnan(scales).sum() == 0
 
     # exp_max_val = torch.floor(torch.log2(max_val))
     # mask = torch.where(tensor_value > torch.pow(2, exp_max_val), torch.tensor(1), torch.tensor(0))
@@ -209,19 +211,6 @@ def get_quant_mxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_grou
         outlier_mask = torch.zeros_like(tensor_value, dtype=torch.bool).to(tensor_value.device)
         _, indices = torch.topk(tensor_value.abs(), 1)
         outlier_mask.scatter_(1, indices, 1)
-
-
-        # 对每 3 个 group，保留第 3 行（index % 3 == 2），其他两行清零
-        # mask = torch.arange(outlier_mask.shape[0], device=outlier_mask.device) % 3 != 0
-        # outlier_mask[mask] = 0
-
-        # 使用 olive 的方法得到 victim 的位置
-        # victim_odd = torch.roll(outlier_mask.view(-1), 1, -1)
-        # victim_odd[::2] = 0
-        # victim_even = torch.roll(outlier_mask.view(-1) & (~victim_odd), -1, -1)
-        # victim_even[1::2] = 0
-        # non_victim_mask = ~(victim_even | victim_odd)
-        # non_victim_mask = non_victim_mask.reshape(tensor_value.shape)
 
         # print(outlier_mask.shape[0], "Original outlier_mask count of 1s:", outlier_mask.sum().item())
         org_tensor = tensor_value.clone()
@@ -297,11 +286,26 @@ def get_quant_nvfp(tensor_value, quant_grid, mode="int", zero_point=True, q_grou
     
     scales = (max_val * alpha) / max_quant_val
 
-    # scales = scales.to(torch.float8_e3m4)
-    scales = scales.to(torch.float8_e4m3fnuz)
+    # scale_fp16 = scales.clone()
+    scales = scales.to(torch.float8_e4m3fn)
+    # scales = scales.to(torch.float8_e4m3fnuz)
     scales = scales.to(torch.float16)
 
+    # test_tensor = torch.tensor(272.5, device=scales.device, dtype=torch.float16)
+    # print(test_tensor, test_tensor.to(torch.float8_e4m3fnuz), test_tensor.to(torch.float8_e4m3fn))
+    # exit(0)
+
+    # if not torch.isnan(scales).sum() == 0:
+    #     nan_mask = torch.where(torch.isnan(scales), torch.tensor(1.0, device=scales.device), torch.tensor(0.0, device=scales.device))
+    #     nan_max_val = max_val * nan_mask    
+    #     nan_scales = scales * nan_mask
+    #     nan_scales_fp16 = scale_fp16 * nan_mask
+
+    #     print(max_val.max(), max_val.min(), scales, nan_max_val.max(), nan_max_val.min(), max_quant_val, nan_scales_fp16.max())
+    #     exit(0)
+
     assert not (scales == 0).any(), "Scale should contain 0 values"
+    assert torch.isnan(scales).sum() == 0
 
     # exp_max_val = torch.floor(torch.log2(max_val))
     # mask = torch.where(tensor_value > torch.pow(2, exp_max_val), torch.tensor(1), torch.tensor(0))
@@ -352,7 +356,9 @@ def get_quant_nvfp(tensor_value, quant_grid, mode="int", zero_point=True, q_grou
     if keep_outlier:
         tensor_deq = tensor_deq * ~outlier_mask + org_tensor * outlier_mask
 
-
+    # if not torch.isnan(tensor_deq).sum() == 0:
+    #     print(torch.isnan(tensor_deq).sum(), torch.isnan(scales).sum(), scales.max(), scales.min())
+    #     exit(0)
     assert torch.isinf(tensor_deq).sum() == 0
     assert torch.isnan(tensor_deq).sum() == 0
     assert torch.isnan(scales).sum() == 0

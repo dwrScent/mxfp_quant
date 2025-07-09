@@ -286,7 +286,7 @@ def get_quant_nvfp(tensor_value, quant_grid, mode="int", zero_point=True, q_grou
 
     max_val = tensor_value.abs().amax(dim=1, keepdim=True)
     # avoid divide a too small value
-    max_val = max_val.clamp(min=1e-2)
+    max_val = max_val.clamp(min=1e-5)
 
     max_quant_val = max(quant_grid)
     assert torch.isinf(max_val).sum() == 0
@@ -296,6 +296,7 @@ def get_quant_nvfp(tensor_value, quant_grid, mode="int", zero_point=True, q_grou
     # exp = torch.ceil(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
     
     scales = (max_val * alpha) / max_quant_val
+    scales = scales.clamp(min=0.001953125, max=448.0)
 
     # scales = scales.to(torch.float8_e3m4)
     scales = scales.to(torch.float8_e4m3fnuz)

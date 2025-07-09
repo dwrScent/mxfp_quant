@@ -68,7 +68,7 @@ def nvfp_direct(tensor_value, quant_grid, mode="int", zero_point=True, q_group_s
     max_val = tensor_value.abs().amax(dim=1, keepdim=True)
     assert torch.isnan(max_val).sum() == 0
 
-    max_val = torch.clamp(max_val, min=1e-2)
+    max_val = torch.clamp(max_val, min=1e-5)
     mantissa_judge = max_val / torch.pow(2, torch.floor(torch.log2(max_val)))
     assert torch.isnan(mantissa_judge).sum() == 0
 
@@ -117,7 +117,7 @@ def nvfp_search(tensor_value, quant_grid, mode="int", zero_point=True, q_group_s
         tensor_value = tensor_value.reshape(-1, q_group_size)
 
     max_val = tensor_value.abs().amax(dim=1, keepdim=True)
-    max_val = torch.clamp(max_val, min=1e-2)
+    max_val = torch.clamp(max_val, min=1e-5)
 
     if pos_value is None or pos_value == True:
         max_quant_val = max(quant_grid)
@@ -438,12 +438,13 @@ def nvfp_sub_group(tensor_value, quant_grid, sub_group_grid, mode="int", zero_po
         tensor_value = tensor_value.reshape(-1, q_group_size)
 
     max_val = tensor_value.abs().amax(dim=1, keepdim=True)
-    max_val = torch.clamp(max_val, min=1e-2)
+    max_val = torch.clamp(max_val, min=1e-5)
 
     max_quant_val = max(quant_grid)
         
     # Compute the scaling factor
     scales = (max_val * alpha) / max_quant_val
+    scales = scales.clamp(min=0.001953125, max=448.0)
 
     # scales = scales.to(torch.float8_e3m4)
     scales = scales.to(torch.float8_e4m3fnuz)

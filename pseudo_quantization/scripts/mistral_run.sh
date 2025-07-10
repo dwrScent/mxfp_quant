@@ -12,9 +12,8 @@ OPTION=${9:-"quant"}
 DESC=${10:-""}
 
 MODEL=/state/partition/zhzhang/Mistral-${MODEL_SIZE}B-v0.1
-# MODEL=/localssd/wmhu/model/llama-3-${MODEL_SIZE}b-instruct
-# MODEL=/mnt/nvme0n1/ckpt/llama/Meta-Llama-3-${MODEL_SIZE}B-Instruct 
-# MODEL=/cephfs/shared/model/Meta-Llama-3-${MODEL_SIZE}B-Instruct 
+MODEL=/localssd/wmhu/model/Mistral-${MODEL_SIZE}B-v0.3
+
 OUTPUT_NAME=Mistral-${MODEL_SIZE}B
 OUTPUT_DIR=""
 

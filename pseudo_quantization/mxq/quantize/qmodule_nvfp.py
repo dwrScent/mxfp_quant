@@ -598,6 +598,86 @@ def nvfp_sub_group_adaptive(tensor_value, quant_grid, sub_group_grid, mode="int"
     return tensor_deq, quant_mse
 
 @torch.no_grad()
+def nvfp_sub_group_heuristic(tensor_value, quant_grid, sub_group_grid, mode="int", zero_point=True, q_group_size=-1, sub_group_size=1, alpha=1.0, pos_value=None, get_labels=False, is_input=False, keep_outlier=False, print_stats=False):
+    org_shape = tensor_value.shape
+    ant_mode = 'float-int'
+    # ant_mode = 'float-int-pot'
+    mode_list = ant_mode.split('-')
+    quant_grid_set = generate_quant_grid(n_bit=4, signed=True, ant_mode=ant_mode)
+    w_deq_list = {}
+    quant_mse_list = {}
+    org_tensor = tensor_value.clone()
+
+    for mode in mode_list:
+        w_deq_list[mode], _ = get_quant_nvfp(tensor_value, quant_grid_set[mode], q_group_size=q_group_size, keep_outlier=keep_outlier, print_stats=print_stats)
+        exist_mode = mode
+    
+    # TODO: Compute the mask of sub group
+    tensor_exponent = tensor_value.clone().view(torch.int16)
+    tensor_exponent = (tensor_exponent >> 10) & 0x1F
+    tensor_exponent = tensor_exponent.reshape(-1, sub_group_size)
+
+    # Get the group-level maximum exponent
+    tensor_reshaped_for_max = tensor_value.reshape(-1, q_group_size)
+    max_val = tensor_reshaped_for_max.abs().amax(dim=1, keepdim=True)
+    max_val_exponent = max_val.view(torch.int16)
+    max_val_exponent = (max_val_exponent >> 10) & 0x1F
+
+    num_sub_groups_per_group = q_group_size // sub_group_size
+    # 将 group-level 的 max_exponent 广播到 sub_group-level
+    max_val_exponent_expanded = max_val_exponent.repeat_interleave(num_sub_groups_per_group, dim=0)
+
+    # print(max_val_exponent_expanded.shape, tensor_exponent.shape)
+    # exit(0)
+
+    # 规则 (1): MXINT mask
+    # 条件：sub_group 内任一元素的 exponent 等于 group 的 max_exponent
+    int_mask_condition = (tensor_exponent == max_val_exponent_expanded)
+    int_mask = torch.any(int_mask_condition, dim=1)
+
+    # 规则 (2): MXPoT mask
+    # 条件：sub_group 内任一元素的 exponent 与 group 的 max_exponent 差值大于 5
+    # pot_mask_condition = (tensor_exponent - max_val_exponent_expanded).abs() > 7
+    # pot_mask = torch.any(pot_mask_condition, dim=1)
+    
+    # 条件：sub_group 内所有元素的 exponent 与 group 的 max_exponent 差值大于 3
+    exponent_diff = (tensor_exponent - max_val_exponent_expanded).abs()
+    pot_mask_condition = exponent_diff > 3
+    pot_mask = torch.all(pot_mask_condition, dim=1)
+    # int mask has high priority
+    pot_mask = pot_mask & (~int_mask)
+
+    # 规则 (3): MXFP mask
+    # 条件：其他所有情况
+    float_mask = ~ (int_mask | pot_mask)
+    # float_mask = ~ (int_mask)
+
+    data_type_mask = {
+        'int': int_mask,
+        'pot': pot_mask,
+        'float': float_mask
+    }
+    tensor_deq = torch.zeros_like(tensor_value).reshape(-1, sub_group_size)
+    for mode in mode_list:
+        # 获取当前模式的反量化结果，并塑形
+        w_deq_mode = w_deq_list[mode].reshape(-1, sub_group_size)
+        
+        # 获取当前模式的 sub-group-level mask
+        mask_mode = data_type_mask[mode]
+        
+        # 使用布尔索引，将满足条件的行（整个 sub-group）进行赋值
+        # 例如，当 mode='int' 时，就是把 w_deq_int 中被 int_mask 标记的那些 sub-group，
+        # 整体复制到 tensor_deq 的相应位置。
+        if mask_mode.any(): # 只有当 mask 中至少有一个 True 时才执行，避免空索引
+            tensor_deq[mask_mode] = w_deq_mode[mask_mode]
+    
+    mse = nn.MSELoss()
+    tensor_deq = tensor_deq.reshape(org_shape)
+    quant_mse = mse(tensor_value, tensor_deq)
+
+    return tensor_deq, quant_mse
+
+@torch.no_grad()
 def nvfp_sub_group_v3(tensor_value, quant_grid, sub_group_grid, mode="int", zero_point=True, q_group_size=-1, sub_group_size=1, alpha=1.0, pos_value=None, get_labels=False, is_input=False, keep_outlier=False, print_stats=False):
     org_shape = tensor_value.shape
     ant_mode = 'float-int'
@@ -773,6 +853,7 @@ class NVFP_Linear(nn.Module):
             'sub_group': lambda: nvfp_sub_group(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, sub_group_mode=sub_group_mode, print_stats=self.print_stats),
             'sub_group_adaptive': lambda: nvfp_sub_group_adaptive(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, print_stats=self.print_stats),
             # 'sub_group_v3': lambda: nvfp_sub_group_v3(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, print_stats=self.print_stats),
+            'sub_group_heuristic': lambda: nvfp_sub_group_heuristic(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, print_stats=self.print_stats),
         }
         return quantize_methods.get(mode, lambda: NotImplementedError(f'not support this nvfp mode: {mode}'))()
 

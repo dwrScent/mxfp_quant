@@ -579,8 +579,13 @@ def mxfp_sub_group_heuristic(tensor_value, quant_grid, sub_group_grid, mode="int
 
     # 规则 (2): MXPoT mask
     # 条件：sub_group 内任一元素的 exponent 与 group 的 max_exponent 差值大于 5
-    pot_mask_condition = (tensor_exponent - max_val_exponent_expanded).abs() > 7
-    pot_mask = torch.any(pot_mask_condition, dim=1)
+    # pot_mask_condition = (tensor_exponent - max_val_exponent_expanded).abs() > 7
+    # pot_mask = torch.any(pot_mask_condition, dim=1)
+    
+    # 条件：sub_group 内所有元素的 exponent 与 group 的 max_exponent 差值大于 3
+    exponent_diff = (tensor_exponent - max_val_exponent_expanded).abs()
+    pot_mask_condition = exponent_diff > 3
+    pot_mask = torch.all(pot_mask_condition, dim=1)
     # int mask has high priority
     pot_mask = pot_mask & (~int_mask)
 

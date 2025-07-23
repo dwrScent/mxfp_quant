@@ -30,6 +30,8 @@ from mxq.models.opt_giant import OPTForCausalLM_giant
 from mxq.models.bloom_giant import BloomForCausalLM_giant
 from mxq.models.llama_mxfp import LlamaForCausalLM_mxfp
 from mxq.models.mistal_mxfp import MistralForCausalLM_mxfp
+from mxq.models.qwen_mxfp import Qwen2ForCausalLM_mxfp
+from mxq.eval import inference
 
 from transformers import OPTConfig, BloomConfig, LlamaConfig, MistralConfig
 

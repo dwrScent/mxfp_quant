@@ -175,5 +175,3 @@ __pycache__
 
 # RTL
 rtl_giant/build/**
-
-pseudo_quantization/datasets/

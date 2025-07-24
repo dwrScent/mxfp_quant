@@ -33,7 +33,10 @@ latex_gold_metric = multilingual_extractive_match_metric(
     precision=5,
     gold_extraction_target=(LatexExtractionConfig(),),
     # Match boxed first before trying other regexes
-    pred_extraction_target=(ExprExtractionConfig(), LatexExtractionConfig(boxed_match_priority=0)),
+    pred_extraction_target=(
+        ExprExtractionConfig(),
+        LatexExtractionConfig(boxed_match_priority=0),
+    ),
     aggregation_function=max,
 )
 
@@ -43,7 +46,10 @@ expr_gold_metric = multilingual_extractive_match_metric(
     precision=5,
     gold_extraction_target=(ExprExtractionConfig(),),
     # Match boxed first before trying other regexes
-    pred_extraction_target=(ExprExtractionConfig(), LatexExtractionConfig(boxed_match_priority=0)),
+    pred_extraction_target=(
+        ExprExtractionConfig(),
+        LatexExtractionConfig(boxed_match_priority=0),
+    ),
     aggregation_function=max,
 )
 
@@ -53,14 +59,21 @@ expr_gsm8k_metric = multilingual_extractive_match_metric(
     precision=5,
     gold_extraction_target=(ExprExtractionConfig(),),
     # Match boxed first before trying other regexes
-    pred_extraction_target=(ExprExtractionConfig(), LatexExtractionConfig(boxed_match_priority=0)),
+    pred_extraction_target=(
+        ExprExtractionConfig(),
+        LatexExtractionConfig(boxed_match_priority=0),
+    ),
     aggregation_function=max,
 )
 
 gpqa_metric = multilingual_extractive_match_metric(
     language=Language.ENGLISH,
-    gold_extraction_target=[IndicesExtractionConfig(prefix_for_extraction="NativeLetters")],
-    pred_extraction_target=[IndicesExtractionConfig(prefix_for_extraction="NativeLetters")],
+    gold_extraction_target=[
+        IndicesExtractionConfig(prefix_for_extraction="NativeLetters")
+    ],
+    pred_extraction_target=[
+        IndicesExtractionConfig(prefix_for_extraction="NativeLetters")
+    ],
     precision=5,
 )
 
@@ -105,10 +118,20 @@ def gsm8k_prompt_fn(line, task_name: str = None):
 def gpqa_prompt_fn(line, task_name: str = None):
     """Prompt template adapted from simple-evals: https://github.com/openai/simple-evals/blob/83ed7640a7d9cd26849bcb3340125002ef14abbe/common.py#L14"""
     gold_index = random.randint(0, 3)
-    choices = [line["Incorrect Answer 1"], line["Incorrect Answer 2"], line["Incorrect Answer 3"]]
+    choices = [
+        line["Incorrect Answer 1"],
+        line["Incorrect Answer 2"],
+        line["Incorrect Answer 3"],
+    ]
     choices.insert(gold_index, line["Correct Answer"])
     query_template = "Answer the following multiple choice question. The last line of your response should be of the following format: 'Answer: $LETTER' (without quotes) where LETTER is one of ABCD. Think step by step before answering.\n\n{Question}\n\nA) {A}\nB) {B}\nC) {C}\nD) {D}"
-    query = query_template.format(A=choices[0], B=choices[1], C=choices[2], D=choices[3], Question=line["Question"])
+    query = query_template.format(
+        A=choices[0],
+        B=choices[1],
+        C=choices[2],
+        D=choices[3],
+        Question=line["Question"],
+    )
 
     return Doc(
         task_name=task_name,
@@ -124,7 +147,7 @@ aime24 = LightevalTaskConfig(
     name="aime24",
     suite=["custom"],
     prompt_function=aime24_prompt_fn,
-    hf_repo="./datasets/AIME_2024",  # Maxwell-Jia/AIME_2024
+    hf_repo="Maxwell-Jia/AIME_2024",  # Maxwell-Jia/AIME_2024
     hf_subset="default",
     hf_avail_splits=["train"],
     evaluation_splits=["train"],
@@ -138,7 +161,7 @@ aime25 = LightevalTaskConfig(
     name="aime25",
     suite=["custom"],
     prompt_function=aime25_prompt_fn,
-    hf_repo="./datasets/aime_2025",     # yentinglin/aime_2025
+    hf_repo="yentinglin/aime_2025",  # yentinglin/aime_2025
     hf_subset="default",
     hf_avail_splits=["train"],
     evaluation_splits=["train"],
@@ -152,7 +175,7 @@ aime90 = LightevalTaskConfig(
     name="aime90",
     suite=["custom"],
     prompt_function=aime25_prompt_fn,
-    hf_repo="./datasets/AIME90",     # xiaoyuanliu/AIME90
+    hf_repo="xiaoyuanliu/AIME90",  # xiaoyuanliu/AIME90
     hf_subset="default",
     hf_avail_splits=["train"],
     evaluation_splits=["train"],
@@ -166,7 +189,7 @@ math_500 = LightevalTaskConfig(
     name="math_500",
     suite=["custom"],
     prompt_function=prompt_fn,
-    hf_repo="./datasets/MATH-500",   # HuggingFaceH4/MATH-500
+    hf_repo="HuggingFaceH4/MATH-500",  # HuggingFaceH4/MATH-500
     hf_subset="default",
     hf_avail_splits=["test"],
     evaluation_splits=["test"],
@@ -180,7 +203,7 @@ numina_math = LightevalTaskConfig(
     name="numina_math",
     suite=["custom"],
     prompt_function=aime25_prompt_fn,
-    hf_repo="./datasets/NuminaMath-1.5",   # AI-MO/NuminaMath-1.5
+    hf_repo="AI-MO/NuminaMath-1.5",  # AI-MO/NuminaMath-1.5
     hf_subset="default",
     hf_avail_splits=["train"],
     evaluation_splits=["train"],
@@ -194,7 +217,7 @@ gsm8k = LightevalTaskConfig(
     name="gsm8k",
     suite=["custom"],
     prompt_function=gsm8k_prompt_fn,
-    hf_repo="./datasets/gsm8k",     # openai/gsm8k
+    hf_repo="openai/gsm8k",  # openai/gsm8k
     hf_subset="main",
     hf_avail_splits=["train", "test"],
     evaluation_splits=["test"],
@@ -208,7 +231,7 @@ gpqa_diamond = LightevalTaskConfig(
     name="gpqa:diamond",
     suite=["custom"],
     prompt_function=gpqa_prompt_fn,
-    hf_repo="./datasets/gpqa",  # Idavidrein/gpqa
+    hf_repo="Idavidrein/gpqa",  # Idavidrein/gpqa
     hf_subset="gpqa_diamond",
     hf_avail_splits=["train"],
     evaluation_splits=["train"],

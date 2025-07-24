@@ -55,7 +55,7 @@ from vllm.model_executor.models.utils import (AutoWeightsLoader, PPMissingLayer,
                     is_pp_missing_parameter,
                     make_empty_intermediate_tensors_factory, make_layers,
                     maybe_prefix)
-from mxq.quantize.quantizer import make_quant_linear
+from mxq.models.qwen_vllm.mxfp_quantmethod import MXFPQuantConfig
 
 logger = init_logger(__name__)
 
@@ -441,6 +441,8 @@ class Qwen2ForCausalLM_mxfp(nn.Module, SupportsLoRA, SupportsPP):
 
     def __init__(self, *, vllm_config: VllmConfig, prefix: str = ""):
         super().__init__()
+        from mxq.entry import args, ant_config
+        vllm_config.quant_config = MXFPQuantConfig(args.w_bit, args.a_bit, args.q_group_size, ant_config)
         config = vllm_config.model_config.hf_config
         quant_config = vllm_config.quant_config
         lora_config = vllm_config.lora_config
@@ -469,11 +471,6 @@ class Qwen2ForCausalLM_mxfp(nn.Module, SupportsLoRA, SupportsPP):
 
         self.make_empty_intermediate_tensors = (
             self.model.make_empty_intermediate_tensors)
-        
-        from mxq.entry import q_config, ant_config, args, quant_mode_config
-        make_quant_linear(
-                self, args.w_bit, args.a_bit, q_config, ant_config=ant_config, quant_mode_config=quant_mode_config
-            )
 
     def get_input_embeddings(self, input_ids: torch.Tensor) -> torch.Tensor:
         return self.model.get_input_embeddings(input_ids)

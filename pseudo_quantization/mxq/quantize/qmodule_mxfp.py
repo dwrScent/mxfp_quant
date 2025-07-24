@@ -144,7 +144,7 @@ def mxfp_search(tensor_value, quant_grid, mode="int", zero_point=True, q_group_s
 
     # Batch processing to avoid OOM
     # batch_num = 4
-    batch_num = 16
+    batch_num = 4
     assert tensor_value.shape[0] % batch_num == 0
     batch_size = tensor_value.shape[0] // batch_num
 
@@ -793,7 +793,10 @@ class MXFP_Linear(nn.Module):
     @classmethod
     def from_linear(cls, linear, w_bit, a_bit, group_size, layer_id, layer_name, init_only=False, ant_config=None, quant_mode=None):
 
-        mxfp_linear = cls(w_bit, a_bit, group_size, linear.in_features, linear.out_features, linear.bias is not None, linear.weight.device, ant_config, layer_id, layer_name)
+        in_features = linear.weight.shape[1] 
+        out_features = linear.weight.shape[0]
+
+        mxfp_linear = cls(w_bit, a_bit, group_size, in_features, out_features, linear.bias is not None, linear.weight.device, ant_config, layer_id, layer_name)
         if init_only:  # just prepare for loading sd
             return mxfp_linear
 

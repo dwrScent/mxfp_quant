@@ -56,6 +56,7 @@ from vllm.model_executor.models.utils import (AutoWeightsLoader, PPMissingLayer,
                     make_empty_intermediate_tensors_factory, make_layers,
                     maybe_prefix)
 from mxq.models.qwen_vllm.mxfp_quantmethod import MXFPQuantConfig
+from mxq.models.qwen_vllm.nvfp_quantmethod import NVFPQuantConfig
 
 logger = init_logger(__name__)
 
@@ -442,7 +443,10 @@ class Qwen2ForCausalLM_mxfp(nn.Module, SupportsLoRA, SupportsPP):
     def __init__(self, *, vllm_config: VllmConfig, prefix: str = ""):
         super().__init__()
         from mxq.entry import args, ant_config
-        vllm_config.quant_config = MXFPQuantConfig(args.w_bit, args.a_bit, args.q_group_size, ant_config)
+        if args.quant_mode == "mxfp":
+            vllm_config.quant_config = MXFPQuantConfig(args.w_bit, args.a_bit, args.q_group_size, ant_config)
+        elif args.quant_mode == "nvfp":
+            vllm_config.quant_config = NVFPQuantConfig(args.w_bit, args.a_bit, args.q_group_size, ant_config)
         config = vllm_config.model_config.hf_config
         quant_config = vllm_config.quant_config
         lora_config = vllm_config.lora_config

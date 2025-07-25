@@ -8,6 +8,10 @@ Fork from https://github.com/mit-han-lab/llm-awq
 conda create -n mxq python=3.10 -y
 conda activate mxq
 pip install --upgrade pip  # enable PEP 660 support
+pip install vllm==0.7.0 --extra-index-url https://download.pytorch.org/whl/cu124
+pip install -e .
+
+cd mxq/eval
 pip install -e .
 
 # CUDA 12.3，推荐使用 torch=2.3.1
@@ -44,6 +48,9 @@ CUDA_VISIBLE_DEVICES=0 ./scripts/opt_run.sh 6.7 wikitext 0 mxfp float 32 w4a4q16
 CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 arc_easy,hellaswag,piqa,winogrande,arc_challenge,boolq 0 mxfp float 32 w4a4q16k16v16 w-base-a-base quant
 # backup tasks
 CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 lambada 0 mxfp float 32 w4a4q16k16v16 w-base-a-base quant
+
+# run AIME-2025 on DeepSeek-R1-Distill-Qwen-1.5B
+CUDA_VISIBLE_DEVICES=0 ./scripts/deepseek_run.sh 1.5 AIME-2025 0 mxfp float 32 w4a4q16k16v16 w-base-a-base quant
 
 ```
 

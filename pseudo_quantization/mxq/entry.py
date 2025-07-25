@@ -30,6 +30,8 @@ from mxq.models.opt_giant import OPTForCausalLM_giant
 from mxq.models.bloom_giant import BloomForCausalLM_giant
 from mxq.models.llama_mxfp import LlamaForCausalLM_mxfp
 from mxq.models.mistal_mxfp import MistralForCausalLM_mxfp
+from pseudo_quantization.mxq.models.qwen_vllm.qwen_mxfp import Qwen2ForCausalLM_mxfp
+from mxq.eval import inference
 
 from transformers import OPTConfig, BloomConfig, LlamaConfig, MistralConfig
 
@@ -347,6 +349,20 @@ def main():
 
     print("\nargs:", args, "\n")
     # a hack here to auto set model group
+
+    if args.tasks in ["AIME-2025", "AIME-90","MATH-500", "GSM8K", "GPQA-Diamond", "LiveCodeBench"]:
+        config = AutoConfig.from_pretrained(args.model_path)
+        name = config.architectures[0]
+        if not name.endswith("_mxfp"):
+            name += "_mxfp"
+        config.architectures[0] = name
+        config.save_pretrained(args.model_path)
+
+        if name != "Qwen2ForCausalLM_mxfp":
+                        raise Exception(f"{name} is not supported yet")
+        inference.main(args.model_path, args.tasks)
+        return
+
     model, enc = build_model_and_enc(args.model_path)
 
 

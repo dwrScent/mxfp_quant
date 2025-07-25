@@ -13,6 +13,7 @@ from transformers.models.opt.modeling_opt import OPTForCausalLM
 from transformers.models.llama.modeling_llama import LlamaForCausalLM
 from transformers.models.bert.modeling_bert import BertForSequenceClassification
 from transformers.models.mistral.modeling_mistral import MistralForCausalLM
+from transformers.models.qwen2.modeling_qwen2 import Qwen2ForCausalLM
 
 from mxq.models.llama_giant import LlamaForCausalLM_giant
 from mxq.models.llama_mxfp import LlamaForCausalLM_mxfp

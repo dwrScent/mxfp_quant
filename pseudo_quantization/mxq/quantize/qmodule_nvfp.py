@@ -145,7 +145,7 @@ def nvfp_search(tensor_value, quant_grid, mode="int", zero_point=True, q_group_s
 
     # Batch processing to avoid OOM
     # batch_num = 4
-    batch_num = 16
+    batch_num = 4
     assert tensor_value.shape[0] % batch_num == 0
     batch_size = tensor_value.shape[0] // batch_num
 
@@ -499,7 +499,7 @@ def nvfp_sub_group(tensor_value, quant_grid, sub_group_grid, mode="int", zero_po
 
     # Batch processing to avoid OOM
     # batch_num = 4
-    batch_num = 16
+    batch_num = 4
     assert tensor_value.shape[0] % batch_num == 0
     batch_size = tensor_value.shape[0] // batch_num
     tensor_deq = torch.zeros_like(tensor_value)
@@ -1008,7 +1008,9 @@ class NVFP_Linear(nn.Module):
     @classmethod
     def from_linear(cls, linear, w_bit, a_bit, group_size, layer_id, layer_name, init_only=False, ant_config=None, quant_mode=None):
 
-        nvfp_linear = cls(w_bit, a_bit, group_size, linear.in_features, linear.out_features, linear.bias is not None, linear.weight.device, ant_config, layer_id, layer_name)
+        in_features = linear.weight.shape[1] 
+        out_features = linear.weight.shape[0]
+        nvfp_linear = cls(w_bit, a_bit, group_size, in_features, out_features, linear.bias is not None, linear.weight.device, ant_config, layer_id, layer_name)
         if init_only:  # just prepare for loading sd
             return nvfp_linear
 
@@ -1111,7 +1113,7 @@ class NVFP_Linear(nn.Module):
 
         # out = gemm_with_compensation_gpu(input, self.weight, q_group_size=self.group_size, quant_grid=self.input_quant_grid)
 
-        out = F.linear(deq_input, self.weight)
+        out = F.linear(deq_input.to(self.weight.dtype), self.weight)
         assert torch.isnan(out).sum() == 0
 
         if self.print_stats:

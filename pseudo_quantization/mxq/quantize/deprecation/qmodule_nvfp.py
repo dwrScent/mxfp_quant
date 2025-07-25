@@ -145,7 +145,7 @@ def nvfp_search(tensor_value, quant_grid, mode="int", zero_point=True, q_group_s
 
     # Batch processing to avoid OOM
     # batch_num = 4
-    batch_num = 4
+    batch_num = 16
     assert tensor_value.shape[0] % batch_num == 0
     batch_size = tensor_value.shape[0] // batch_num
 
@@ -499,7 +499,7 @@ def nvfp_sub_group(tensor_value, quant_grid, sub_group_grid, mode="int", zero_po
 
     # Batch processing to avoid OOM
     # batch_num = 4
-    batch_num = 4
+    batch_num = 16
     assert tensor_value.shape[0] % batch_num == 0
     batch_size = tensor_value.shape[0] // batch_num
     tensor_deq = torch.zeros_like(tensor_value)
@@ -705,107 +705,7 @@ def nvfp_sub_group_em(tensor_value, quant_grid, sub_group_grid, mode="int", zero
         return tensor_deq, quant_mse_sum, labels, quant_grid * scales
     else:
         return tensor_deq, quant_mse_sum
-
-@torch.no_grad()
-def nvfp_sub_group_adaptive_em(tensor_value, quant_grid, sub_group_grid, mode="int", zero_point=True, q_group_size=-1, sub_group_size=1, sub_group_mode=None, alpha=1.0, pos_value=None, get_labels=False, is_input=False, keep_outlier=False, print_stats=False):
-    org_shape = tensor_value.shape
-    ant_mode = 'float-int-pot'
-    # ant_mode = 'float-int'
-    # ant_mode = sub_group_mode
-    mode_list = ant_mode.split('-')
-    quant_grid_set = generate_quant_grid(n_bit=4, signed=True, ant_mode=ant_mode)
-    w_deq_list = {}
-    quant_mse_list = {}
-
-    max_val = tensor_value.reshape(-1, q_group_size).abs().amax(dim=1, keepdim=True)
-
-    # Calculate the exponent for the tensor and max_val
-    tensor_exp = tensor_value.reshape(-1, q_group_size).view(torch.int16)
-    tensor_exp = (tensor_exp >> 10) & 0x1F
-    max_val_exp = max_val.view(torch.int16)
-    max_val_exp = (max_val_exp >> 10) & 0x1F
-    outlier_mask = (tensor_exp == max_val_exp)
-
-    # Find the outlier (exp == max exp) of each subgroup
-    num_sub_groups = tensor_value.numel() // sub_group_size
-    reshaped_outlier_mask = outlier_mask.reshape(num_sub_groups, sub_group_size)
-    reshaped_tensor_abs = tensor_value.abs().reshape(num_sub_groups, sub_group_size)
-    potential_outlier_values = reshaped_tensor_abs * reshaped_outlier_mask
-    max_outlier_val_in_subgroup = torch.max(potential_outlier_values, dim=1, keepdim=True)[0]
-    final_element_wise_mask_reshaped = (potential_outlier_values == max_outlier_val_in_subgroup) & (reshaped_outlier_mask)
-    outlier_group_mask = final_element_wise_mask_reshaped.reshape(-1, q_group_size).to(tensor_value.dtype)
-
-    # TODO: get the subgroup grid based on the ant_mode
-    all_sub_group_grids = {
-        'float': [0, -4.0, -4.5, -5.0, -5.5, -6.0, -6.5, -7.0, -7.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5],
-        'int': [0, -4.0, -4.25, -4.5, -4.75, -5.0, -5.25, -5.5, -5.75,-6.0, -6.25, -6.5, -6.75, -7.0, -7.25, -7.5, -7.75,4.0, 4.25, 4.5, 4.75, 5.0, 5.25, 5.5, 5.75,6.0, 6.25, 6.5, 6.75, 7.0, 7.25, 7.5, 7.75],
-        'pot': [0, -4.0, -5.0, -6.0, -7.0, 4.0, 5.0, 6.0, 7.0]
-    }
-    sub_group_grid_set = {}
-    for mode in mode_list:
-        if mode in all_sub_group_grids:
-            sub_group_grid_set[mode] = torch.tensor(
-                all_sub_group_grids[mode],
-                dtype=tensor_value.dtype,
-                device=tensor_value.device
-            )
-
-    for mode in mode_list:
-        w_deq_list[mode], _ = get_quant_nvfp(tensor_value, quant_grid_set[mode], q_group_size=q_group_size, keep_outlier=keep_outlier, print_stats=print_stats)
-        exist_mode = mode
-
-        # TODO: add extra mantissa for the subgroup based on the sub_group_grid
-        sub_group_grid = sub_group_grid_set[mode]
-        w_deq_subgroup, _ = get_quant_nvfp(tensor_value, sub_group_grid, q_group_size=q_group_size, keep_outlier=keep_outlier, print_stats=print_stats)
-
-        outlier_group_mask = outlier_group_mask.reshape(org_shape)
-        w_deq_list[mode] = torch.where(outlier_group_mask.bool(),w_deq_subgroup,  w_deq_list[mode])
-
-        # Calculate the quantization MSE
-        quant_mse = (w_deq_list[mode]-tensor_value).abs().pow(2).to(torch.float32)
-        quant_mse = quant_mse.reshape(-1, sub_group_size)
-        quant_mse_sum = torch.mean(quant_mse, dim=1, keepdim=True)
-        quant_mse_list[mode] = quant_mse_sum
     
-    if sub_group_size > 0:
-        tensor_value = tensor_value.reshape(-1, sub_group_size)
-        for mode in mode_list:
-            w_deq_list[mode] = w_deq_list[mode].reshape(-1, sub_group_size)
-    
-    data_type_identify = torch.zeros_like(quant_mse_list[exist_mode], dtype=torch.int32)
-    mapping_list = {}
-    for idx, mode in enumerate(mode_list):
-        mapping_list[mode] = idx
-        if idx == 0:
-            compared_mse = quant_mse_list[mode]
-        else:
-            data_type_identify = torch.where(quant_mse_list[mode] < compared_mse, idx, data_type_identify)
-            # update the compared_mse
-            compared_mse = torch.where(quant_mse_list[mode] < compared_mse, quant_mse_list[mode], compared_mse)
-    data_type_mask = {}
-    for mode in mode_list:
-        data_type_mask[mode] = (data_type_identify == mapping_list[mode])
-
-    tensor_deq = torch.zeros_like(tensor_value, dtype=torch.float16)
-    for mode in mode_list:
-        quant_grid_set[mode] = quant_grid_set[mode].to(data_type_mask[mode].device)
-        tensor_deq = tensor_deq + torch.mul(w_deq_list[mode], data_type_mask[mode])
-
-    mse = nn.MSELoss()
-    quant_mse = mse(tensor_value, tensor_deq)
-    tensor_deq = tensor_deq.reshape(org_shape)
-    if print_stats:
-        print("-" * 50)
-        print("Adaptive Data Type Selection Statistics:")
-        total_sub_groups = data_type_identify.numel()
-        for mode, idx in mapping_list.items():
-            count = (data_type_identify == idx).sum().item()
-            percentage = (count / total_sub_groups) * 100 if total_sub_groups > 0 else 0
-            print(f"  - Mode '{mode}': Chosen for {count}/{total_sub_groups} sub-groups ({percentage:.2f}%)")
-        print("-" * 50)
-
-    return tensor_deq, quant_mse
-
 @torch.no_grad()
 def nvfp_sub_group_heuristic(tensor_value, quant_grid, sub_group_grid, mode="int", zero_point=True, q_group_size=-1, sub_group_size=1, alpha=1.0, pos_value=None, get_labels=False, is_input=False, keep_outlier=False, print_stats=False):
     org_shape = tensor_value.shape
@@ -1008,9 +908,7 @@ class NVFP_Linear(nn.Module):
     @classmethod
     def from_linear(cls, linear, w_bit, a_bit, group_size, layer_id, layer_name, init_only=False, ant_config=None, quant_mode=None):
 
-        in_features = linear.weight.shape[1] 
-        out_features = linear.weight.shape[0]
-        nvfp_linear = cls(w_bit, a_bit, group_size, in_features, out_features, linear.bias is not None, linear.weight.device, ant_config, layer_id, layer_name)
+        nvfp_linear = cls(w_bit, a_bit, group_size, linear.in_features, linear.out_features, linear.bias is not None, linear.weight.device, ant_config, layer_id, layer_name)
         if init_only:  # just prepare for loading sd
             return nvfp_linear
 
@@ -1066,7 +964,6 @@ class NVFP_Linear(nn.Module):
             # 'sub_group_v3': lambda: nvfp_sub_group_v3(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, print_stats=self.print_stats),
             'sub_group_heuristic': lambda: nvfp_sub_group_heuristic(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, print_stats=self.print_stats),
             'sub_group_em': lambda: nvfp_sub_group_em(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, sub_group_mode=sub_group_mode, print_stats=self.print_stats),
-            'sub_group_adaptive_em': lambda: nvfp_sub_group_adaptive_em(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, sub_group_mode=sub_group_mode, print_stats=self.print_stats),
         }
         return quantize_methods.get(mode, lambda: NotImplementedError(f'not support this nvfp mode: {mode}'))()
 
@@ -1113,7 +1010,7 @@ class NVFP_Linear(nn.Module):
 
         # out = gemm_with_compensation_gpu(input, self.weight, q_group_size=self.group_size, quant_grid=self.input_quant_grid)
 
-        out = F.linear(deq_input.to(self.weight.dtype), self.weight)
+        out = F.linear(deq_input, self.weight)
         assert torch.isnan(out).sum() == 0
 
         if self.print_stats:

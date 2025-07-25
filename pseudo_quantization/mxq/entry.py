@@ -30,10 +30,14 @@ from mxq.models.opt_giant import OPTForCausalLM_giant
 from mxq.models.bloom_giant import BloomForCausalLM_giant
 from mxq.models.llama_mxfp import LlamaForCausalLM_mxfp
 from mxq.models.mistal_mxfp import MistralForCausalLM_mxfp
-from pseudo_quantization.mxq.models.qwen_vllm.qwen_mxfp import Qwen2ForCausalLM_mxfp
+from mxq.models.qwen_vllm.qwen_mxfp import Qwen2ForCausalLM_mxfp
 from mxq.eval import inference
 
 from transformers import OPTConfig, BloomConfig, LlamaConfig, MistralConfig
+
+from vllm import ModelRegistry
+ModelRegistry.register_model("Qwen2ForCausalLM_mxfp", Qwen2ForCausalLM_mxfp)
+
 
 def print_time(print_str):
     timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')

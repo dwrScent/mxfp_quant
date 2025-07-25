@@ -115,7 +115,7 @@ lcb_codegen_metric = SampleLevelMetric(
 
 extend_enum(Metrics, "lcb_codegen_metric", lcb_codegen_metric)
 
-configs = get_dataset_config_names("./datasets/code_generation_lite", trust_remote_code=True)
+configs = get_dataset_config_names("livecodebench/code_generation_lite", trust_remote_code=True)
 
 tasks = []
 
@@ -126,7 +126,7 @@ for subset in configs:
         name=name,
         suite=["custom"],
         prompt_function=lcb_codegeneration_prompt_fn,
-        hf_repo="./datasets/code_generation_lite",   # livecodebench/code_generation_lite
+        hf_repo="livecodebench/code_generation_lite",   # livecodebench/code_generation_lite
         hf_subset=subset,  # https://github.com/LiveCodeBench/LiveCodeBench/tree/main?tab=readme-ov-file#dataset-versions
         hf_avail_splits=["test"],
         evaluation_splits=["test"],

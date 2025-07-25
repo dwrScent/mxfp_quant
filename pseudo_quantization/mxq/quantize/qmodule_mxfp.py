@@ -898,7 +898,7 @@ class MXFP_Linear(nn.Module):
 
         # out = gemm_with_compensation_gpu(input, self.weight, q_group_size=self.group_size, quant_grid=self.input_quant_grid)
 
-        out = F.linear(deq_input, self.weight)
+        out = F.linear(deq_input.to(self.weight.dtype), self.weight)
         assert torch.isnan(out).sum() == 0
 
         if self.print_stats:

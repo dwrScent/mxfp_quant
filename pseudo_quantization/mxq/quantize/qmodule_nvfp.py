@@ -14,6 +14,15 @@ from .rounding_comp import gemm_with_compensation_gpu
 from .utils_stats import calculate_scale_range, calculate_outlier_exp
 from ..utils.make_distribution import distri_3d
 
+def extra_exp(tensor_value):
+    tensor_exp = tensor_value.view(torch.int16)
+    if tensor_value.dtype == torch.float16:
+        return (tensor_exp >> 10) & 0x1F
+    elif tensor_value.dtype == torch.bfloat16:
+        return (tensor_exp >> 7) & 0xFF
+    else:
+        raise Exception(f"{tensor_value.dtype} not support yet")
+
 
 def outlier_value(n_bit, signed=True, exp_bit=2, exp_base=5):
     B = n_bit - 1 if signed else n_bit
@@ -476,10 +485,8 @@ def nvfp_sub_group(tensor_value, quant_grid, sub_group_grid, mode="int", zero_po
         # assert torch.all(tensor_q < 8.0), "Tensor contains values greater than or equal to 8!"
         # outlier_mask = torch.where(tensor_q >= 4.0, 1.0, 0.).to(tensor_value.device)
 
-        tensor_exp = tensor_value.view(torch.int16)
-        tensor_exp = (tensor_exp >> 10) & 0x1F
-        max_val_exp = max_val.view(torch.int16)
-        max_val_exp = (max_val_exp >> 10) & 0x1F
+        tensor_exp = extra_exp(tensor_value)
+        max_val_exp = extra_exp(max_val)
         outlier_mask = (tensor_exp == max_val_exp)
         # print(tensor_exp, max_val_exp, outlier_mask, outlier_mask.shape)
         # exit(0)
@@ -623,10 +630,8 @@ def nvfp_sub_group_em(tensor_value, quant_grid, sub_group_grid, mode="int", zero
 
     zeros = 0
 
-    tensor_exp = tensor_value.view(torch.int16)
-    tensor_exp = (tensor_exp >> 10) & 0x1F
-    max_val_exp = max_val.view(torch.int16)
-    max_val_exp = (max_val_exp >> 10) & 0x1F
+    tensor_exp = extra_exp(tensor_value)
+    max_val_exp = extra_exp(max_val)
     outlier_mask = (tensor_exp == max_val_exp)
 
     num_sub_groups = tensor_value.numel() // sub_group_size
@@ -720,10 +725,8 @@ def nvfp_sub_group_adaptive_em(tensor_value, quant_grid, sub_group_grid, mode="i
     max_val = tensor_value.reshape(-1, q_group_size).abs().amax(dim=1, keepdim=True)
 
     # Calculate the exponent for the tensor and max_val
-    tensor_exp = tensor_value.reshape(-1, q_group_size).view(torch.int16)
-    tensor_exp = (tensor_exp >> 10) & 0x1F
-    max_val_exp = max_val.view(torch.int16)
-    max_val_exp = (max_val_exp >> 10) & 0x1F
+    tensor_exp = extra_exp(tensor_value.reshape(-1, q_group_size))
+    max_val_exp = extra_exp(max_val)
     outlier_mask = (tensor_exp == max_val_exp)
 
     # Find the outlier (exp == max exp) of each subgroup
@@ -822,15 +825,13 @@ def nvfp_sub_group_heuristic(tensor_value, quant_grid, sub_group_grid, mode="int
         exist_mode = mode
     
     # TODO: Compute the mask of sub group
-    tensor_exponent = tensor_value.clone().view(torch.int16)
-    tensor_exponent = (tensor_exponent >> 10) & 0x1F
+    tensor_exponent = extra_exp(tensor_value)
     tensor_exponent = tensor_exponent.reshape(-1, sub_group_size)
 
     # Get the group-level maximum exponent
     tensor_reshaped_for_max = tensor_value.reshape(-1, q_group_size)
     max_val = tensor_reshaped_for_max.abs().amax(dim=1, keepdim=True)
-    max_val_exponent = max_val.view(torch.int16)
-    max_val_exponent = (max_val_exponent >> 10) & 0x1F
+    max_val_exponent = extra_exp(max_val)
 
     num_sub_groups_per_group = q_group_size // sub_group_size
     # 将 group-level 的 max_exponent 广播到 sub_group-level

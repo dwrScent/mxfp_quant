@@ -692,7 +692,7 @@ class MXFP_Linear(nn.Module):
         # sub group with E0M3
         sub_group_grid = [0, -4.0, -4.5, -5.0, -5.5, -6.0, -6.5, -7.0, -7.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5]
         # sub_group_grid = [0, -2.0, -2.5, -3.0, -3.5, -4.0, -5.0, -6.0, -7.0, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 6.0, 7.0]
-        sub_group_grid = torch.tensor(sub_group_grid)       
+        sub_group_grid = torch.tensor(sub_group_grid) * max(quant_grid) / max(sub_group_grid)      
         quantize_methods = {
             'base': lambda: get_quant_mxfp(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, is_input=is_input, keep_outlier=self.keep_outlier, print_stats=self.print_stats),
             'sub_group': lambda: mxfp_sub_group(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, sub_group_mode=sub_group_mode, print_stats=self.print_stats),

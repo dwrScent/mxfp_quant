@@ -110,7 +110,7 @@ def get_quant_grid(tensor_value, quant_grid, group_size, alpha=1.0):
         scales = (max_val * alpha) / max_quant_val
         zeros = 0
 
-        batch_num = 32
+        batch_num = 4
         assert tensor_value.shape[0] % batch_num == 0
         batch_size = tensor_value.shape[0] // batch_num
         tensor_deq = torch.zeros_like(tensor_value)
@@ -140,7 +140,7 @@ def get_quant_grid(tensor_value, quant_grid, group_size, alpha=1.0):
 
         # Batch processing to avoid OOM
         # batch_num = 4
-        batch_num = 16
+        batch_num = 4
         assert tensor_value.shape[0] % batch_num == 0
         batch_size = tensor_value.shape[0] // batch_num
         tensor_deq = torch.zeros_like(tensor_value)
@@ -219,8 +219,10 @@ def get_quant_mxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_grou
 
     # Batch processing to avoid OOM
     # batch_num = 4
-    batch_num = 16
-    assert tensor_value.shape[0] % batch_num == 0
+    batch_num = 4
+    assert tensor_value.shape[0]  % batch_num == 0, \
+    f"Batch dimension mismatch! Current tensor shape[0]={tensor_value.shape[0]},  batch_num={batch_num}. " \
+    f"The first dimension of tensor ({tensor_value.shape[0]})  must be divisible by batch_num ({batch_num})"
     batch_size = tensor_value.shape[0] // batch_num
     tensor_deq = torch.zeros_like(tensor_value)
     for idx in range(batch_num):
@@ -339,7 +341,7 @@ def get_quant_nvfp(tensor_value, quant_grid, mode="int", zero_point=True, q_grou
 
     # Batch processing to avoid OOM
     # batch_num = 4
-    batch_num = 16
+    batch_num = 4
     assert tensor_value.shape[0] % batch_num == 0
     batch_size = tensor_value.shape[0] // batch_num
     tensor_deq = torch.zeros_like(tensor_value)

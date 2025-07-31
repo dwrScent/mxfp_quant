@@ -52,6 +52,13 @@ CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 lambada 0 mxfp float 32 w4a4q16
 # Run NVFP
 CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 nvfp float 16 w4a4q16k16v16 w-base-a-base quant
 # SMXFP
+
+# Reasoning Task, need to set `apply_chat_template` and `fewshot_as_multiturn` to True
+CUDA_VISIBLE_DEVICES=1 ./scripts/qwen_run.sh 1.5 gsm8k_cot 8 mxfp float 32 w-1a16q16k16v16
+CUDA_VISIBLE_DEVICES=1 ./scripts/qwen_run.sh 1.5 gpqa_diamond_cot_n_shot 8 mxfp float 32 w-1a16q16k16v16
+
+CUDA_VISIBLE_DEVICES=1 ./scripts/qwen_run.sh 1.5 agieval_aqua_rat 4 mxfp float 32 w16a16q16k16v16
+CUDA_VISIBLE_DEVICES=1 ./scripts/qwen_run.sh 1.5 asdiv 4 mxfp float 32 w-1a16q16k16v16
 ```
 
 ## Setting

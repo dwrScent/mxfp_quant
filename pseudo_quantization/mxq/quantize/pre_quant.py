@@ -14,6 +14,8 @@ from transformers.models.llama.modeling_llama import LlamaForCausalLM
 from transformers.models.bert.modeling_bert import BertForSequenceClassification
 from transformers.models.mistral.modeling_mistral import MistralForCausalLM
 
+from transformers.models.qwen2.modeling_qwen2 import Qwen2ForCausalLM
+
 from mxq.models.llama_giant import LlamaForCausalLM_giant
 from mxq.models.llama_mxfp import LlamaForCausalLM_mxfp
 from mxq.models.opt_giant import OPTForCausalLM_giant
@@ -36,6 +38,8 @@ def get_blocks(model):
     elif isinstance(model, BertForSequenceClassification):
         layers = model.bert.encoder.layer
     elif isinstance(model, (MistralForCausalLM, MistralForCausalLM_mxfp)):
+        layers = model.model.layers
+    elif isinstance(model, (Qwen2ForCausalLM)):
         layers = model.model.layers
     else:
         raise NotImplementedError(type(model))

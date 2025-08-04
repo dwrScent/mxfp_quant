@@ -160,6 +160,97 @@ def mxfp_sub_group(tensor_value, quant_grid, sub_group_grid, mode="int", zero_po
         return tensor_deq, quant_mse_sum, labels, quant_grid * scales
     else:
         return tensor_deq, quant_mse_sum
+    
+
+@torch.no_grad()
+def mxfp_sub_group_exscale(tensor_value, quant_grid,mode="int", zero_point=True, q_group_size=-1, sub_group_size=1, alpha=1.0, pos_value=None, get_labels=False, is_input=False, keep_outlier=False, print_stats=False):
+    assert torch.isnan(tensor_value).sum() == 0
+    org_shape = tensor_value.shape
+    quant_grid = quant_grid.to(tensor_value.device)
+
+    # sub_group_size = 1
+
+    if q_group_size > 0:
+        assert org_shape[-1] % q_group_size == 0
+        tensor_value = tensor_value.reshape(-1, q_group_size)
+
+    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+
+    max_quant_val = max(quant_grid)
+        
+    # Compute the scaling factor
+    exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
+    scales = torch.pow(2, exp)
+
+    # exp_max_val = torch.floor(torch.log2(max_val))
+    # mask = torch.where(tensor_value > torch.pow(2, exp_max_val), torch.tensor(1), torch.tensor(0))
+
+    zeros = 0
+    ratios = torch.tensor([1, 1.125, 1.25, 1.375],
+                        dtype=torch.float16,  device=tensor_value.device) 
+    # Batch processing to avoid OOM
+    batch_num = 1
+    # batch_num = 16
+
+    assert tensor_value.shape[0]  % batch_num == 0 
+    batch_size = tensor_value.shape[0]  // batch_num          # 每个 batch 的向量数 
+    assert batch_size % sub_group_size == 0                  # sub-group 必须整除 
+    groups_per_batch = batch_size // sub_group_size            # 每个 batch 里的子组数 
+
+    batch_size = tensor_value.shape[0] // batch_num
+    tensor_deq = torch.zeros_like(tensor_value)
+    for b in range(batch_num):
+        # 当前 batch 的起止行号 
+        st_row = b * batch_size 
+        ed_row = st_row + batch_size 
+        
+        # 取原始数据 / scale / zero 
+        x      = tensor_value[st_row:ed_row]
+        s_orig = scales[st_row:ed_row]        # shape: [batch_size, D]
+    
+        # reshape -> [groups_per_batch, sub_group_size, D]
+        x_sg      = x.view(groups_per_batch,  sub_group_size, -1)
+        s_orig_sg = s_orig.view(groups_per_batch,  sub_group_size, -1)
+    
+        # broadcast ratios -> [groups_per_batch, len(ratios), sub_group_size, D]
+        s_cand = s_orig_sg.unsqueeze(1)  * ratios.view(1,  -1, 1, 1)
+    
+        # ---------- 计算每个 ratio 下的量化误差 ----------
+        # x_normed: [G, R, S, D]
+        x_normed = (x_sg.unsqueeze(1)  + zeros) / s_cand 
+        labels   = (x_normed.unsqueeze(-1)  - quant_grid).abs().argmin(dim=-1)
+        xq_cand  = quant_grid[labels] * s_cand - zeros
+    
+        # MSE: [G, R]   （先算每个子组里的平均平方误差，再按子组求和）
+        mse = ((xq_cand - x_sg.unsqueeze(1))  ** 2).mean(dim=[-2, -1])
+    
+        # ---------- 选最优倍率 ----------
+        best_idx   = mse.argmin(dim=1)                        # [G]
+        best_ratio = ratios[best_idx]                        # [G]
+        
+        # ---------- 用最优倍率重新做一次量化 ----------
+        s_best = s_orig_sg * best_ratio.view(-1,  1, 1)       # [G, S, D]
+        labels_best = (((x_sg + zeros) / s_best)
+                    .unsqueeze(-1) - quant_grid).abs().argmin(dim=-1)
+        xq_best = quant_grid[labels_best] * s_best - zeros
+    
+        # ---------- 写回全局张量 ----------
+        tensor_deq[st_row:ed_row] = xq_best.view(batch_size,  -1)
+
+    quant_mse = (tensor_deq-tensor_value).abs().pow(2).to(torch.float32)
+    quant_mse_sum = torch.mean(quant_mse, dim=1, keepdim=True)
+
+    assert torch.isnan(tensor_deq).sum() == 0
+    assert torch.isnan(scales).sum() == 0
+    assert torch.isnan(quant_mse).sum() == 0
+
+    tensor_deq = tensor_deq.reshape(org_shape)
+
+    quant_obj = 'input' if is_input else 'weight'
+    if print_stats:
+        print(f"Quantization MSE: {quant_mse_sum.mean().item()}, quant_obj: {quant_obj}, keep_outlier: {keep_outlier}, sub_gorup_size: {sub_group_size}")
+
+    return tensor_deq, quant_mse_sum
 
 @torch.no_grad()
 def sub_group_em(tensor_value, quant_grid, sub_group_grid, mode="int", zero_point=True, q_group_size=-1, sub_group_size=1, sub_group_mode='max', alpha=1.0, pos_value=None, get_labels=False, is_input=False, keep_outlier=False, print_stats=False):
@@ -325,9 +416,9 @@ def mxfp_sub_group_heuristic(tensor_value, quant_grid, sub_group_grid, mode="int
 @torch.no_grad()
 def mxfp_sub_group_adaptive(tensor_value, quant_grid, sub_group_grid, mode="int", zero_point=True, q_group_size=-1, sub_group_size=1, sub_group_mode=None, alpha=1.0, pos_value=None, get_labels=False, is_input=False, keep_outlier=False, print_stats=False):
     org_shape = tensor_value.shape
-    # ant_mode = 'float-int-pot'
+    ant_mode = 'float-int-pot'
     # ant_mode = 'float-int'
-    ant_mode = sub_group_mode
+    # ant_mode = sub_group_mode
     mode_list = ant_mode.split('-')
     quant_grid_set = generate_quant_grid(n_bit=4, signed=True, ant_mode=ant_mode)
     w_deq_list = {}
@@ -692,13 +783,14 @@ class MXFP_Linear(nn.Module):
         # sub group with E0M3
         sub_group_grid = [0, -4.0, -4.5, -5.0, -5.5, -6.0, -6.5, -7.0, -7.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5]
         # sub_group_grid = [0, -2.0, -2.5, -3.0, -3.5, -4.0, -5.0, -6.0, -7.0, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 6.0, 7.0]
-        sub_group_grid = torch.tensor(sub_group_grid)  
+        sub_group_grid = torch.tensor(sub_group_grid)    
         quantize_methods = {
             'base': lambda: get_quant_mxfp(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, is_input=is_input, keep_outlier=self.keep_outlier, print_stats=self.print_stats),
             'sub_group': lambda: mxfp_sub_group(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, sub_group_mode=sub_group_mode, print_stats=self.print_stats),
             'sub_group_adaptive': lambda: mxfp_sub_group_adaptive(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, sub_group_mode=sub_group_mode, print_stats=self.print_stats),
             'sub_group_heuristic': lambda: mxfp_sub_group_heuristic(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, sub_group_mode=sub_group_mode, print_stats=self.print_stats),
             'sub_group_em': lambda: sub_group_em(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, sub_group_mode=sub_group_mode, print_stats=self.print_stats),
+            'sub_group_es': lambda: mxfp_sub_group_exscale(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, print_stats=self.print_stats),
             'sub_group_adaptive_em': lambda: mxfp_sub_group_adaptive_em(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, sub_group_mode=sub_group_mode, print_stats=self.print_stats),
             'sub_group_heuristic_em': lambda: mxfp_sub_group_heuristic_em(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, sub_group_mode=sub_group_mode, print_stats=self.print_stats),
         }

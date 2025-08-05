@@ -142,7 +142,7 @@ def float_value(n_bit, signed=True, exp_field=2, fix_e2b0=False):
         raise ValueError("Not support this bit width")
     exp_bit = exp_field
     if fix_e2b0:
-        exp_field = 2
+        exp_bit = 2
         bias = 0
 
     man_bit = B - exp_bit

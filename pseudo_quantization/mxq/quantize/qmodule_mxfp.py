@@ -273,12 +273,6 @@ def sub_group_em(tensor_value, quant_grid, q_group_size=-1, sub_group_size=1,  g
 
     zeros = 0
 
-    tmp = tensor_value.reshape(-1, sub_group_size)
-    outlier_mask = torch.zeros_like(tmp, dtype=torch.float16).to(tensor_value.device)
-
-    _, indices = torch.topk(tmp.abs(), topk)
-    outlier_mask.scatter_(1, indices, 1)
-    outlier_group_mask = outlier_mask.reshape(-1, q_group_size)
     # Batch processing to avoid OOM
     batch_num = 4
     # batch_num = 16
@@ -291,7 +285,14 @@ def sub_group_em(tensor_value, quant_grid, q_group_size=-1, sub_group_size=1,  g
         tensor_q_par = quant_grid[labels] * scales[idx*batch_size : (idx+1)*batch_size, :] - zeros
         tensor_deq[idx*batch_size : (idx+1)*batch_size, :] = tensor_q_par
     
+    tmp = tensor_deq.reshape(-1, sub_group_size)
+    outlier_mask = torch.zeros_like(tmp, dtype=torch.float16).to(tensor_value.device)
+
+    _, indices = torch.topk(tmp.abs(), topk)
+    outlier_mask.scatter_(1, indices, 1)
+    outlier_group_mask = outlier_mask.reshape(-1, q_group_size)
     tensor_deq_o_group = torch.zeros_like(tensor_value)
+
     for idx in range(batch_num):
         tensor_par = tensor_value[idx*batch_size : (idx+1)*batch_size, :]
         labels = (((tensor_par + zeros) / scales[idx*batch_size : (idx+1)*batch_size, :]).unsqueeze(-1) - sub_group_grid).abs().argmin(dim=-1)

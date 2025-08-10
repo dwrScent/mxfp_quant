@@ -160,12 +160,104 @@ def mxfp_sub_group(tensor_value, quant_grid, sub_group_grid, mode="int", zero_po
         return tensor_deq, quant_mse_sum, labels, quant_grid * scales
     else:
         return tensor_deq, quant_mse_sum
+    
 
 @torch.no_grad()
-def sub_group_em(tensor_value, quant_grid, sub_group_grid, mode="int", zero_point=True, q_group_size=-1, sub_group_size=1, sub_group_mode='max', alpha=1.0, pos_value=None, get_labels=False, is_input=False, keep_outlier=False, print_stats=False):
+def mxfp_sub_group_exscale(tensor_value, quant_grid, q_group_size=-1, sub_group_size=1, is_input=False, keep_outlier=False, print_stats=False, es_bit=2):
     assert torch.isnan(tensor_value).sum() == 0
     org_shape = tensor_value.shape
     quant_grid = quant_grid.to(tensor_value.device)
+
+    # sub_group_size = 1
+
+    if q_group_size > 0:
+        assert org_shape[-1] % q_group_size == 0
+        tensor_value = tensor_value.reshape(-1, q_group_size)
+
+    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+
+    max_quant_val = max(quant_grid)
+        
+    # Compute the scaling factor
+    exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
+    scales = torch.pow(2, exp)
+
+    # exp_max_val = torch.floor(torch.log2(max_val))
+    # mask = torch.where(tensor_value > torch.pow(2, exp_max_val), torch.tensor(1), torch.tensor(0))
+
+    zeros = 0
+    ratios = torch.tensor([1, 1.125, 1.25, 1.375] if es_bit == 2 else [1, 1.25],
+                        dtype=torch.float16,  device=tensor_value.device) 
+    # Batch processing to avoid OOM
+    batch_num = 1
+    # batch_num = 16
+
+    assert tensor_value.shape[0]  % batch_num == 0 
+    batch_size = tensor_value.shape[0]  // batch_num          # 每个 batch 的向量数 
+    assert batch_size % sub_group_size == 0                  # sub-group 必须整除 
+    groups_per_batch = batch_size // sub_group_size            # 每个 batch 里的子组数 
+
+    batch_size = tensor_value.shape[0] // batch_num
+    tensor_deq = torch.zeros_like(tensor_value)
+    for b in range(batch_num):
+        # 当前 batch 的起止行号 
+        st_row = b * batch_size 
+        ed_row = st_row + batch_size 
+        
+        # 取原始数据 / scale / zero 
+        x      = tensor_value[st_row:ed_row]
+        s_orig = scales[st_row:ed_row]        # shape: [batch_size, D]
+    
+        # reshape -> [groups_per_batch, sub_group_size, D]
+        x_sg      = x.view(groups_per_batch,  sub_group_size, -1)
+        s_orig_sg = s_orig.view(groups_per_batch,  sub_group_size, -1)
+    
+        # broadcast ratios -> [groups_per_batch, len(ratios), sub_group_size, D]
+        s_cand = s_orig_sg.unsqueeze(1)  * ratios.view(1,  -1, 1, 1)
+    
+        # ---------- 计算每个 ratio 下的量化误差 ----------
+        # x_normed: [G, R, S, D]
+        x_normed = (x_sg.unsqueeze(1)  + zeros) / s_cand 
+        labels   = (x_normed.unsqueeze(-1)  - quant_grid).abs().argmin(dim=-1)
+        xq_cand  = quant_grid[labels] * s_cand - zeros
+    
+        # MSE: [G, R]   （先算每个子组里的平均平方误差，再按子组求和）
+        mse = ((xq_cand - x_sg.unsqueeze(1))  ** 2).mean(dim=[-2, -1])
+    
+        # ---------- 选最优倍率 ----------
+        best_idx   = mse.argmin(dim=1)                        # [G]
+        best_ratio = ratios[best_idx]                        # [G]
+        
+        # ---------- 用最优倍率重新做一次量化 ----------
+        s_best = s_orig_sg * best_ratio.view(-1,  1, 1)       # [G, S, D]
+        labels_best = (((x_sg + zeros) / s_best)
+                    .unsqueeze(-1) - quant_grid).abs().argmin(dim=-1)
+        xq_best = quant_grid[labels_best] * s_best - zeros
+    
+        # ---------- 写回全局张量 ----------
+        tensor_deq[st_row:ed_row] = xq_best.view(batch_size,  -1)
+
+    quant_mse = (tensor_deq-tensor_value).abs().pow(2).to(torch.float32)
+    quant_mse_sum = torch.mean(quant_mse, dim=1, keepdim=True)
+
+    assert torch.isnan(tensor_deq).sum() == 0
+    assert torch.isnan(scales).sum() == 0
+    assert torch.isnan(quant_mse).sum() == 0
+
+    tensor_deq = tensor_deq.reshape(org_shape)
+
+    quant_obj = 'input' if is_input else 'weight'
+    if print_stats:
+        print(f"Quantization MSE: {quant_mse_sum.mean().item()}, quant_obj: {quant_obj}, keep_outlier: {keep_outlier}, sub_gorup_size: {sub_group_size}")
+
+    return tensor_deq, quant_mse_sum
+
+@torch.no_grad()
+def sub_group_em(tensor_value, quant_grid, q_group_size=-1, sub_group_size=1,  get_labels=False, topk=1, em_bit=2):
+    assert torch.isnan(tensor_value).sum() == 0
+    org_shape = tensor_value.shape
+    quant_grid = quant_grid.to(tensor_value.device)
+    sub_group_grid = float_value(4+em_bit, fix_e2b0=True)
     sub_group_grid = sub_group_grid.to(tensor_value.device)
     if q_group_size > 0:
         assert org_shape[-1] % q_group_size == 0
@@ -181,33 +273,6 @@ def sub_group_em(tensor_value, quant_grid, sub_group_grid, mode="int", zero_poin
 
     zeros = 0
 
-    tensor_exp = extra_exp(tensor_value)
-    max_val_exp = extra_exp(max_val)
-    outlier_mask = (tensor_exp == max_val_exp)
-
-    num_sub_groups = tensor_value.numel() // sub_group_size
-    
-    # outlier_mask is an element-wise boolean mask indicating potential outliers (exp == max_val_exp)
-    reshaped_outlier_mask = outlier_mask.reshape(num_sub_groups, sub_group_size)
-    # Get the absolute values of the original tensor, reshaped for sub-group processing
-    reshaped_tensor_abs = tensor_value.abs().reshape(num_sub_groups, sub_group_size)
-    # To find the single largest outlier, we create a tensor of potential outlier values.
-    # Values are preserved only where the outlier_mask is True, otherwise they become 0.
-    potential_outlier_values = reshaped_tensor_abs * reshaped_outlier_mask
-    # Find the maximum absolute value among the potential outliers in each sub-group
-    max_outlier_val_in_subgroup = torch.max(potential_outlier_values, dim=1, keepdim=True)[0]
-    # A final mask is True only for the element that IS a potential outlier AND has the maximum value.
-    # This automatically handles three cases:
-    # 1. No outliers in sub-group: max is 0, but `reshaped_outlier_mask` is all False, so result is all False.
-    # 2. One outlier in sub-group: It is automatically the max.
-    # 3. Multiple outliers in sub-group: Only the one with the largest absolute value will match the max.
-    #    (If two have the same max value, `torch.max` behavior might select the first one, which is acceptable).
-    final_element_wise_mask_reshaped = (potential_outlier_values == max_outlier_val_in_subgroup) & (reshaped_outlier_mask)
-
-    # This logic now creates an element-wise mask (0 or 1), not a group-wise mask.
-    # Reshape it back to match the main tensor's shape.
-    outlier_group_mask = final_element_wise_mask_reshaped.reshape(-1, q_group_size).to(tensor_value.dtype)
-    
     # Batch processing to avoid OOM
     batch_num = 4
     # batch_num = 16
@@ -220,7 +285,14 @@ def sub_group_em(tensor_value, quant_grid, sub_group_grid, mode="int", zero_poin
         tensor_q_par = quant_grid[labels] * scales[idx*batch_size : (idx+1)*batch_size, :] - zeros
         tensor_deq[idx*batch_size : (idx+1)*batch_size, :] = tensor_q_par
     
+    tmp = tensor_deq.reshape(-1, sub_group_size)
+    outlier_mask = torch.zeros_like(tmp, dtype=torch.float16).to(tensor_value.device)
+
+    _, indices = torch.topk(tmp.abs(), topk)
+    outlier_mask.scatter_(1, indices, 1)
+    outlier_group_mask = outlier_mask.reshape(-1, q_group_size)
     tensor_deq_o_group = torch.zeros_like(tensor_value)
+
     for idx in range(batch_num):
         tensor_par = tensor_value[idx*batch_size : (idx+1)*batch_size, :]
         labels = (((tensor_par + zeros) / scales[idx*batch_size : (idx+1)*batch_size, :]).unsqueeze(-1) - sub_group_grid).abs().argmin(dim=-1)
@@ -237,22 +309,6 @@ def sub_group_em(tensor_value, quant_grid, sub_group_grid, mode="int", zero_poin
     assert torch.isnan(quant_mse).sum() == 0
 
     tensor_deq = tensor_deq.reshape(org_shape)
-
-    quant_obj = 'input' if is_input else 'weight'
-    if print_stats:
-        print(f"Quantization MSE: {quant_mse_sum.mean().item()}, quant_obj: {quant_obj}, keep_outlier: {keep_outlier}, sub_gorup_size: {sub_group_size}")
-        # Count how many potential outliers are in each sub-group
-        num_potential_outliers_per_subgroup = reshaped_outlier_mask.sum(dim=1)
-        # Count how many sub-groups have more than one potential outlier
-        subgroups_with_multiple_candidates = (num_potential_outliers_per_subgroup > 1).sum().item()
-        # --- Statistics Requirement 3: Count final selected sub-groups and their percentage ---
-        # Count sub-groups that now have exactly one element selected for special quantization
-        final_selected_subgroups_count = final_element_wise_mask_reshaped.sum().item()
-        total_subgroups_count = num_sub_groups
-        percentage_of_selected_subgroups = (final_selected_subgroups_count / total_subgroups_count) * 100 if total_subgroups_count > 0 else 0
-        print(f"[Statistics] Sub-groups with >1 potential outlier candidate: {subgroups_with_multiple_candidates}")
-        print(f"[Statistics] Final sub-groups with one selected outlier: {final_selected_subgroups_count} / {total_subgroups_count} ({percentage_of_selected_subgroups:.2f}%)")
-
 
     if get_labels:
         return tensor_deq, quant_mse_sum, labels, quant_grid * scales
@@ -325,9 +381,9 @@ def mxfp_sub_group_heuristic(tensor_value, quant_grid, sub_group_grid, mode="int
 @torch.no_grad()
 def mxfp_sub_group_adaptive(tensor_value, quant_grid, sub_group_grid, mode="int", zero_point=True, q_group_size=-1, sub_group_size=1, sub_group_mode=None, alpha=1.0, pos_value=None, get_labels=False, is_input=False, keep_outlier=False, print_stats=False):
     org_shape = tensor_value.shape
-    # ant_mode = 'float-int-pot'
+    ant_mode = 'float-int-pot'
     # ant_mode = 'float-int'
-    ant_mode = sub_group_mode
+    # ant_mode = sub_group_mode
     mode_list = ant_mode.split('-')
     quant_grid_set = generate_quant_grid(n_bit=4, signed=True, ant_mode=ant_mode)
     w_deq_list = {}
@@ -493,15 +549,15 @@ def mxfp_sub_group_heuristic_em(tensor_value, quant_grid, sub_group_grid, mode="
     ant_mode = 'float-int-pot'
     # 1. DEFINE QUANTIZATION GRIDS
     quant_grid_set = generate_quant_grid(n_bit=4, signed=True, ant_mode=ant_mode)
-    for mode in quant_grid_set:
-        quant_grid_set[mode] = quant_grid_set[mode].to(device)
+    for mode_key in quant_grid_set:
+        quant_grid_set[mode_key] = quant_grid_set[mode_key].to(device)
     all_sub_group_grids = {
         'float': [0, -4.0, -4.5, -5.0, -5.5, -6.0, -6.5, -7.0, -7.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5],
         'int': [0, -4.0, -4.25, -4.5, -4.75, -5.0, -5.25, -5.5, -5.75,-6.0, -6.25, -6.5, -6.75, -7.0, -7.25, -7.5, -7.75,4.0, 4.25, 4.5, 4.75, 5.0, 5.25, 5.5, 5.75,6.0, 6.25, 6.5, 6.75, 7.0, 7.25, 7.5, 7.75],
     }
     sub_group_grid_set = {
-        mode: torch.tensor(grid, dtype=dtype, device=device)
-        for mode, grid in all_sub_group_grids.items()
+        mode_key: torch.tensor(grid, dtype=dtype, device=device)
+        for mode_key, grid in all_sub_group_grids.items()
     }
 
     # 2. GENERATE HEURISTIC MASKS
@@ -516,19 +572,13 @@ def mxfp_sub_group_heuristic_em(tensor_value, quant_grid, sub_group_grid, mode="
     num_sub_groups_per_group = q_group_size // sub_group_size
     max_val_exponent_expanded = max_val_exponent.repeat_interleave(num_sub_groups_per_group, dim=0)
 
-    # Count outliers (exp == max_exp) per sub-group
     exact_match_mask = (tensor_exponent == max_val_exponent_expanded)
     outlier_counts = exact_match_mask.sum(dim=1)
 
-    # Generate masks for the 4 rules
     mask_ge2_outliers = (outlier_counts >= 2)
     mask_1_outlier = (outlier_counts == 1)
-    
-    # Subnormal rule: only applies if there are NO outliers
     exponent_diff = (tensor_exponent - max_val_exponent_expanded).abs()
     mask_subnormal = torch.all(exponent_diff > 3, dim=1) & (outlier_counts == 0)
-
-    # Others rule: anything not covered by the above
     mask_others = ~(mask_ge2_outliers | mask_1_outlier | mask_subnormal)
 
     heuristic_masks = {
@@ -540,25 +590,49 @@ def mxfp_sub_group_heuristic_em(tensor_value, quant_grid, sub_group_grid, mode="
 
     # 3. PERFORM QUANTIZATION FOR EACH OF THE 4 STRATEGIES
     
+    # --- Helper function for batch processing to prevent OOM ---
+    def _batch_quantize_dequantize(input_tensor, scales, grid, batch_num=4):
+        assert input_tensor.shape[0] % batch_num == 0, \
+            f"Batch dimension mismatch! Tensor shape[0] ({input_tensor.shape[0]}) must be divisible by batch_num ({batch_num})"
+        
+        batch_size = input_tensor.shape[0] // batch_num
+        output_deq = torch.zeros_like(input_tensor)
+
+        for i in range(batch_num):
+            start_idx, end_idx = i * batch_size, (i + 1) * batch_size
+            tensor_batch = input_tensor[start_idx:end_idx, :]
+            scales_batch = scales[start_idx:end_idx, :]
+            
+            labels = ((tensor_batch / scales_batch).unsqueeze(-1) - grid).abs().argmin(dim=-1)
+            deq_batch = grid[labels] * scales_batch
+            output_deq[start_idx:end_idx, :] = deq_batch
+        return output_deq
+
     # --- Strategy 1: >=2 outliers (E1M2 + extra mantissa) ---
-    # Find the single largest outlier to give extra bits to
     reshaped_tensor_abs = tensor_value.abs().reshape(num_sub_groups, sub_group_size)
     potential_outliers = reshaped_tensor_abs * exact_match_mask.reshape(num_sub_groups, sub_group_size)
     max_outlier_val, _ = torch.max(potential_outliers, dim=1, keepdim=True)
     outlier_final_mask_reshaped = (potential_outliers == max_outlier_val) & (exact_match_mask)
     outlier_final_mask = outlier_final_mask_reshaped.reshape(-1, q_group_size).to(dtype)
 
-    # Use a unified scale based on the sub-group grid for hardware accuracy
     scales_int = torch.pow(2, torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(sub_group_grid_set['int'].abs().amax())))
-    deq_std_int = quant_grid_set['int'][( (tensor_reshaped / scales_int).unsqueeze(-1) - quant_grid_set['int']).abs().argmin(dim=-1)] * scales_int
-    deq_sub_int = sub_group_grid_set['int'][( (tensor_reshaped / scales_int).unsqueeze(-1) - sub_group_grid_set['int']).abs().argmin(dim=-1)] * scales_int
+    
+    # ** MODIFICATION: Using batch processing **
+    deq_std_int = _batch_quantize_dequantize(tensor_reshaped, scales_int, quant_grid_set['int'])
+    deq_sub_int = _batch_quantize_dequantize(tensor_reshaped, scales_int, sub_group_grid_set['int'])
     deq1 = torch.where(outlier_final_mask.bool(), deq_sub_int, deq_std_int)
+
+    del deq_std_int, deq_sub_int
 
     # --- Strategy 2: 1 outlier (E2M1 + extra mantissa) ---
     scales_float = torch.pow(2, torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(sub_group_grid_set['float'].abs().amax())))
-    deq_std_float = quant_grid_set['float'][( (tensor_reshaped / scales_float).unsqueeze(-1) - quant_grid_set['float']).abs().argmin(dim=-1)] * scales_float
-    deq_sub_float = sub_group_grid_set['float'][( (tensor_reshaped / scales_float).unsqueeze(-1) - sub_group_grid_set['float']).abs().argmin(dim=-1)] * scales_float
+
+    # ** MODIFICATION: Using batch processing **
+    deq_std_float = _batch_quantize_dequantize(tensor_reshaped, scales_float, quant_grid_set['float'])
+    deq_sub_float = _batch_quantize_dequantize(tensor_reshaped, scales_float, sub_group_grid_set['float'])
     deq2 = torch.where(outlier_final_mask.bool(), deq_sub_float, deq_std_float)
+
+    del deq_std_float, deq_sub_float
     
     # --- Strategy 3: All subnormal (E3M0, no extra mantissa) ---
     deq3, _ = get_quant_mxfp(tensor_value, quant_grid_set['pot'], q_group_size=q_group_size)
@@ -568,15 +642,13 @@ def mxfp_sub_group_heuristic_em(tensor_value, quant_grid, sub_group_grid, mode="
     deq4, _ = get_quant_mxfp(tensor_value, quant_grid_set['float'], q_group_size=q_group_size)
     deq4 = deq4.reshape(-1, q_group_size)
 
-    
     # 4. COMBINE RESULTS USING MASKS
-    # Reshape masks to match tensor shape for broadcasting
     tensor_deq = torch.zeros_like(tensor_reshaped)
     for i, deq_tensor in enumerate([deq1, deq2, deq3, deq4], 1):
         mask_key = list(heuristic_masks.keys())[i-1]
-        # Expand mask from (num_sub_groups,) to tensor shape
-        expanded_mask = heuristic_masks[mask_key].unsqueeze(-1).expand(-1, sub_group_size).reshape(-1, q_group_size)
-        tensor_deq += deq_tensor * expanded_mask
+        if heuristic_masks[mask_key].any():
+            expanded_mask = heuristic_masks[mask_key].unsqueeze(-1).expand(-1, sub_group_size).reshape(-1, q_group_size)
+            tensor_deq += deq_tensor * expanded_mask
 
     # 5. FINAL MSE AND STATISTICS
     quant_mse = nn.MSELoss()(tensor_reshaped, tensor_deq)
@@ -629,6 +701,9 @@ class MXFP_Linear(nn.Module):
         self.weight_sub_group_mode = ant_config.get('weight_sub_group_mode')
         self.input_sub_group_size = ant_config.get('input_sub_group_size')
         self.input_sub_group_mode = ant_config.get('input_sub_group_mode')
+        self.topk = ant_config.get("topk")
+        self.em_bit = ant_config.get("em_bit")
+        self.es_bit = ant_config.get("es_bit")
 
         assert self.in_features % self.group_size == 0
 
@@ -692,13 +767,14 @@ class MXFP_Linear(nn.Module):
         # sub group with E0M3
         sub_group_grid = [0, -4.0, -4.5, -5.0, -5.5, -6.0, -6.5, -7.0, -7.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5]
         # sub_group_grid = [0, -2.0, -2.5, -3.0, -3.5, -4.0, -5.0, -6.0, -7.0, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 6.0, 7.0]
-        sub_group_grid = torch.tensor(sub_group_grid)  
+        sub_group_grid = torch.tensor(sub_group_grid)    
         quantize_methods = {
             'base': lambda: get_quant_mxfp(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, is_input=is_input, keep_outlier=self.keep_outlier, print_stats=self.print_stats),
             'sub_group': lambda: mxfp_sub_group(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, sub_group_mode=sub_group_mode, print_stats=self.print_stats),
             'sub_group_adaptive': lambda: mxfp_sub_group_adaptive(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, sub_group_mode=sub_group_mode, print_stats=self.print_stats),
             'sub_group_heuristic': lambda: mxfp_sub_group_heuristic(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, sub_group_mode=sub_group_mode, print_stats=self.print_stats),
-            'sub_group_em': lambda: sub_group_em(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, sub_group_mode=sub_group_mode, print_stats=self.print_stats),
+            'sub_group_em': lambda: sub_group_em(data, quant_grid=quant_grid, q_group_size=self.group_size, sub_group_size=sub_group_size, topk=self.topk, em_bit=self.em_bit),
+            'sub_group_es': lambda: mxfp_sub_group_exscale(data, quant_grid=quant_grid, q_group_size=self.group_size, sub_group_size=sub_group_size, print_stats=self.print_stats, es_bit=self.es_bit),
             'sub_group_adaptive_em': lambda: mxfp_sub_group_adaptive_em(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, sub_group_mode=sub_group_mode, print_stats=self.print_stats),
             'sub_group_heuristic_em': lambda: mxfp_sub_group_heuristic_em(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, sub_group_mode=sub_group_mode, print_stats=self.print_stats),
         }

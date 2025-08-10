@@ -25,7 +25,7 @@ elif [ "$OPTION" == "dump" ]; then
     mkdir -p quant_cache
     EXTRA_OPTION="--dump_quant quant_cache/$OUTPUT_NAME-w4-g$GROUP_SIZE-$QUANT_MODE"
 elif [ "$OPTION" == "quant" ]; then
-    OUTPUT_DIR=output/output_llama3_mxfp_test_$(date +%m%d)
+    OUTPUT_DIR=output/output_mistral_mxfp_test_$(date +%m%d)
     EXTRA_OPTION=""
 else
     echo "Invalid option: $OPTION. Only 'load', 'dump', and 'quant' are supported."

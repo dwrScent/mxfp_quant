@@ -9,7 +9,9 @@ GROUP_SIZE=${6:-"-1"}
 QUANT_BIT_WIDTH=${7:-"w4a8k16v16"}
 MXFP_MODE=${8:-"w-base-a-base"}
 OPTION=${9:-"quant"}
-DESC=${10:-""}
+TOPK=${10:-"1"}
+EM_BIT=${11:-"2"}
+ES_BIT=${12:-"2"}
 
 MODEL=/state/partition/zhzhang/Mistral-${MODEL_SIZE}B-v0.1
 MODEL=/localssd/wmhu/model/Mistral-${MODEL_SIZE}B-v0.3
@@ -18,10 +20,10 @@ OUTPUT_NAME=Mistral-${MODEL_SIZE}B
 OUTPUT_DIR=""
 
 if [ "$OPTION" == "load" ]; then
-    OUTPUT_DIR=output/output_giant_load_$(date +%m%d)
+    OUTPUT_DIR=output/output_mistral_load_$(date +%m%d)
     EXTRA_OPTION="--load_quant /localssd/wmhu/models/quant_cache/$OUTPUT_NAME-w4-g$GROUP_SIZE-$QUANT_MODE"
 elif [ "$OPTION" == "dump" ]; then
-    OUTPUT_DIR=output/output_giant_dump_$(date +%m%d)
+    OUTPUT_DIR=output/output_mistral_dump_$(date +%m%d)
     mkdir -p quant_cache
     EXTRA_OPTION="--dump_quant quant_cache/$OUTPUT_NAME-w4-g$GROUP_SIZE-$QUANT_MODE"
 elif [ "$OPTION" == "quant" ]; then
@@ -46,4 +48,7 @@ python -m mxq.entry --model_path $MODEL \
     --mxfp $MXFP_MODE \
     --ant_mode $ANT_MODE \
     --q_group_size $GROUP_SIZE \
-    | tee $OUTPUT_DIR/${OUTPUT_NAME}_${TASKS}_${QUANT_BIT_WIDTH}_${SHOTS}shots_${QUANT_MODE}_${ANT_MODE}_g${GROUP_SIZE}_${MXFP_MODE}_${DESC}_$(date +%m%d%H%M).log 2>&1
+    --topk $TOPK \
+    --em_bit $EM_BIT \
+    --es_bit $ES_BIT \
+    | tee $OUTPUT_DIR/${OUTPUT_NAME}_${TASKS}_${QUANT_BIT_WIDTH}_${SHOTS}shots_${QUANT_MODE}_${ANT_MODE}_g${GROUP_SIZE}_${MXFP_MODE}_${TOPK}_${EM_BIT}_${ES_BIT}_$(date +%m%d%H%M).log 2>&1

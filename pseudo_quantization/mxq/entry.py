@@ -34,6 +34,7 @@ from mxq.models.qwen_vllm.qwen_mxfp import Qwen2ForCausalLM_mxfp
 from mxq.eval import inference
 
 from transformers import OPTConfig, BloomConfig, LlamaConfig, MistralConfig
+from copy import deepcopy
 
 from vllm import ModelRegistry
 ModelRegistry.register_model("Qwen2ForCausalLM_mxfp", Qwen2ForCausalLM_mxfp)
@@ -66,6 +67,9 @@ parser.add_argument('--no_zero_point', action='store_true',
                     help="disable zero_point")
 parser.add_argument('--q_backend', type=str,
                     default="fake", choices=["fake", "real"])
+parser.add_argument("--topk", type=int, default=1)
+parser.add_argument("--em_bit", type=int, default=2)
+parser.add_argument("--es_bit", type=int, default=2)
 
 # max memory to offload larger models to CPU
 parser.add_argument(
@@ -159,6 +163,9 @@ ant_config = {
     "weight_sub_group_mode": mxfp_config.get("weight_sub_group_mode"),
     "input_sub_group_size": mxfp_config.get("input_sub_group_size"),
     "input_sub_group_mode": mxfp_config.get("input_sub_group_mode"),
+    "es_bit": args.es_bit,
+    "em_bit": args.em_bit,
+    "topk": args.topk,
 }
 
 outlier_config = {
@@ -184,7 +191,7 @@ max_memory = {(int(k) if k.isdigit() else k): v for k, v in max_memory}
 
 # build model and tokenizer
 
-def build_model_and_enc(model_path):
+def build_model_and_enc(model_path, need_og=False):
     if not os.path.exists(model_path):  # look into ssd
         raise FileNotFoundError(f"{model_path} not found!")
     print(f"* Building model {model_path}")
@@ -193,6 +200,7 @@ def build_model_and_enc(model_path):
     config = AutoConfig.from_pretrained(model_path)
     enc = AutoTokenizer.from_pretrained(model_path, use_fast=False)
 
+    origin_model = None
 
     if args.load_quant:  # directly load quantized weights
         print("Loading pre-computed quantized weights...")
@@ -291,6 +299,8 @@ def build_model_and_enc(model_path):
         else:
             model = AutoModelForCausalLM.from_pretrained(
                 model_path, config=config, **kwargs)
+        if need_og:
+            origin_model = deepcopy(model)
         # weight quantization
         if args.w_bit and args.w_bit != -1:
             if args.q_backend == "fake":
@@ -337,9 +347,8 @@ def build_model_and_enc(model_path):
                     exit(0)
             else:
                 raise NotImplementedError
-
-    return model, enc
-
+    
+    return model, enc, origin_model
 
 def main():
     if args.output_path is not None and os.path.exists(args.output_path):
@@ -367,8 +376,10 @@ def main():
         inference.main(args.model_path, args.tasks)
         return
 
-    model, enc = build_model_and_enc(args.model_path)
-
+    if "mse" not in args.tasks:
+        model, enc, origin_model = build_model_and_enc(args.model_path)
+    else:
+        model, enc, origin_model = build_model_and_enc(args.model_path, need_og=True)
 
     # lm_eval_model = LMEvalAdaptor(args.model_path, model, enc, args.batch_size)
     lm_eval_model = HFLM(pretrained=model, batch_size=args.batch_size)
@@ -485,6 +496,37 @@ def main():
 
             ppl = torch.exp(torch.stack(nlls).sum() / (nsamples * model.seqlen))
             print(ppl.item())    
+        elif args.tasks == 'wikitext-mse':
+            from .utils.dataload_utils import get_loaders
+            model.seqlen = 2048
+            origin_model.seqlen = 2048
+            _, testenc = get_loaders(args.tasks, model=args.model_path, seqlen=model.seqlen)
+            
+            testenc = testenc.input_ids.to(model.device)
+            nsamples = testenc.numel() // model.seqlen
+            # nsamples = 10
+            # nsamples = 30
+            model = model.eval()
+            nlls = []
+            device       = next(model.parameters()).device  
+            batch_mses   = []
+            
+            for i in tqdm.tqdm(range(nsamples),  desc="evaluating"):
+                start_idx     = i * model.seqlen  
+                end_idx       = start_idx + model.seqlen  
+                batch         = testenc[:, start_idx:end_idx].to(device)
+            
+                with torch.no_grad(): 
+                    logits_qt   = model(batch).logits         # [B=1,S,V]
+                    logits_og   = origin_model(batch).logits 
+            
+                    diff_sq     =(logits_qt - logits_og).pow(2)
+                    mse_this_batch= diff_sq.mean().item()       # ← one scalar per sample 
+            
+                    batch_mses.append(mse_this_batch) 
+            
+            global_mse=np.mean(batch_mses)                      # float64 safe for millions of samples 
+            print("MSE:", global_mse)
 
         else:
             # do other evaluations

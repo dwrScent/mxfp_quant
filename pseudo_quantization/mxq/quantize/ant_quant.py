@@ -53,9 +53,11 @@ def int_value(n_bit, signed=True):
     values = [0.] + list(range(1, 2 ** B))
     if signed:
         values += [-i for i in range(1, 2 ** B)]
-        values.append(-2 ** B)
-    values.remove(-8)
-    return torch.tensor(values)
+    values2 = [0]
+    for i in range(1,len(values) // 2 + 1):
+        values2.append(values[i])
+        values2.append(values[i + len(values) // 2])
+    return torch.tensor(values2)
 
 def pot_value(n_bit, signed=True):
     B = n_bit - 1 if signed else n_bit
@@ -127,7 +129,7 @@ def flint_value(n_bit, signed=True, exp_base=0):
 
     return values
 
-def float_value(n_bit, signed=True, exp_field=2):
+def float_value(n_bit, signed=True, exp_field=2, fix_e2b0=False):
     B = n_bit - 1 if signed else n_bit
 
     # mapping, total_bit: exponent_bit
@@ -139,6 +141,9 @@ def float_value(n_bit, signed=True, exp_field=2):
     else:
         raise ValueError("Not support this bit width")
     exp_bit = exp_field
+    if fix_e2b0:
+        exp_bit = 2
+        bias = 0
 
     man_bit = B - exp_bit
     values = []

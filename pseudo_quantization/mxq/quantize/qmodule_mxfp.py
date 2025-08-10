@@ -161,96 +161,150 @@ def mxfp_sub_group(tensor_value, quant_grid, sub_group_grid, mode="int", zero_po
     else:
         return tensor_deq, quant_mse_sum
     
+@torch.no_grad() 
+def mxfp_sub_group_exscale(
+        tensor_value,
+        quant_grid,
+        q_group_size=-1,
+        sub_group_size=1,
+        es_bit=2):
+    """
+    将输入 tensor_value 按 batch_num=4 分批次执行量化，
+    调用 mxfp_sub_group_exscale_inner，最后把结果拼接回原形状。
+    """
+    batch_num = 4                      # 固定批次大小 
+    dim0 = tensor_value.size(0) 
+    
+    # 保证可以被 batch_num 整除；若不能整除可改为向上取整并 pad 
+    assert dim0 % batch_num == 0, f"dim0={dim0} must be divisible by batch_num={batch_num}"
+    
+    chunk_size = dim0 // batch_num 
+    deq_list, idx_list = [], []
+    
+    for i in range(batch_num):
+        start = i * chunk_size 
+        end   = start + chunk_size 
+        sub_tensor = tensor_value[start:end]
+        
+        # 调用 inner 函数 
+        deq_sub, idx_sub = mxfp_sub_group_exscale_inner(
+            sub_tensor,
+            quant_grid,
+            q_group_size=q_group_size,
+            sub_group_size=sub_group_size,
+            es_bit=es_bit 
+        )
+        
+        deq_list.append(deq_sub) 
+        idx_list.append(idx_sub) 
+    
+    # concat 回完整张量 
+    tensor_deq      = torch.cat(deq_list,  dim=0)
+    best_bias_idx   = torch.cat(idx_list,  dim=0)
+    
+    return tensor_deq, best_bias_idx 
+
 
 @torch.no_grad()
-def mxfp_sub_group_exscale(tensor_value, quant_grid, q_group_size=-1, sub_group_size=1, is_input=False, keep_outlier=False, print_stats=False, es_bit=2):
-    assert torch.isnan(tensor_value).sum() == 0
-    org_shape = tensor_value.shape
-    quant_grid = quant_grid.to(tensor_value.device)
-
-    # sub_group_size = 1
-
+def mxfp_sub_group_exscale_inner(
+        tensor_value,
+        quant_grid,
+        q_group_size=-1,
+        sub_group_size=1,
+        es_bit=2):
+    """
+    Two-level grouping:
+      level-1: q_group_size   -> share one scale 
+      level-2: sub_group_size -> pick one ratio (in {1,1.25,...}) that minimizes MSE 
+    """
+    assert torch.isnan(tensor_value).sum()  == 0 
+    org_shape = tensor_value.shape  
+    quant_grid = quant_grid.to(tensor_value.device) 
+ 
+    # -------------------- level-1 grouping / scale --------------------
     if q_group_size > 0:
-        assert org_shape[-1] % q_group_size == 0
-        tensor_value = tensor_value.reshape(-1, q_group_size)
-
-    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
-
-    max_quant_val = max(quant_grid)
+        assert org_shape[-1] % q_group_size == 0 
+        tensor_value = tensor_value.reshape(-1,  q_group_size)
+ 
+    max_val = tensor_value.abs().amax(dim=1,  keepdim=True)
+    max_quant_val = quant_grid.max() 
+ 
+    exp = torch.floor(torch.log2(max_val))  - torch.floor(torch.log2(max_quant_val))
+    bias_mse = {}
+    for bias in range(-1, 1):
+        scales = torch.pow(2.,  exp + bias)                    # (n_group, 1)
+        sub_groups_per_group = q_group_size // sub_group_size 
+        scales = scales.expand(-1,  sub_groups_per_group).reshape(-1, 1)   # (n_subgrp_total,1)
+    
+        # -------------------- level-2 grouping --------------------
+        if sub_group_size > 0:
+            assert q_group_size % sub_group_size == 0 
+            tensor_value = tensor_value.reshape(-1,  sub_group_size)       # (n_subgrp_total, sub_grp_size)
+    
+        ratios = torch.tensor([1.,  1.25, 1.5, 1.75] if es_bit == 2 else [1., 1.5],
+                            dtype=torch.float16, 
+                            device=tensor_value.device)                  # (n_ratio,)
+    
+        # --- for each sub-group: try every ratio and choose the best one ---
+        # tensor_value : (n_subgrp_total , sub_grp_size)
+        x_expanded = tensor_value.unsqueeze(2)                             # (n_subgrp_total , sub_grp_size , 1)
+        scales_expanded = scales.unsqueeze(2)                              # (n_subgrp_total ,          , 1)
+    
+        cand_scales = scales_expanded * ratios.view(1,  1, -1)             # (n_subgrp_total ,          , n_ratio)
+        cand_qval   = x_expanded / cand_scales                              # (n_subgrp_total , sub_grp_size , n_ratio)
+    
+        # nearest neighbor on grid 
+        diff = cand_qval.unsqueeze(3)  - quant_grid.view(1,  1, 1, -1)      # (n_subgrp_total , sub_grp_size , n_ratio , n_grid)
+        idx_best_qgrid = diff.abs().argmin(dim=3)                          # (n_subgrp_total , sub_grp_size , n_ratio)
+        cand_dqval = torch.gather( 
+            input=quant_grid.view(1,  1, 1, -1).expand_as(diff),   # shape same as diff 
+            dim=3,
+            index=idx_best_qgrid.unsqueeze(3)).squeeze(3)  * cand_scales   # (* , * , n_ratio)
+        mse_per_ratio = (cand_dqval  - x_expanded).pow(2).mean(dim=1)   # (n_subgrp_total , n_ratio)
+    
+        best_ratio_idx = mse_per_ratio.argmin(dim=1)                       # (n_subgrp_total,)
+        best_ratio     = ratios[best_ratio_idx]                             # (n_subgrp_total,)
         
-    # Compute the scaling factor
-    exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
-    scales = torch.pow(2, exp)
+        # gather final quantized-dequantized values 
+        row_idx = torch.arange(tensor_value.size(0),  device=tensor_value.device) 
+        best_dqval = cand_dqval[row_idx, :, best_ratio_idx]                 # (n_subgrp_total , sub_grp_size)
+        # print(best_ratio_idx)
 
-    # exp_max_val = torch.floor(torch.log2(max_val))
-    # mask = torch.where(tensor_value > torch.pow(2, exp_max_val), torch.tensor(1), torch.tensor(0))
-
-    zeros = 0
-    ratios = torch.tensor([1, 1.125, 1.25, 1.375] if es_bit == 2 else [1, 1.25],
-                        dtype=torch.float16,  device=tensor_value.device) 
-    # Batch processing to avoid OOM
-    batch_num = 1
-    # batch_num = 16
-
-    assert tensor_value.shape[0]  % batch_num == 0 
-    batch_size = tensor_value.shape[0]  // batch_num          # 每个 batch 的向量数 
-    assert batch_size % sub_group_size == 0                  # sub-group 必须整除 
-    groups_per_batch = batch_size // sub_group_size            # 每个 batch 里的子组数 
-
-    batch_size = tensor_value.shape[0] // batch_num
-    tensor_deq = torch.zeros_like(tensor_value)
-    for b in range(batch_num):
-        # 当前 batch 的起止行号 
-        st_row = b * batch_size 
-        ed_row = st_row + batch_size 
+        # best_scales_final = scales.squeeze(1)  * best_ratio                # (n_subgrp_total,)
         
-        # 取原始数据 / scale / zero 
-        x      = tensor_value[st_row:ed_row]
-        s_orig = scales[st_row:ed_row]        # shape: [batch_size, D]
-    
-        # reshape -> [groups_per_batch, sub_group_size, D]
-        x_sg      = x.view(groups_per_batch,  sub_group_size, -1)
-        s_orig_sg = s_orig.view(groups_per_batch,  sub_group_size, -1)
-    
-        # broadcast ratios -> [groups_per_batch, len(ratios), sub_group_size, D]
-        s_cand = s_orig_sg.unsqueeze(1)  * ratios.view(1,  -1, 1, 1)
-    
-        # ---------- 计算每个 ratio 下的量化误差 ----------
-        # x_normed: [G, R, S, D]
-        x_normed = (x_sg.unsqueeze(1)  + zeros) / s_cand 
-        labels   = (x_normed.unsqueeze(-1)  - quant_grid).abs().argmin(dim=-1)
-        xq_cand  = quant_grid[labels] * s_cand - zeros
-    
-        # MSE: [G, R]   （先算每个子组里的平均平方误差，再按子组求和）
-        mse = ((xq_cand - x_sg.unsqueeze(1))  ** 2).mean(dim=[-2, -1])
-    
-        # ---------- 选最优倍率 ----------
-        best_idx   = mse.argmin(dim=1)                        # [G]
-        best_ratio = ratios[best_idx]                        # [G]
-        
-        # ---------- 用最优倍率重新做一次量化 ----------
-        s_best = s_orig_sg * best_ratio.view(-1,  1, 1)       # [G, S, D]
-        labels_best = (((x_sg + zeros) / s_best)
-                    .unsqueeze(-1) - quant_grid).abs().argmin(dim=-1)
-        xq_best = quant_grid[labels_best] * s_best - zeros
-    
-        # ---------- 写回全局张量 ----------
-        tensor_deq[st_row:ed_row] = xq_best.view(batch_size,  -1)
+        # -------------------- statistics --------------------
+        quant_mse_per_subgrp = mse_per_ratio[row_idx, best_ratio_idx]       # (n_subgrp_total,)
 
-    quant_mse = (tensor_deq-tensor_value).abs().pow(2).to(torch.float32)
-    quant_mse_sum = torch.mean(quant_mse, dim=1, keepdim=True)
+        # -------------------- reshape back --------------------
+        tensor_deq = best_dqval.reshape(-1,  q_group_size)
 
-    assert torch.isnan(tensor_deq).sum() == 0
-    assert torch.isnan(scales).sum() == 0
-    assert torch.isnan(quant_mse).sum() == 0
+        quant_mse_sum = quant_mse_per_subgrp.view(-1, 
+                                                sub_groups_per_group).mean(dim=1,
+                                                                            keepdim=True)
+        bias_mse[bias] = (tensor_deq, quant_mse_sum)
 
-    tensor_deq = tensor_deq.reshape(org_shape)
+    all_mse = torch.cat([bias_mse[b][1]  for b in range(-1,1)], dim=1)  
+    # all_mse shape: [n_level1_group, n_bias=4]
+    
+    best_bias_idx = all_mse.argmin(dim=1)           # [n_level1_group]
+    # print(best_bias_idx)
 
-    quant_obj = 'input' if is_input else 'weight'
-    if print_stats:
-        print(f"Quantization MSE: {quant_mse_sum.mean().item()}, quant_obj: {quant_obj}, keep_outlier: {keep_outlier}, sub_gorup_size: {sub_group_size}")
-
-    return tensor_deq, quant_mse_sum
+    all_deq = torch.stack([bias_mse[b][0]  for b in range(-1,1)], dim=0)  
+    # [4, n_level1_group*q_group_size]
+    all_deq = all_deq.view(2,-1,q_group_size)           # [4,n_level1,q_group_size]
+    
+    # repeat index to match last dim 
+    idx_expanded = best_bias_idx.view(1,-1,1).expand(1,-1,q_group_size) 
+    final_deq = torch.gather(all_deq,dim=0, 
+                        index=idx_expanded).squeeze(0)
+    
+    tensor_deq = final_deq.reshape(org_shape).to(tensor_value.dtype) 
+    
+    # -------------------- sanity checks --------------------
+    assert torch.isinf(tensor_deq).sum()  == 0 
+    assert torch.isnan(tensor_deq).sum()  == 0 
+ 
+    return tensor_deq, best_bias_idx
 
 @torch.no_grad()
 def sub_group_em(tensor_value, quant_grid, q_group_size=-1, sub_group_size=1,  get_labels=False, topk=1, em_bit=2):

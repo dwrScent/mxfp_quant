@@ -282,13 +282,13 @@ def mxfp_sub_group_exscale_inner(
                                                                         keepdim=True)
         bias_mse[bias] = (tensor_deq, quant_mse_sum)
 
-    all_mse = torch.cat([bias_mse[b][1]  for b in range(-2,3)], dim=1)  
+    all_mse = torch.cat([bias_mse[b][1]  for b in range(-1,2)], dim=1)  
     # all_mse shape: [n_level1_group, n_bias=4]
     
     best_bias_idx = all_mse.argmin(dim=1)           # [n_level1_group]
     # print(best_bias_idx)
 
-    all_deq = torch.stack([bias_mse[b][0]  for b in range(-2,3)], dim=0)  
+    all_deq = torch.stack([bias_mse[b][0]  for b in range(-1,2)], dim=0)  
     # [4, n_level1_group*q_group_size]
     all_deq = all_deq.view(3,-1,q_group_size)           # [4,n_level1,q_group_size]
     

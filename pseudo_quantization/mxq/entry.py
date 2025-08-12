@@ -70,6 +70,7 @@ parser.add_argument('--q_backend', type=str,
 parser.add_argument("--topk", type=int, default=1)
 parser.add_argument("--em_bit", type=int, default=2)
 parser.add_argument("--es_bit", type=int, default=2)
+parser.add_argument("--fix", type=int, default=1)
 
 # max memory to offload larger models to CPU
 parser.add_argument(
@@ -166,6 +167,7 @@ ant_config = {
     "es_bit": args.es_bit,
     "em_bit": args.em_bit,
     "topk": args.topk,
+    "fix": args.fix,
 }
 
 outlier_config = {

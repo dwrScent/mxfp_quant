@@ -70,7 +70,8 @@ parser.add_argument('--q_backend', type=str,
 parser.add_argument("--topk", type=int, default=1)
 parser.add_argument("--em_bit", type=int, default=2)
 parser.add_argument("--es_bit", type=int, default=2)
-parser.add_argument("--fix", type=int, default=1)
+parser.add_argument("--ee_bit", type=int, default=2)
+parser.add_argument("--fix", type=int, default=True)
 
 # max memory to offload larger models to CPU
 parser.add_argument(
@@ -166,8 +167,9 @@ ant_config = {
     "input_sub_group_mode": mxfp_config.get("input_sub_group_mode"),
     "es_bit": args.es_bit,
     "em_bit": args.em_bit,
+    "ee_bit": args.ee_bit,
     "topk": args.topk,
-    "fix": args.fix,
+    "fix": args.fix != 0,
 }
 
 outlier_config = {

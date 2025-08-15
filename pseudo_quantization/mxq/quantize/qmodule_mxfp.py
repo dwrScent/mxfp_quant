@@ -623,6 +623,86 @@ def sub_group_em(tensor_value, quant_grid, q_group_size=-1, sub_group_size=1,  g
     else:
         return tensor_deq, quant_mse_sum
     
+@torch.no_grad()
+def sub_group_em_search(tensor_value, quant_grid, q_group_size=-1, sub_group_size=1,  get_labels=False, topk=1, em_bit=2):
+    assert torch.isnan(tensor_value).sum() == 0
+    org_shape = tensor_value.shape
+    quant_grid = quant_grid.to(tensor_value.device)
+    sub_group_grid = float_value(4+em_bit, fix_e2b0=True)
+    sub_group_grid = sub_group_grid.to(tensor_value.device)
+    if q_group_size > 0:
+        assert org_shape[-1] % q_group_size == 0
+        tensor_value = tensor_value.reshape(-1, q_group_size)
+
+    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+
+    max_quant_val = max(quant_grid)
+        
+    # Compute the scaling factor
+    exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
+    bias_mse = {}
+    range_ = range(-1, 2)
+    for bias in range_:
+        scales = torch.pow(2, exp+bias)
+
+        zeros = 0
+
+        # Batch processing to avoid OOM
+        batch_num = 4
+        # batch_num = 16
+        assert tensor_value.shape[0] % batch_num == 0
+        batch_size = tensor_value.shape[0] // batch_num
+        tensor_deq = torch.zeros_like(tensor_value)
+        for idx in range(batch_num):
+            tensor_par = tensor_value[idx*batch_size : (idx+1)*batch_size, :]
+            labels = (((tensor_par + zeros) / scales[idx*batch_size : (idx+1)*batch_size, :]).unsqueeze(-1) - quant_grid).abs().argmin(dim=-1)
+            tensor_q_par = quant_grid[labels] * scales[idx*batch_size : (idx+1)*batch_size, :] - zeros
+            tensor_deq[idx*batch_size : (idx+1)*batch_size, :] = tensor_q_par
+        
+        tmp = tensor_deq.reshape(-1, sub_group_size)
+        outlier_mask = torch.zeros_like(tmp, dtype=torch.float16).to(tensor_value.device)
+
+        _, indices = torch.topk(tmp.abs(), topk)
+        outlier_mask.scatter_(1, indices, 1)
+        outlier_group_mask = outlier_mask.reshape(-1, q_group_size)
+        tensor_deq_o_group = torch.zeros_like(tensor_value)
+
+        for idx in range(batch_num):
+            tensor_par = tensor_value[idx*batch_size : (idx+1)*batch_size, :]
+            labels = (((tensor_par + zeros) / scales[idx*batch_size : (idx+1)*batch_size, :]).unsqueeze(-1) - sub_group_grid).abs().argmin(dim=-1)
+            tensor_q_par = sub_group_grid[labels] * scales[idx*batch_size : (idx+1)*batch_size, :] - zeros
+            tensor_deq_o_group[idx*batch_size : (idx+1)*batch_size, :] = tensor_q_par
+
+        tensor_deq = tensor_deq * (1-outlier_group_mask) + tensor_deq_o_group * outlier_group_mask
+
+        quant_mse = (tensor_deq-tensor_value).abs().pow(2).to(torch.float32)
+        quant_mse_sum = torch.mean(quant_mse, dim=1, keepdim=True)
+
+        bias_mse[bias] = (tensor_deq, quant_mse_sum)
+
+    all_mse = torch.cat([bias_mse[b][1]  for b in range_], dim=1)  
+    # all_mse shape: [n_level1_group, n_bias=4]
+    
+    best_bias_idx = all_mse.argmin(dim=1)           # [n_level1_group]
+    # print(best_bias_idx)
+
+    all_deq = torch.stack([bias_mse[b][0]  for b in range_], dim=0)  
+    # [4, n_level1_group*q_group_size]
+    all_deq = all_deq.view(3,-1,q_group_size)           # [4,n_level1,q_group_size]
+    
+    # repeat index to match last dim 
+    idx_expanded = best_bias_idx.view(1,-1,1).expand(1,-1,q_group_size) 
+    final_deq = torch.gather(all_deq,dim=0, 
+                        index=idx_expanded).squeeze(0)
+    
+    tensor_deq = final_deq.reshape(org_shape).to(tensor_value.dtype) 
+    
+    # -------------------- sanity checks --------------------
+    assert torch.isinf(tensor_deq).sum()  == 0 
+    assert torch.isnan(tensor_deq).sum()  == 0 
+ 
+    return tensor_deq, nn.functional.mse_loss(tensor_deq, tensor_value.reshape(org_shape))
+
 def sub_group_em_real(tensor_value, quant_grid, q_group_size=-1, sub_group_size=1, topk=1, em_bit=2, fix=True):
     assert torch.isnan(tensor_value).sum() == 0
     org_shape = tensor_value.shape
@@ -1290,6 +1370,7 @@ class MXFP_Linear(nn.Module):
             'sub_group_heuristic': lambda: mxfp_sub_group_heuristic(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, sub_group_mode=sub_group_mode, print_stats=self.print_stats),
             'sub_group_em': lambda: sub_group_em(data, quant_grid=quant_grid, q_group_size=self.group_size, sub_group_size=sub_group_size, topk=self.topk, em_bit=self.em_bit),
             'sub_group_em_real': lambda: sub_group_em_real(data, quant_grid=quant_grid, q_group_size=self.group_size, sub_group_size=sub_group_size, topk=self.topk, em_bit=self.em_bit, fix=self.fix),
+            'sub_group_em_search': lambda: sub_group_em_search(data, quant_grid=quant_grid, q_group_size=self.group_size, sub_group_size=sub_group_size, topk=self.topk, em_bit=self.em_bit),
             'sub_group_es': lambda: mxfp_sub_group_exscale(data, quant_grid=quant_grid, q_group_size=self.group_size, sub_group_size=sub_group_size, es_bit=self.es_bit),
             'sub_group_es_direct': lambda: mxfp_sub_group_exscale_direct(data, quant_grid=quant_grid, q_group_size=self.group_size, sub_group_size=sub_group_size, es_bit=self.es_bit),
             'sub_group_ee': lambda: mxfp_sub_group_exscale_exp(data, quant_grid=quant_grid, q_group_size=self.group_size, sub_group_size=sub_group_size, ee_bit=self.ee_bit),

@@ -16,6 +16,7 @@ from transformers.models.mistral.modeling_mistral import MistralForCausalLM
 from transformers.models.qwen2.modeling_qwen2 import Qwen2ForCausalLM
 
 from transformers.models.qwen2.modeling_qwen2 import Qwen2ForCausalLM
+from transformers.models.falcon.modeling_falcon import FalconForCausalLM
 
 from mxq.models.llama_giant import LlamaForCausalLM_giant
 from mxq.models.llama_mxfp import LlamaForCausalLM_mxfp
@@ -32,6 +33,8 @@ def get_blocks(model):
         layers = model.model.layers
     elif isinstance(model, (OPTForCausalLM, OPTForCausalLM_giant)):
         layers = model.model.decoder.layers
+    elif isinstance(model, FalconForCausalLM):
+        layers = model.transformer.h
     elif isinstance(model, GPT2LMHeadModel):
         layers = model.transformer.h
     elif isinstance(model, (BloomForCausalLM, BloomForCausalLM_giant)):

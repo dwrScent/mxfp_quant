@@ -383,7 +383,7 @@ def get_quant_nvfp(tensor_value, quant_grid, mode="int", zero_point=True, q_grou
 
 
 @torch.no_grad()
-def get_quant_smxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_group_size=-1, alpha=1.0, pos_value=None, get_labels=False, is_input=False, keep_outlier=False, print_stats=False):
+def get_quant_smxfp(tensor_value, quant_grid, q_group_size=-1, is_input=False):
     org_shape = tensor_value.shape
     tensor_value = tensor_value.reshape(-1, q_group_size)
     batch_num = 1 if is_input else 4                      # 固定批次大小 
@@ -405,6 +405,7 @@ def get_quant_smxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_gro
             sub_tensor,
             quant_grid,
             q_group_size=q_group_size,
+            is_input=is_input
         )
         
         deq_list.append(deq_sub) 
@@ -415,7 +416,7 @@ def get_quant_smxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_gro
     return tensor_deq, None
 
 @torch.no_grad()
-def get_quant_smxfp_inner(tensor_value, quant_grid, mode="int", zero_point=True, q_group_size=-1, alpha=1.0, pos_value=None, get_labels=False, is_input=False, keep_outlier=False, print_stats=False):
+def get_quant_smxfp_inner(tensor_value, quant_grid, q_group_size=-1, get_labels=False, is_input=False, keep_outlier=False, print_stats=False):
     '''
     return : dequantized weight, mse?
     '''
@@ -460,8 +461,9 @@ def get_quant_smxfp_inner(tensor_value, quant_grid, mode="int", zero_point=True,
         tensor_value_processed = tensor_value_reshaped.clone()
 
     # Define the two new grids for sub-group quantization
-    grid1_tensor = torch.tensor([0.0, 0.5, 1.0, 1.5, -0.0, -0.5, -1.0, -1.5], device=tensor_value.device, dtype=tensor_value.dtype)
-    grid2_tensor = torch.tensor([2.0, 2.5, 3.0, 3.5, -2.0, -2.5, -3.0, -3.5], device=tensor_value.device, dtype=tensor_value.dtype)
+    half = quant_grid.shape[0]  // 2
+    grid1_tensor = quant_grid[:half]
+    grid2_tensor = quant_grid[half:]
     
     # Check if q_group_size is defined and is an even number for sub-grouping
     # This now effectively becomes the main path. If not met, it will raise an error.

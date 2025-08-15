@@ -381,8 +381,41 @@ def get_quant_nvfp(tensor_value, quant_grid, mode="int", zero_point=True, q_grou
     else:
         return tensor_deq, quant_mse_sum
 
+
 @torch.no_grad()
 def get_quant_smxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_group_size=-1, alpha=1.0, pos_value=None, get_labels=False, is_input=False, keep_outlier=False, print_stats=False):
+    org_shape = tensor_value.shape
+    tensor_value = tensor_value.reshape(-1, q_group_size)
+    batch_num = 1 if is_input else 4                      # 固定批次大小 
+    dim0 = tensor_value.size(0) 
+    
+    # 保证可以被 batch_num 整除；若不能整除可改为向上取整并 pad 
+    assert dim0 % batch_num == 0, f"dim0={dim0} must be divisible by batch_num={batch_num}"
+    
+    chunk_size = dim0 // batch_num 
+    deq_list= []
+    
+    for i in range(batch_num):
+        start = i * chunk_size 
+        end   = start + chunk_size 
+        sub_tensor = tensor_value[start:end]
+        
+        # 调用 inner 函数 
+        deq_sub, _ = get_quant_smxfp_inner(
+            sub_tensor,
+            quant_grid,
+            q_group_size=q_group_size,
+        )
+        
+        deq_list.append(deq_sub) 
+    
+    # concat 回完整张量 
+    tensor_deq      = torch.cat(deq_list,  dim=0).reshape(org_shape)
+    
+    return tensor_deq, None
+
+@torch.no_grad()
+def get_quant_smxfp_inner(tensor_value, quant_grid, mode="int", zero_point=True, q_group_size=-1, alpha=1.0, pos_value=None, get_labels=False, is_input=False, keep_outlier=False, print_stats=False):
     '''
     return : dequantized weight, mse?
     '''

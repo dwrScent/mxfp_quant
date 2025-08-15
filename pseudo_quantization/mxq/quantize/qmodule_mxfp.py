@@ -1293,8 +1293,7 @@ class MXFP_Linear(nn.Module):
             'sub_group_es': lambda: mxfp_sub_group_exscale(data, quant_grid=quant_grid, q_group_size=self.group_size, sub_group_size=sub_group_size, es_bit=self.es_bit),
             'sub_group_es_direct': lambda: mxfp_sub_group_exscale_direct(data, quant_grid=quant_grid, q_group_size=self.group_size, sub_group_size=sub_group_size, es_bit=self.es_bit),
             'sub_group_ee': lambda: mxfp_sub_group_exscale_exp(data, quant_grid=quant_grid, q_group_size=self.group_size, sub_group_size=sub_group_size, ee_bit=self.ee_bit),
-            'sub_group_exscale_exp': lambda: sub_group_exscale_exp(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, sub_group_mode=sub_group_mode, extra_exp_bits=1, print_stats=self.print_stats),
-            'sub_group_exscale_exp2': lambda: sub_group_exscale_exp(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, sub_group_mode=sub_group_mode, extra_exp_bits=2, print_stats=self.print_stats),
+            'sub_group_exscale_exp': lambda: sub_group_exscale_exp(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, sub_group_mode=sub_group_mode, extra_exp_bits=self.ee_bit, print_stats=self.print_stats),
             'sub_group_adaptive_em': lambda: mxfp_sub_group_adaptive_em(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, sub_group_mode=sub_group_mode, print_stats=self.print_stats),
             'sub_group_heuristic_em': lambda: mxfp_sub_group_heuristic_em(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, sub_group_mode=sub_group_mode, print_stats=self.print_stats),
         }

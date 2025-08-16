@@ -1,0 +1,37 @@
+Information: Building the design 'quantize_fp32_to_e2m' instantiated from design 'quant_engine32_mx' with
+	the parameters "M=3". (HDL-193)
+Warning: Cannot find the design 'quantize_fp32_to_e2m' in the library 'WORK'. (LBR-1)
+Warning: Unable to resolve reference 'quantize_fp32_to_e2m' in 'quant_engine32_mx'. (LINK-5)
+ 
+****************************************
+Report : area
+Design : quant_engine32_mx
+Version: O-2018.06-SP1
+Date   : Sat Aug 16 11:08:10 2025
+****************************************
+
+Information: Updating design information... (UID-85)
+Library(s) Used:
+
+    tcbn16ffcllbwp16p90tt1v85c (File: /home/design/Desktop/tcbn16ffcllbwp16p90tt1v85c.db)
+
+Number of ports:                         4688
+Number of nets:                          8619
+Number of cells:                         3805
+Number of combinational cells:           3676
+Number of sequential cells:                32
+Number of macros/black boxes:               0
+Number of buf/inv:                        947
+Number of references:                      37
+
+Combinational area:               1466.605476
+Buf/Inv area:                      147.277447
+Noncombinational area:               0.000000
+Macro/Black Box area:                0.000000
+Net Interconnect area:      undefined  (Wire load has zero net area)
+
+Total cell area:                  1466.605476
+Total area:                 undefined
+
+Information: This design contains black box (unknown) components. (RPT-8)
+1

@@ -1,0 +1,31 @@
+ 
+****************************************
+Report : area
+Design : quantize_fp32_to_e2m
+Version: O-2018.06-SP1
+Date   : Sat Aug 16 11:04:40 2025
+****************************************
+
+Information: Updating design information... (UID-85)
+Library(s) Used:
+
+    tcbn16ffcllbwp16p90tt1v85c (File: /home/design/Desktop/tcbn16ffcllbwp16p90tt1v85c.db)
+
+Number of ports:                           96
+Number of nets:                           192
+Number of cells:                           90
+Number of combinational cells:             88
+Number of sequential cells:                 0
+Number of macros/black boxes:               0
+Number of buf/inv:                         20
+Number of references:                      23
+
+Combinational area:                 36.547201
+Buf/Inv area:                        3.110400
+Noncombinational area:               0.000000
+Macro/Black Box area:                0.000000
+Net Interconnect area:      undefined  (Wire load has zero net area)
+
+Total cell area:                    36.547201
+Total area:                 undefined
+1

@@ -1,0 +1,58 @@
+Loading db file '/home/design/Desktop/tcbn16ffcllbwp16p90tt1v85c.db'
+Information: Propagating switching activity (low effort zero delay simulation). (PWR-6)
+Warning: There is no defined clock in the design. (PWR-80)
+Warning: Design has unannotated primary inputs. (PWR-414)
+ 
+****************************************
+Report : power
+        -analysis_effort low
+Design : max_exp
+Version: O-2018.06-SP1
+Date   : Sat Aug 16 11:06:52 2025
+****************************************
+
+
+Library(s) Used:
+
+    tcbn16ffcllbwp16p90tt1v85c (File: /home/design/Desktop/tcbn16ffcllbwp16p90tt1v85c.db)
+
+
+Operating Conditions: tt1v85c   Library: tcbn16ffcllbwp16p90tt1v85c
+Wire Load Model Mode: segmented
+
+Design        Wire Load Model            Library
+------------------------------------------------
+max_exp                ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+
+
+Global Operating Voltage = 1    
+Power-specific unit information :
+    Voltage Units = 1V
+    Capacitance Units = 1.000000pf
+    Time Units = 1ns
+    Dynamic Power Units = 1mW    (derived from V,C,T units)
+    Leakage Power Units = 1nW
+
+
+  Cell Internal Power  = 159.6497 uW   (63%)
+  Net Switching Power  =  94.3585 uW   (37%)
+                         ---------
+Total Dynamic Power    = 254.0082 uW  (100%)
+
+Cell Leakage Power     = 951.9615 nW
+
+Information: report_power power group summary does not include estimated clock tree power. (PWR-789)
+
+                 Internal         Switching           Leakage            Total
+Power Group      Power            Power               Power              Power   (   %    )  Attrs
+--------------------------------------------------------------------------------------------------
+io_pad             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+memory             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+black_box          0.0000            0.0000            0.0000            0.0000  (   0.00%)
+clock_network      0.0000            0.0000            0.0000            0.0000  (   0.00%)
+register           0.0000            0.0000            0.0000            0.0000  (   0.00%)
+sequential         0.0000            0.0000            0.0000            0.0000  (   0.00%)
+combinational      0.1596        9.4359e-02          951.9615            0.2550  ( 100.00%)
+--------------------------------------------------------------------------------------------------
+Total              0.1596 mW     9.4359e-02 mW       951.9615 nW         0.2550 mW
+1

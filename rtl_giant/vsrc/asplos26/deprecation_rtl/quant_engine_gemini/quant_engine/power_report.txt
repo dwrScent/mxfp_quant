@@ -1,0 +1,242 @@
+Loading db file '/home/design/Desktop/tcbn16ffcllbwp16p90tt1v85c.db'
+Information: Propagating switching activity (low effort zero delay simulation). (PWR-6)
+Warning: There is no defined clock in the design. (PWR-80)
+Warning: Design has unannotated primary inputs. (PWR-414)
+Warning: Design has unannotated black box outputs. (PWR-428)
+ 
+****************************************
+Report : power
+        -analysis_effort low
+Design : quant_engine32_mx
+Version: O-2018.06-SP1
+Date   : Sat Aug 16 11:08:16 2025
+****************************************
+
+
+Library(s) Used:
+
+    tcbn16ffcllbwp16p90tt1v85c (File: /home/design/Desktop/tcbn16ffcllbwp16p90tt1v85c.db)
+
+
+Operating Conditions: tt1v85c   Library: tcbn16ffcllbwp16p90tt1v85c
+Wire Load Model Mode: segmented
+
+Design        Wire Load Model            Library
+------------------------------------------------
+quant_engine32_mx      ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+max_exp                ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_0 ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_1 ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_2 ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_3 ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_4 ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_5 ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_6 ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_7 ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_8 ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_9 ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_10
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_11
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_12
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_13
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_14
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_15
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_16
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_17
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_18
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_19
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_20
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_21
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_22
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_23
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_24
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_25
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_26
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_27
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_28
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_29
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_30
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_31
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_1_DW01_inc_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_1_DW01_sub_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_2_DW01_inc_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_2_DW01_sub_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_3_DW01_inc_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_3_DW01_sub_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_4_DW01_inc_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_4_DW01_sub_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_5_DW01_inc_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_5_DW01_sub_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_6_DW01_inc_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_6_DW01_sub_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_7_DW01_inc_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_7_DW01_sub_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_8_DW01_inc_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_8_DW01_sub_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_9_DW01_inc_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_9_DW01_sub_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_10_DW01_inc_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_10_DW01_sub_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_11_DW01_inc_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_11_DW01_sub_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_12_DW01_inc_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_12_DW01_sub_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_13_DW01_inc_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_13_DW01_sub_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_14_DW01_inc_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_14_DW01_sub_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_15_DW01_inc_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_15_DW01_sub_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_16_DW01_inc_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_16_DW01_sub_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_17_DW01_inc_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_17_DW01_sub_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_18_DW01_inc_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_18_DW01_sub_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_19_DW01_inc_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_19_DW01_sub_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_20_DW01_inc_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_20_DW01_sub_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_21_DW01_inc_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_21_DW01_sub_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_22_DW01_inc_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_22_DW01_sub_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_23_DW01_inc_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_23_DW01_sub_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_24_DW01_inc_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_24_DW01_sub_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_25_DW01_inc_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_25_DW01_sub_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_26_DW01_inc_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_26_DW01_sub_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_27_DW01_inc_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_27_DW01_sub_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_28_DW01_inc_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_28_DW01_sub_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_29_DW01_inc_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_29_DW01_sub_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_30_DW01_inc_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_30_DW01_sub_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_31_DW01_inc_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_31_DW01_sub_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_0_DW01_inc_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+quantize_fp32_to_e2m_0_DW01_sub_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+
+
+Global Operating Voltage = 1    
+Power-specific unit information :
+    Voltage Units = 1V
+    Capacitance Units = 1.000000pf
+    Time Units = 1ns
+    Dynamic Power Units = 1mW    (derived from V,C,T units)
+    Leakage Power Units = 1nW
+
+
+  Cell Internal Power  = 824.9490 uW   (63%)
+  Net Switching Power  = 488.7786 uW   (37%)
+                         ---------
+Total Dynamic Power    =   1.3137 mW  (100%)
+
+Cell Leakage Power     =   4.5624 uW
+
+Information: report_power power group summary does not include estimated clock tree power. (PWR-789)
+
+                 Internal         Switching           Leakage            Total
+Power Group      Power            Power               Power              Power   (   %    )  Attrs
+--------------------------------------------------------------------------------------------------
+io_pad             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+memory             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+black_box          0.0000            0.0000            0.0000            0.0000  (   0.00%)
+clock_network      0.0000            0.0000            0.0000            0.0000  (   0.00%)
+register           0.0000            0.0000            0.0000            0.0000  (   0.00%)
+sequential         0.0000            0.0000            0.0000            0.0000  (   0.00%)
+combinational      0.8250            0.4888        4.5617e+03            1.3183  ( 100.00%)
+--------------------------------------------------------------------------------------------------
+Total              0.8250 mW         0.4888 mW     4.5617e+03 nW         1.3183 mW
+1

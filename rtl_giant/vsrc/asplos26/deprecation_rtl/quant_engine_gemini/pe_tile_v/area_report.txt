@@ -1,0 +1,45 @@
+Information: Building the design 'mul_base_q2_comb' instantiated from design 'pe_tile_mxfp_fp32' with
+	the parameters "Q_FRAC=2,QW=20". (HDL-193)
+Warning: Cannot find the design 'mul_base_q2_comb' in the library 'WORK'. (LBR-1)
+Information: Building the design 'mul_extra_q2_comb' instantiated from design 'pe_tile_mxfp_fp32' with
+	the parameters "Q_FRAC=2,QW=20". (HDL-193)
+Warning: Cannot find the design 'mul_extra_q2_comb' in the library 'WORK'. (LBR-1)
+Information: Building the design 'fxp_to_fp32' instantiated from design 'pe_tile_mxfp_fp32' with
+	the parameters "W=36,FRAC=2". (HDL-193)
+Warning: Cannot find the design 'fxp_to_fp32' in the library 'WORK'. (LBR-1)
+Warning: Unable to resolve reference 'mul_base_q2_comb' in 'pe_tile_mxfp_fp32'. (LINK-5)
+Warning: Unable to resolve reference 'mul_extra_q2_comb' in 'pe_tile_mxfp_fp32'. (LINK-5)
+Warning: Unable to resolve reference 'fxp_to_fp32' in 'pe_tile_mxfp_fp32'. (LINK-5)
+ 
+****************************************
+Report : area
+Design : pe_tile_mxfp_fp32
+Version: O-2018.06-SP1
+Date   : Sat Aug 16 11:11:31 2025
+****************************************
+
+Information: Updating design information... (UID-85)
+Library(s) Used:
+
+    tcbn16ffcllbwp16p90tt1v85c (File: /home/design/Desktop/tcbn16ffcllbwp16p90tt1v85c.db)
+
+Number of ports:                         1306
+Number of nets:                          3768
+Number of cells:                         2157
+Number of combinational cells:           1502
+Number of sequential cells:               636
+Number of macros/black boxes:               0
+Number of buf/inv:                        246
+Number of references:                      54
+
+Combinational area:                662.878098
+Buf/Inv area:                       38.257922
+Noncombinational area:             715.910426
+Macro/Black Box area:                0.000000
+Net Interconnect area:      undefined  (Wire load has zero net area)
+
+Total cell area:                  1378.788524
+Total area:                 undefined
+
+Information: This design contains black box (unknown) components. (RPT-8)
+1

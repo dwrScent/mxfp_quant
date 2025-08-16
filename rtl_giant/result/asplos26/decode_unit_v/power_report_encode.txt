@@ -1,0 +1,90 @@
+Loading db file '/home/design/Desktop/tcbn16ffcllbwp16p90tt1v85c.db'
+Information: Propagating switching activity (low effort zero delay simulation). (PWR-6)
+Warning: There is no defined clock in the design. (PWR-80)
+Warning: Design has unannotated primary inputs. (PWR-414)
+ 
+****************************************
+Report : power
+        -analysis_effort low
+Design : encode_unit
+Version: O-2018.06-SP1
+Date   : Fri Aug 15 21:51:16 2025
+****************************************
+
+
+Library(s) Used:
+
+    tcbn16ffcllbwp16p90tt1v85c (File: /home/design/Desktop/tcbn16ffcllbwp16p90tt1v85c.db)
+
+
+Operating Conditions: tt1v85c   Library: tcbn16ffcllbwp16p90tt1v85c
+Wire Load Model Mode: segmented
+
+Design        Wire Load Model            Library
+------------------------------------------------
+encode_unit            ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+top1_detection_unit_0  ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+fp4_to_uint_lut_0      ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+comp_0                 ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+top1_detection_unit_1  ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+fp4_to_uint_lut_1      ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+fp4_to_uint_lut_2      ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+fp4_to_uint_lut_3      ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+fp4_to_uint_lut_4      ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+fp4_to_uint_lut_5      ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+fp4_to_uint_lut_6      ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+fp4_to_uint_lut_7      ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+fp4_to_uint_lut_8      ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+fp4_to_uint_lut_9      ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+fp4_to_uint_lut_10     ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+fp4_to_uint_lut_11     ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+fp4_to_uint_lut_12     ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+fp4_to_uint_lut_13     ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+fp4_to_uint_lut_14     ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+fp4_to_uint_lut_15     ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+comp_1                 ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+comp_2                 ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+comp_3                 ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+comp_4                 ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+comp_5                 ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+comp_6                 ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+comp_7                 ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+comp_8                 ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+comp_9                 ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+comp_10                ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+comp_11                ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+comp_12                ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+comp_13                ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+
+
+Global Operating Voltage = 1    
+Power-specific unit information :
+    Voltage Units = 1V
+    Capacitance Units = 1.000000pf
+    Time Units = 1ns
+    Dynamic Power Units = 1mW    (derived from V,C,T units)
+    Leakage Power Units = 1nW
+
+
+  Cell Internal Power  =  54.1242 uW   (58%)
+  Net Switching Power  =  38.4049 uW   (42%)
+                         ---------
+Total Dynamic Power    =  92.5291 uW  (100%)
+
+Cell Leakage Power     = 437.5292 nW
+
+Information: report_power power group summary does not include estimated clock tree power. (PWR-789)
+
+                 Internal         Switching           Leakage            Total
+Power Group      Power            Power               Power              Power   (   %    )  Attrs
+--------------------------------------------------------------------------------------------------
+io_pad             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+memory             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+black_box          0.0000            0.0000            0.0000            0.0000  (   0.00%)
+clock_network      0.0000            0.0000            0.0000            0.0000  (   0.00%)
+register           0.0000            0.0000            0.0000            0.0000  (   0.00%)
+sequential         0.0000            0.0000            0.0000            0.0000  (   0.00%)
+combinational  5.4124e-02        3.8405e-02          437.4595        9.2967e-02  ( 100.00%)
+--------------------------------------------------------------------------------------------------
+Total          5.4124e-02 mW     3.8405e-02 mW       437.4595 nW     9.2967e-02 mW
+1

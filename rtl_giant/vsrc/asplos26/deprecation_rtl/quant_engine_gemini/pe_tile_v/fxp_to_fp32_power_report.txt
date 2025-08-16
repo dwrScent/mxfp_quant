@@ -1,0 +1,69 @@
+Loading db file '/home/design/Desktop/tcbn16ffcllbwp16p90tt1v85c.db'
+Information: Propagating switching activity (low effort zero delay simulation). (PWR-6)
+Warning: There is no defined clock in the design. (PWR-80)
+Warning: Design has unannotated primary inputs. (PWR-414)
+ 
+****************************************
+Report : power
+        -analysis_effort low
+Design : fxp_to_fp32
+Version: O-2018.06-SP1
+Date   : Sat Aug 16 11:16:11 2025
+****************************************
+
+
+Library(s) Used:
+
+    tcbn16ffcllbwp16p90tt1v85c (File: /home/design/Desktop/tcbn16ffcllbwp16p90tt1v85c.db)
+
+
+Operating Conditions: tt1v85c   Library: tcbn16ffcllbwp16p90tt1v85c
+Wire Load Model Mode: segmented
+
+Design        Wire Load Model            Library
+------------------------------------------------
+fxp_to_fp32            ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+fxp_to_fp32_DW01_add_0 ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+fxp_to_fp32_DW_rash_0  ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+fxp_to_fp32_DW_rash_1  ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+fxp_to_fp32_DW01_sub_0 ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+fxp_to_fp32_DW01_ash_0 ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+fxp_to_fp32_DW_rash_2  ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+fxp_to_fp32_DW01_addsub_0
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+fxp_to_fp32_DW01_addsub_1
+                       ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+fxp_to_fp32_DW01_inc_0 ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+
+
+Global Operating Voltage = 1    
+Power-specific unit information :
+    Voltage Units = 1V
+    Capacitance Units = 1.000000pf
+    Time Units = 1ns
+    Dynamic Power Units = 1mW    (derived from V,C,T units)
+    Leakage Power Units = 1nW
+
+
+  Cell Internal Power  = 115.3097 uW   (60%)
+  Net Switching Power  =  76.2593 uW   (40%)
+                         ---------
+Total Dynamic Power    = 191.5690 uW  (100%)
+
+Cell Leakage Power     =   1.2584 uW
+
+Information: report_power power group summary does not include estimated clock tree power. (PWR-789)
+
+                 Internal         Switching           Leakage            Total
+Power Group      Power            Power               Power              Power   (   %    )  Attrs
+--------------------------------------------------------------------------------------------------
+io_pad             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+memory             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+black_box          0.0000            0.0000            0.0000            0.0000  (   0.00%)
+clock_network      0.0000            0.0000            0.0000            0.0000  (   0.00%)
+register           0.0000            0.0000            0.0000            0.0000  (   0.00%)
+sequential         0.0000            0.0000            0.0000            0.0000  (   0.00%)
+combinational      0.1153        7.6259e-02        1.2583e+03            0.1928  ( 100.00%)
+--------------------------------------------------------------------------------------------------
+Total              0.1153 mW     7.6259e-02 mW     1.2583e+03 nW         0.1928 mW
+1

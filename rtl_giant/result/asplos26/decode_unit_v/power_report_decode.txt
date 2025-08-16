@@ -1,0 +1,72 @@
+Information: Propagating switching activity (low effort zero delay simulation). (PWR-6)
+Warning: There is no defined clock in the design. (PWR-80)
+Warning: Design has unannotated primary inputs. (PWR-414)
+ 
+****************************************
+Report : power
+        -analysis_effort low
+Design : top1_detection_unit
+Version: O-2018.06-SP1
+Date   : Fri Aug 15 21:58:29 2025
+****************************************
+
+
+Library(s) Used:
+
+    tcbn16ffcllbwp16p90tt1v85c (File: /home/design/Desktop/tcbn16ffcllbwp16p90tt1v85c.db)
+
+
+Operating Conditions: tt1v85c   Library: tcbn16ffcllbwp16p90tt1v85c
+Wire Load Model Mode: segmented
+
+Design        Wire Load Model            Library
+------------------------------------------------
+top1_detection_unit    ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+fp4_to_uint_lut_0      ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+comp_0                 ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+fp4_to_uint_lut_1      ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+fp4_to_uint_lut_2      ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+fp4_to_uint_lut_3      ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+fp4_to_uint_lut_4      ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+fp4_to_uint_lut_5      ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+fp4_to_uint_lut_6      ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+fp4_to_uint_lut_7      ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+comp_1                 ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+comp_2                 ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+comp_3                 ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+comp_4                 ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+comp_5                 ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+comp_6                 ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
+
+
+Global Operating Voltage = 1    
+Power-specific unit information :
+    Voltage Units = 1V
+    Capacitance Units = 1.000000pf
+    Time Units = 1ns
+    Dynamic Power Units = 1mW    (derived from V,C,T units)
+    Leakage Power Units = 1nW
+
+
+  Cell Internal Power  =  22.5230 uW   (60%)
+  Net Switching Power  =  15.0657 uW   (40%)
+                         ---------
+Total Dynamic Power    =  37.5887 uW  (100%)
+
+Cell Leakage Power     = 195.4235 nW
+
+Information: report_power power group summary does not include estimated clock tree power. (PWR-789)
+
+                 Internal         Switching           Leakage            Total
+Power Group      Power            Power               Power              Power   (   %    )  Attrs
+--------------------------------------------------------------------------------------------------
+io_pad             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+memory             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+black_box          0.0000            0.0000            0.0000            0.0000  (   0.00%)
+clock_network      0.0000            0.0000            0.0000            0.0000  (   0.00%)
+register           0.0000            0.0000            0.0000            0.0000  (   0.00%)
+sequential         0.0000            0.0000            0.0000            0.0000  (   0.00%)
+combinational  2.2523e-02        1.5066e-02          195.3886        3.7784e-02  ( 100.00%)
+--------------------------------------------------------------------------------------------------
+Total          2.2523e-02 mW     1.5066e-02 mW       195.3886 nW     3.7784e-02 mW
+1

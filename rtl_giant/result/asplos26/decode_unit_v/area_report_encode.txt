@@ -1,0 +1,31 @@
+ 
+****************************************
+Report : area
+Design : encode_unit
+Version: O-2018.06-SP1
+Date   : Fri Aug 15 21:51:04 2025
+****************************************
+
+Information: Updating design information... (UID-85)
+Library(s) Used:
+
+    tcbn16ffcllbwp16p90tt1v85c (File: /home/design/Desktop/tcbn16ffcllbwp16p90tt1v85c.db)
+
+Number of ports:                          578
+Number of nets:                          1028
+Number of cells:                          496
+Number of combinational cells:            464
+Number of sequential cells:                 0
+Number of macros/black boxes:               0
+Number of buf/inv:                        132
+Number of references:                      10
+
+Combinational area:                142.663684
+Buf/Inv area:                       20.528641
+Noncombinational area:               0.000000
+Macro/Black Box area:                0.000000
+Net Interconnect area:      undefined  (Wire load has zero net area)
+
+Total cell area:                   142.663684
+Total area:                 undefined
+1

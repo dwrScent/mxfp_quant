@@ -1,46 +1,46 @@
-Loading db file '/home/design/Desktop/NangateOpenCellLibrary.db'
+Loading db file '/home/design/Desktop/tcbn16ffcllbwp16p90tt1v85c.db'
 Information: Propagating switching activity (low effort zero delay simulation). (PWR-6)
 Warning: There is no defined clock in the design. (PWR-80)
 Warning: Design has unannotated primary inputs. (PWR-414)
-Warning: Design has unannotated sequential cell outputs. (PWR-415)
+Warning: Design has unannotated black box outputs. (PWR-428)
  
 ****************************************
 Report : power
         -analysis_effort low
-Design : fixed_point_multiplier
+Design : quant_engine32_mx
 Version: O-2018.06-SP1
-Date   : Thu Apr 11 21:48:05 2024
+Date   : Sat Aug 16 11:03:50 2025
 ****************************************
 
 
 Library(s) Used:
 
-    NangateOpenCellLibrary (File: /home/design/Desktop/NangateOpenCellLibrary.db)
+    tcbn16ffcllbwp16p90tt1v85c (File: /home/design/Desktop/tcbn16ffcllbwp16p90tt1v85c.db)
 
 
-Operating Conditions: typical   Library: NangateOpenCellLibrary
-Wire Load Model Mode: top
+Operating Conditions: tt1v85c   Library: tcbn16ffcllbwp16p90tt1v85c
+Wire Load Model Mode: segmented
 
 Design        Wire Load Model            Library
 ------------------------------------------------
-fixed_point_multiplier 5K_hvratio_1_1    NangateOpenCellLibrary
+quant_engine32_mx      ZeroWireload      tcbn16ffcllbwp16p90tt1v85c
 
 
-Global Operating Voltage = 1.1  
+Global Operating Voltage = 1    
 Power-specific unit information :
     Voltage Units = 1V
-    Capacitance Units = 1.000000ff
+    Capacitance Units = 1.000000pf
     Time Units = 1ns
-    Dynamic Power Units = 1uW    (derived from V,C,T units)
+    Dynamic Power Units = 1mW    (derived from V,C,T units)
     Leakage Power Units = 1nW
 
 
-  Cell Internal Power  =  24.7381 uW   (57%)
-  Net Switching Power  =  18.7334 uW   (43%)
+  Cell Internal Power  =   2.4484 uW   (66%)
+  Net Switching Power  =   1.2649 uW   (34%)
                          ---------
-Total Dynamic Power    =  43.4715 uW  (100%)
+Total Dynamic Power    =   3.7133 uW  (100%)
 
-Cell Leakage Power     =   1.9456 uW
+Cell Leakage Power     =  20.9515 nW
 
 Information: report_power power group summary does not include estimated clock tree power. (PWR-789)
 
@@ -52,7 +52,8 @@ memory             0.0000            0.0000            0.0000            0.0000 
 black_box          0.0000            0.0000            0.0000            0.0000  (   0.00%)
 clock_network      0.0000            0.0000            0.0000            0.0000  (   0.00%)
 register           0.0000            0.0000            0.0000            0.0000  (   0.00%)
-sequential         1.7937        3.9117e-02          315.3312            2.1481  (   4.73%)
-combinational     22.9445           18.6942        1.6302e+03           43.2689  (  95.27%)
+sequential         0.0000            0.0000            0.0000            0.0000  (   0.00%)
+combinational  2.4484e-03        1.2649e-03           20.9166        3.7342e-03  ( 100.00%)
 --------------------------------------------------------------------------------------------------
-Total             24.7381 uW        18.7333 uW     1.9456e+03 nW        45.4170 uW
+Total          2.4484e-03 mW     1.2649e-03 mW        20.9166 nW     3.7342e-03 mW
+1

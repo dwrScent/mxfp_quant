@@ -703,7 +703,7 @@ def sub_group_em_search(tensor_value, quant_grid, q_group_size=-1, sub_group_siz
  
     return tensor_deq, nn.functional.mse_loss(tensor_deq, tensor_value.reshape(org_shape))
 @torch.no_grad()
-def sub_group_em_real(tensor_value, quant_grid, q_group_size=-1, sub_group_size=1, topk=1, em_bit=2, fix=True):
+def sub_group_em_real(tensor_value, quant_grid, q_group_size=-1, sub_group_size=1,  get_labels=False, topk=1, em_bit=2):
     assert torch.isnan(tensor_value).sum() == 0
     org_shape = tensor_value.shape
     quant_grid = quant_grid.to(tensor_value.device)
@@ -726,98 +726,43 @@ def sub_group_em_real(tensor_value, quant_grid, q_group_size=-1, sub_group_size=
     zeros = 0
 
     # Batch processing to avoid OOM
-    batch_num = 1
+    batch_num = 8
     # batch_num = 16
     assert tensor_value.shape[0] % batch_num == 0
     batch_size = tensor_value.shape[0] // batch_num
     tensor_deq = torch.zeros_like(tensor_value)
+    tensor_deq_o_group = torch.zeros_like(tensor_value)
+    zero_fp6 = int(2 ** (3 + em_bit))
+    stride = int(2 ** em_bit)
     for idx in range(batch_num):
         tensor_par = tensor_value[idx*batch_size : (idx+1)*batch_size, :]
         labels1 = (((tensor_par + zeros) / scales[idx*batch_size : (idx+1)*batch_size, :]).unsqueeze(-1) - quant_grid).abs().argmin(dim=-1)
+        abs_1 = torch.where(labels1 > 7, labels1 - 8, 7 - labels1)
+
         tensor_q_par = quant_grid[labels1] * scales[idx*batch_size : (idx+1)*batch_size, :] - zeros
         tensor_deq[idx*batch_size : (idx+1)*batch_size, :] = tensor_q_par
-    
-    # print(labels1)
-    tmp = tensor_deq.reshape(-1, sub_group_size)
-    outlier_mask1 = torch.zeros_like(tmp, dtype=torch.int).to(tensor_value.device)
 
-    _, indices = torch.topk(tmp.abs(), topk)
-    k_rank = torch.arange(1  , topk+1 ,
-                      dtype=torch.int  ,
-                      device=tensor_value.device).expand_as(indices)
-    outlier_mask1.scatter_(dim=1  , index=indices , src=k_rank)
-    # print(outlier_mask1)
-
-    tensor_deq2 = torch.zeros_like(tensor_value)
-    for idx in range(batch_num):
-        tensor_par = tensor_value[idx*batch_size : (idx+1)*batch_size, :]
         labels2 = (((tensor_par + zeros) / scales[idx*batch_size : (idx+1)*batch_size, :]).unsqueeze(-1) - sub_group_grid).abs().argmin(dim=-1)
+        
+        sign2 = torch.where(labels2 > zero_fp6 - 1, 1, 0)
+        abs_2 = torch.where(labels2 > zero_fp6 - 1, labels2 - zero_fp6, zero_fp6 - 1 - labels2)
+
+        lower = abs_1 * stride - (stride // 2 - 1)
+        upper = abs_2 * stride + (stride // 2)
+        abs_2 = torch.where(abs_2 < lower, lower, torch.where(abs_2 > upper, upper, abs_2))
+        labels2 = torch.where(sign2 > 0, abs_2 + zero_fp6, zero_fp6 - 1 - abs_2)
+
         tensor_q_par = sub_group_grid[labels2] * scales[idx*batch_size : (idx+1)*batch_size, :] - zeros
-        tensor_deq2[idx*batch_size : (idx+1)*batch_size, :] = tensor_q_par
-
-    # print(labels2)
-    labels2 = labels2.reshape(-1, sub_group_size)
-    inf = torch.tensor(float('inf'),  device=outlier_mask1.device) 
-    mask_for_sort = torch.where(outlier_mask1  == 0, inf, outlier_mask1.float()) 
-    sorted_idx = torch.argsort(mask_for_sort,  dim=-1)[:, :topk]
-    em_info = torch.gather(labels2, 
-                     dim=-1,
-                     index=sorted_idx)
-    stride = int(2**em_bit)
-    zero_label2 = int(2 **(3+em_bit))
-    sign = torch.where(em_info >= zero_label2, 1, 0)
-    abs_ = torch.where(em_info >= zero_label2, em_info - zero_label2, zero_label2 - 1 - em_info)
-    em_info_high = abs_ // stride
-    em_info_low = abs_ - stride * em_info_high
-
-    labels = labels1.reshape(-1, sub_group_size)
-    labels = labels * (1 - (outlier_mask1 != 0).to(torch.int))
-    rank_to_val = (torch.where(sign > 0, em_info_high + 8, 7 - em_info_high)).gather(            # [B*H*W , sub_group_size]
-        dim=1,
-        index=(outlier_mask1.to(torch.int64) - 1).clamp(min=0)   # mask==0 → -1 → clamp→0 
-    )
-    labels.scatter_add_( 
-        dim=1,
-        index=torch.arange(sub_group_size, 
-                           device=outlier_mask1.device).expand_as(outlier_mask1), 
-        src=rank_to_val * (outlier_mask1 > 0).to(rank_to_val.dtype) 
-    )
-    # print(labels)
-
-    tmp = (labels - 7.5).reshape(-1, sub_group_size)
-    outlier_mask2 = torch.zeros_like(tmp, dtype=torch.int).to(tensor_value.device)
+        tensor_deq_o_group[idx*batch_size : (idx+1)*batch_size, :] = tensor_q_par
+    
+    tmp = tensor_deq.reshape(-1, sub_group_size)
+    outlier_mask = torch.zeros_like(tmp, dtype=torch.float16).to(tensor_value.device)
 
     _, indices = torch.topk(tmp.abs(), topk)
-    k_rank = torch.arange(1  , topk+1 ,
-                      dtype=torch.int  ,
-                      device=tensor_value.device).expand_as(indices)
-    outlier_mask2.scatter_(dim=1  , index=indices , src=k_rank)
-    # print(outlier_mask2)
+    outlier_mask.scatter_(1, indices, 1)
+    outlier_group_mask = outlier_mask.reshape(-1, q_group_size)
 
-    if fix:
-        the_same = (outlier_mask1 == outlier_mask2).reshape(-1, sub_group_size).to(torch.float).amin(-1, keepdim=True)
-        outlier_mask = (outlier_mask1 * the_same).reshape(-1, q_group_size)
-        return (outlier_mask * tensor_deq2 + (1 - outlier_mask) * tensor_deq).reshape(org_shape).to(tensor_value.dtype), None
-    else:
-        outlier_mask = outlier_mask2
-    labels = labels1.reshape(-1, sub_group_size)
-    sign = torch.where(labels >= 8, 1, 0)
-    abs_ = torch.where(labels >= 8, labels - 8, 7 - labels) * stride
-    rank_to_val = em_info_low.gather(            # [B*H*W , sub_group_size]
-        dim=1,
-        index=(outlier_mask.to(torch.int64) - 1).clamp(min=0)   # mask==0 → -1 → clamp→0 
-    )
-    abs_.scatter_add_( 
-        dim=1,
-        index=torch.arange(sub_group_size, 
-                           device=outlier_mask.device).expand_as(outlier_mask), 
-        src=rank_to_val * (outlier_mask > 0).to(rank_to_val.dtype) 
-    )
-    labels = torch.where(sign > 0, zero_label2 + abs_, zero_label2 - 1 - abs_)
-    labels = labels.reshape(tensor_value.shape).to(torch.int)
-    for idx in range(batch_num):
-        tensor_q_par = sub_group_grid[labels] * scales[idx*batch_size : (idx+1)*batch_size, :] - zeros
-        tensor_deq[idx*batch_size : (idx+1)*batch_size, :] = tensor_q_par
+    tensor_deq = tensor_deq * (1-outlier_group_mask) + tensor_deq_o_group * outlier_group_mask
 
     quant_mse = (tensor_deq-tensor_value).abs().pow(2).to(torch.float32)
     quant_mse_sum = torch.mean(quant_mse, dim=1, keepdim=True)
@@ -828,7 +773,10 @@ def sub_group_em_real(tensor_value, quant_grid, q_group_size=-1, sub_group_size=
 
     tensor_deq = tensor_deq.reshape(org_shape)
 
-    return tensor_deq, quant_mse_sum
+    if get_labels:
+        return tensor_deq, quant_mse_sum, labels, quant_grid * scales
+    else:
+        return tensor_deq, quant_mse_sum
 
 @torch.no_grad()
 def sub_group_exscale_exp_direct(tensor_value, quant_grid, mode="int", zero_point=True, q_group_size=-1, sub_group_size=1, sub_group_mode='max', alpha=1.0, pos_value=None, get_labels=False, is_input=False, keep_outlier=False, extra_exp_bits=1, print_stats=False):
@@ -1292,7 +1240,6 @@ class MXFP_Linear(nn.Module):
         self.em_bit = ant_config.get("em_bit")
         self.es_bit = ant_config.get("es_bit")
         self.ee_bit = ant_config.get("ee_bit")
-        self.fix = ant_config.get("fix")
 
         assert self.in_features % self.group_size == 0
 
@@ -1363,7 +1310,7 @@ class MXFP_Linear(nn.Module):
             'sub_group_adaptive': lambda: mxfp_sub_group_adaptive(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, sub_group_mode=sub_group_mode, print_stats=self.print_stats),
             'sub_group_heuristic': lambda: mxfp_sub_group_heuristic(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, sub_group_mode=sub_group_mode, print_stats=self.print_stats),
             'sub_group_em': lambda: sub_group_em(data, quant_grid=quant_grid, q_group_size=self.group_size, sub_group_size=sub_group_size, topk=self.topk, em_bit=self.em_bit),
-            'sub_group_em_real': lambda: sub_group_em_real(data, quant_grid=quant_grid, q_group_size=self.group_size, sub_group_size=sub_group_size, topk=self.topk, em_bit=self.em_bit, fix=self.fix),
+            'sub_group_em_real': lambda: sub_group_em_real(data, quant_grid=quant_grid, q_group_size=self.group_size, sub_group_size=sub_group_size, topk=self.topk, em_bit=self.em_bit),
             'sub_group_em_search': lambda: sub_group_em_search(data, quant_grid=quant_grid, q_group_size=self.group_size, sub_group_size=sub_group_size, topk=self.topk, em_bit=self.em_bit),
             'sub_group_es': lambda: mxfp_sub_group_exscale(data, quant_grid=quant_grid, q_group_size=self.group_size, sub_group_size=sub_group_size, es_bit=self.es_bit),
             'sub_group_es_direct': lambda: mxfp_sub_group_exscale_direct(data, quant_grid=quant_grid, q_group_size=self.group_size, sub_group_size=sub_group_size, es_bit=self.es_bit),

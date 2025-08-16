@@ -13,7 +13,6 @@ TOPK=${10:-"1"}
 EM_BIT=${11:-"2"}
 ES_BIT=${12:-"2"}
 EE_BIT=${13:-"2"}
-FIX=${14:-"1"}
 
 MODEL=/cephfs/shared/model/falcon-${MODEL_SIZE}b
 # MODEL=/localssd/wmhu/model/falcon-${MODEL_SIZE}b
@@ -55,4 +54,4 @@ python -m mxq.entry --model_path $MODEL \
     --es_bit $ES_BIT \
    --ee_bit $EE_BIT \
     --fix $FIX \
-    | tee $OUTPUT_DIR/${OUTPUT_NAME}_${TASKS}_${QUANT_BIT_WIDTH}_${SHOTS}shots_${QUANT_MODE}_${ANT_MODE}_g${GROUP_SIZE}_${MXFP_MODE}_${TOPK}_${EM_BIT}_${ES_BIT}_${EE_BIT}_${FIX}_$(date +%m%d%H%M).log 2>&1
+    | tee $OUTPUT_DIR/${OUTPUT_NAME}_${TASKS}_${QUANT_BIT_WIDTH}_${SHOTS}shots_${QUANT_MODE}_${ANT_MODE}_g${GROUP_SIZE}_${MXFP_MODE}_${TOPK}_${EM_BIT}_${ES_BIT}_${EE_BIT}_$(date +%m%d%H%M).log 2>&1

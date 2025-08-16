@@ -1,0 +1,31 @@
+ 
+****************************************
+Report : area
+Design : fxp_to_fp32
+Version: O-2018.06-SP1
+Date   : Sat Aug 16 15:06:33 2025
+****************************************
+
+Information: Updating design information... (UID-85)
+Library(s) Used:
+
+    tcbn28hpcplusbwp7t40p140tt0p8v25c (File: /home/design/Desktop/tcbn28hpcplusbwp7t40p140tt0p8v25c.db)
+
+Number of ports:                          869
+Number of nets:                          1718
+Number of cells:                         1042
+Number of combinational cells:           1033
+Number of sequential cells:                 0
+Number of macros/black boxes:               0
+Number of buf/inv:                        174
+Number of references:                      49
+
+Combinational area:                540.077998
+Buf/Inv area:                       34.985999
+Noncombinational area:               0.000000
+Macro/Black Box area:                0.000000
+Net Interconnect area:      undefined  (Wire load has zero net area)
+
+Total cell area:                   540.077998
+Total area:                 undefined
+1

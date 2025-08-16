@@ -1,0 +1,31 @@
+ 
+****************************************
+Report : area
+Design : top1_detection_unit
+Version: O-2018.06-SP1
+Date   : Sat Aug 16 15:12:41 2025
+****************************************
+
+Information: Updating design information... (UID-85)
+Library(s) Used:
+
+    tcbn28hpcplusbwp7t40p140tt0p8v25c (File: /home/design/Desktop/tcbn28hpcplusbwp7t40p140tt0p8v25c.db)
+
+Number of ports:                          246
+Number of nets:                           417
+Number of cells:                          193
+Number of combinational cells:            178
+Number of sequential cells:                 0
+Number of macros/black boxes:               0
+Number of buf/inv:                         50
+Number of references:                      17
+
+Combinational area:                 82.907999
+Buf/Inv area:                        9.800000
+Noncombinational area:               0.000000
+Macro/Black Box area:                0.000000
+Net Interconnect area:      undefined  (Wire load has zero net area)
+
+Total cell area:                    82.907999
+Total area:                 undefined
+1

@@ -1,0 +1,92 @@
+Loading db file '/home/design/Desktop/tcbn28hpcplusbwp7t40p140tt0p8v25c.db'
+Information: Propagating switching activity (low effort zero delay simulation). (PWR-6)
+Warning: There is no defined clock in the design. (PWR-80)
+Warning: Design has unannotated primary inputs. (PWR-414)
+Warning: Design has unannotated sequential cell outputs. (PWR-415)
+Warning: Design has unannotated black box outputs. (PWR-428)
+ 
+****************************************
+Report : power
+        -analysis_effort low
+Design : pe_tile_mxfp_fp32
+Version: O-2018.06-SP1
+Date   : Sat Aug 16 15:05:40 2025
+****************************************
+
+
+Library(s) Used:
+
+    tcbn28hpcplusbwp7t40p140tt0p8v25c (File: /home/design/Desktop/tcbn28hpcplusbwp7t40p140tt0p8v25c.db)
+
+
+Operating Conditions: tt0p8v25c   Library: tcbn28hpcplusbwp7t40p140tt0p8v25c
+Wire Load Model Mode: segmented
+
+Design        Wire Load Model            Library
+------------------------------------------------
+pe_tile_mxfp_fp32      ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+fp32_add               ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+fp32_align             ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+fp32_normalize         ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_tile_mxfp_fp32_DW01_add_0
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_tile_mxfp_fp32_DW01_add_1
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_tile_mxfp_fp32_DW01_add_2
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_tile_mxfp_fp32_DW01_add_3
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_tile_mxfp_fp32_DW01_add_4
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_tile_mxfp_fp32_DW01_add_5
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_tile_mxfp_fp32_DW01_add_6
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_tile_mxfp_fp32_DW01_add_7
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_tile_mxfp_fp32_DW01_add_8
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_tile_mxfp_fp32_DW01_add_9
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+fp32_add_DW01_add_0    ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+fp32_normalize_DW01_sub_0
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+fp32_normalize_DW01_ash_0
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+fp32_normalize_DW01_inc_0
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+fp32_align_DW_rash_0   ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+fp32_align_DW01_sub_0  ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+
+
+Global Operating Voltage = 0.8  
+Power-specific unit information :
+    Voltage Units = 1V
+    Capacitance Units = 1.000000pf
+    Time Units = 1ns
+    Dynamic Power Units = 1mW    (derived from V,C,T units)
+    Leakage Power Units = 1nW
+
+
+  Cell Internal Power  = 181.0627 uW   (86%)
+  Net Switching Power  =  29.0976 uW   (14%)
+                         ---------
+Total Dynamic Power    = 210.1603 uW  (100%)
+
+Cell Leakage Power     = 893.2134 nW
+
+Information: report_power power group summary does not include estimated clock tree power. (PWR-789)
+
+                 Internal         Switching           Leakage            Total
+Power Group      Power            Power               Power              Power   (   %    )  Attrs
+--------------------------------------------------------------------------------------------------
+io_pad             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+memory             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+black_box          0.0000            0.0000            0.0000            0.0000  (   0.00%)
+clock_network      0.0000            0.0000            0.0000            0.0000  (   0.00%)
+register           0.0000            0.0000            0.0000            0.0000  (   0.00%)
+sequential         0.1463        3.4023e-03          435.6257            0.1501  (  71.13%)
+combinational  3.4787e-02        2.5695e-02          457.5643        6.0940e-02  (  28.87%)
+--------------------------------------------------------------------------------------------------
+Total              0.1811 mW     2.9098e-02 mW       893.1900 nW         0.2111 mW
+1

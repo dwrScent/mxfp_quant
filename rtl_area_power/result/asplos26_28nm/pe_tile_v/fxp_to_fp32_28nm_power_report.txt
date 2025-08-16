@@ -1,0 +1,69 @@
+Loading db file '/home/design/Desktop/tcbn28hpcplusbwp7t40p140tt0p8v25c.db'
+Information: Propagating switching activity (low effort zero delay simulation). (PWR-6)
+Warning: There is no defined clock in the design. (PWR-80)
+Warning: Design has unannotated primary inputs. (PWR-414)
+ 
+****************************************
+Report : power
+        -analysis_effort low
+Design : fxp_to_fp32
+Version: O-2018.06-SP1
+Date   : Sat Aug 16 15:06:36 2025
+****************************************
+
+
+Library(s) Used:
+
+    tcbn28hpcplusbwp7t40p140tt0p8v25c (File: /home/design/Desktop/tcbn28hpcplusbwp7t40p140tt0p8v25c.db)
+
+
+Operating Conditions: tt0p8v25c   Library: tcbn28hpcplusbwp7t40p140tt0p8v25c
+Wire Load Model Mode: segmented
+
+Design        Wire Load Model            Library
+------------------------------------------------
+fxp_to_fp32            ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+fxp_to_fp32_DW01_add_0 ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+fxp_to_fp32_DW_rash_0  ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+fxp_to_fp32_DW_rash_1  ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+fxp_to_fp32_DW01_sub_0 ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+fxp_to_fp32_DW01_ash_0 ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+fxp_to_fp32_DW_rash_2  ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+fxp_to_fp32_DW01_addsub_0
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+fxp_to_fp32_DW01_addsub_1
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+fxp_to_fp32_DW01_inc_0 ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+
+
+Global Operating Voltage = 0.8  
+Power-specific unit information :
+    Voltage Units = 1V
+    Capacitance Units = 1.000000pf
+    Time Units = 1ns
+    Dynamic Power Units = 1mW    (derived from V,C,T units)
+    Leakage Power Units = 1nW
+
+
+  Cell Internal Power  =  48.5483 uW   (59%)
+  Net Switching Power  =  33.1597 uW   (41%)
+                         ---------
+Total Dynamic Power    =  81.7080 uW  (100%)
+
+Cell Leakage Power     = 286.6603 nW
+
+Information: report_power power group summary does not include estimated clock tree power. (PWR-789)
+
+                 Internal         Switching           Leakage            Total
+Power Group      Power            Power               Power              Power   (   %    )  Attrs
+--------------------------------------------------------------------------------------------------
+io_pad             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+memory             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+black_box          0.0000            0.0000            0.0000            0.0000  (   0.00%)
+clock_network      0.0000            0.0000            0.0000            0.0000  (   0.00%)
+register           0.0000            0.0000            0.0000            0.0000  (   0.00%)
+sequential         0.0000            0.0000            0.0000            0.0000  (   0.00%)
+combinational  4.8548e-02        3.3160e-02          286.6537        8.1995e-02  ( 100.00%)
+--------------------------------------------------------------------------------------------------
+Total          4.8548e-02 mW     3.3160e-02 mW       286.6537 nW     8.1995e-02 mW
+1

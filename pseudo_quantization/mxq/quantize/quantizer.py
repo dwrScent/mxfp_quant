@@ -633,6 +633,11 @@ def make_quant_linear(
                 from .qmodule_smxfp import SMXFP_Linear
                 q_linear = SMXFP_Linear.from_linear(
                     module, w_bit, a_bit, q_config['q_group_size'], i, name, init_only=False, ant_config=ant_config, quant_mode="fp4_e2m1")
+            elif quant_mode_config['quant_method'] == 'mcq':
+                from .qmodule_mcq import MCQ_Linear
+                q_linear = MCQ_Linear.from_linear(
+                    module, w_bit, 32, i, name, init_only=False, ant_config=ant_config, quant_mode="int4")
+
             else:
                 pass
             q_linear.to(next(layer.parameters()).device)

@@ -313,7 +313,7 @@ def build_model_and_enc(model_path, need_og=False):
                 quant_mode = quant_mode_config['quant_method']
                 print_time('Start pseudo quantize')
 
-                if quant_mode in ['ant', 'olive', 'mxfp', 'nvfp', 'smxfp']:
+                if quant_mode in ['ant', 'olive', 'mxfp', 'nvfp', 'smxfp', 'mcq']:
                     make_quant_linear(
                         model, args.w_bit, args.a_bit, q_config, ant_config=ant_config, quant_mode_config=quant_mode_config
                     )

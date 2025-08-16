@@ -420,6 +420,7 @@ def get_quant_smxfp_inner(tensor_value, quant_grid, q_group_size=-1, get_labels=
     '''
     return : dequantized weight, mse?
     '''
+    tensor_value = tensor_value.clamp(min=torch.finfo(torch.float16).min, max=torch.finfo(torch.float16).max)
     assert torch.isinf(tensor_value).sum() == 0
     assert torch.isnan(tensor_value).sum() == 0
     org_shape = tensor_value.shape # Original shape, e.g., (128, 512)
@@ -527,6 +528,7 @@ def get_quant_smxfp_inner(tensor_value, quant_grid, q_group_size=-1, get_labels=
     # quant_mse_sum shape: (num_q_groups, 1)
     quant_mse_sum = torch.mean(quant_mse, dim=1, keepdim=True)
     
+    tensor_deq = tensor_deq.clamp(min=torch.finfo(torch.float16).min, max=torch.finfo(torch.float16).max)
     assert torch.isinf(tensor_deq).sum() == 0
     assert torch.isnan(tensor_deq).sum() == 0
     assert torch.isnan(scales).sum() == 0

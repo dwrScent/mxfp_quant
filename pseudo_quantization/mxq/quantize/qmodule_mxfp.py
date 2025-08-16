@@ -702,7 +702,7 @@ def sub_group_em_search(tensor_value, quant_grid, q_group_size=-1, sub_group_siz
     assert torch.isnan(tensor_deq).sum()  == 0 
  
     return tensor_deq, nn.functional.mse_loss(tensor_deq, tensor_value.reshape(org_shape))
-
+@torch.no_grad()
 def sub_group_em_real(tensor_value, quant_grid, q_group_size=-1, sub_group_size=1, topk=1, em_bit=2, fix=True):
     assert torch.isnan(tensor_value).sum() == 0
     org_shape = tensor_value.shape
@@ -737,6 +737,7 @@ def sub_group_em_real(tensor_value, quant_grid, q_group_size=-1, sub_group_size=
         tensor_q_par = quant_grid[labels1] * scales[idx*batch_size : (idx+1)*batch_size, :] - zeros
         tensor_deq[idx*batch_size : (idx+1)*batch_size, :] = tensor_q_par
     
+    # print(labels1)
     tmp = tensor_deq.reshape(-1, sub_group_size)
     outlier_mask1 = torch.zeros_like(tmp, dtype=torch.int).to(tensor_value.device)
 
@@ -745,11 +746,16 @@ def sub_group_em_real(tensor_value, quant_grid, q_group_size=-1, sub_group_size=
                       dtype=torch.int  ,
                       device=tensor_value.device).expand_as(indices)
     outlier_mask1.scatter_(dim=1  , index=indices , src=k_rank)
+    # print(outlier_mask1)
 
+    tensor_deq2 = torch.zeros_like(tensor_value)
     for idx in range(batch_num):
         tensor_par = tensor_value[idx*batch_size : (idx+1)*batch_size, :]
         labels2 = (((tensor_par + zeros) / scales[idx*batch_size : (idx+1)*batch_size, :]).unsqueeze(-1) - sub_group_grid).abs().argmin(dim=-1)
+        tensor_q_par = sub_group_grid[labels2] * scales[idx*batch_size : (idx+1)*batch_size, :] - zeros
+        tensor_deq2[idx*batch_size : (idx+1)*batch_size, :] = tensor_q_par
 
+    # print(labels2)
     labels2 = labels2.reshape(-1, sub_group_size)
     inf = torch.tensor(float('inf'),  device=outlier_mask1.device) 
     mask_for_sort = torch.where(outlier_mask1  == 0, inf, outlier_mask1.float()) 
@@ -758,12 +764,15 @@ def sub_group_em_real(tensor_value, quant_grid, q_group_size=-1, sub_group_size=
                      dim=-1,
                      index=sorted_idx)
     stride = int(2**em_bit)
-    em_info_high = torch.where(em_info >= int(2 **(3+em_bit)), em_info // stride, (em_info - (stride - 1)) // stride)
-    em_info_low = em_info - torch.where(em_info_high >= 8, stride * em_info_high, stride * em_info_high + stride - 1)
-    
+    zero_label2 = int(2 **(3+em_bit))
+    sign = torch.where(em_info >= zero_label2, 1, 0)
+    abs_ = torch.where(em_info >= zero_label2, em_info - zero_label2, zero_label2 - 1 - em_info)
+    em_info_high = abs_ // stride
+    em_info_low = abs_ - stride * em_info_high
+
     labels = labels1.reshape(-1, sub_group_size)
     labels = labels * (1 - (outlier_mask1 != 0).to(torch.int))
-    rank_to_val = em_info_high.gather(            # [B*H*W , sub_group_size]
+    rank_to_val = (torch.where(sign > 0, em_info_high + 8, 7 - em_info_high)).gather(            # [B*H*W , sub_group_size]
         dim=1,
         index=(outlier_mask1.to(torch.int64) - 1).clamp(min=0)   # mask==0 → -1 → clamp→0 
     )
@@ -773,13 +782,9 @@ def sub_group_em_real(tensor_value, quant_grid, q_group_size=-1, sub_group_size=
                            device=outlier_mask1.device).expand_as(outlier_mask1), 
         src=rank_to_val * (outlier_mask1 > 0).to(rank_to_val.dtype) 
     )
+    # print(labels)
 
-    labels = labels.reshape(tensor_value.shape).to(torch.int)
-    for idx in range(batch_num):
-        tensor_q_par = quant_grid[labels] * scales[idx*batch_size : (idx+1)*batch_size, :] - zeros
-        tensor_deq[idx*batch_size : (idx+1)*batch_size, :] = tensor_q_par
-    
-    tmp = tensor_deq.reshape(-1, sub_group_size)
+    tmp = (labels - 7.5).reshape(-1, sub_group_size)
     outlier_mask2 = torch.zeros_like(tmp, dtype=torch.int).to(tensor_value.device)
 
     _, indices = torch.topk(tmp.abs(), topk)
@@ -787,39 +792,28 @@ def sub_group_em_real(tensor_value, quant_grid, q_group_size=-1, sub_group_size=
                       dtype=torch.int  ,
                       device=tensor_value.device).expand_as(indices)
     outlier_mask2.scatter_(dim=1  , index=indices , src=k_rank)
+    # print(outlier_mask2)
 
     if fix:
         the_same = (outlier_mask1 == outlier_mask2).reshape(-1, sub_group_size).to(torch.float).amin(-1, keepdim=True)
-        outlier_mask = outlier_mask1 * the_same
+        outlier_mask = (outlier_mask1 * the_same).reshape(-1, q_group_size)
+        return (outlier_mask * tensor_deq2 + (1 - outlier_mask) * tensor_deq).reshape(org_shape).to(tensor_value.dtype), None
     else:
-        outlier_mask = outlier_mask1
+        outlier_mask = outlier_mask2
     labels = labels1.reshape(-1, sub_group_size)
-    labels = (labels * (1 - (outlier_mask != 0).to(torch.float))).to(em_info_high.dtype)
-    rank_to_val = em_info_high.gather(            # [B*H*W , sub_group_size]
-        dim=1,
-        index=(outlier_mask.to(torch.int64) - 1).clamp(min=0)   # mask==0 → -1 → clamp→0 
-    )
-    labels.scatter_add_( 
-        dim=1,
-        index=torch.arange(sub_group_size, 
-                           device=outlier_mask.device).expand_as(outlier_mask), 
-        src=rank_to_val * (outlier_mask > 0).to(rank_to_val.dtype) 
-    )
-    
-    labels = labels.reshape(-1, sub_group_size)
-    labels = torch.where(labels >= 8, stride * labels, stride * labels + stride - 1)
+    sign = torch.where(labels >= 8, 1, 0)
+    abs_ = torch.where(labels >= 8, labels - 8, 7 - labels) * stride
     rank_to_val = em_info_low.gather(            # [B*H*W , sub_group_size]
         dim=1,
         index=(outlier_mask.to(torch.int64) - 1).clamp(min=0)   # mask==0 → -1 → clamp→0 
     )
-    labels.scatter_add_( 
+    abs_.scatter_add_( 
         dim=1,
         index=torch.arange(sub_group_size, 
                            device=outlier_mask.device).expand_as(outlier_mask), 
         src=rank_to_val * (outlier_mask > 0).to(rank_to_val.dtype) 
     )
-    err = (labels[outlier_mask != 0] != labels2[outlier_mask != 0]).to(torch.float).sum()
-    assert err == 0, err
+    labels = torch.where(sign > 0, zero_label2 + abs_, zero_label2 - 1 - abs_)
     labels = labels.reshape(tensor_value.shape).to(torch.int)
     for idx in range(batch_num):
         tensor_q_par = sub_group_grid[labels] * scales[idx*batch_size : (idx+1)*batch_size, :] - zeros

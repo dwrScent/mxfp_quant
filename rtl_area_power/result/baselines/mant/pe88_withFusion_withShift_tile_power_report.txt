@@ -1,0 +1,135 @@
+Loading db file '/home/design/Desktop/tcbn28hpcplusbwp7t40p140tt0p8v25c.db'
+Information: Propagating switching activity (low effort zero delay simulation). (PWR-6)
+Warning: There is no defined clock in the design. (PWR-80)
+Warning: Design has unannotated primary inputs. (PWR-414)
+Warning: Design has unannotated sequential cell outputs. (PWR-415)
+ 
+****************************************
+Report : power
+        -analysis_effort low
+Design : tile_1x4_mant
+Version: O-2018.06-SP1
+Date   : Mon Aug 18 01:51:46 2025
+****************************************
+
+
+Library(s) Used:
+
+    tcbn28hpcplusbwp7t40p140tt0p8v25c (File: /home/design/Desktop/tcbn28hpcplusbwp7t40p140tt0p8v25c.db)
+
+
+Operating Conditions: tt0p8v25c   Library: tcbn28hpcplusbwp7t40p140tt0p8v25c
+Wire Load Model Mode: segmented
+
+Design        Wire Load Model            Library
+------------------------------------------------
+tile_1x4_mant          ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_0          ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_1          ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_2          ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_3          ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_1_DW01_add_0
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_1_DW01_add_1
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_1_DW01_add_2
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_1_DW02_mult_0
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_1_DW01_add_3
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_1_DW02_mult_1
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_1_DW01_add_5
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_1_DW01_sub_1
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_1_DW01_ash_2
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_2_DW01_add_0
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_2_DW01_add_1
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_2_DW01_add_2
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_2_DW02_mult_0
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_2_DW01_add_3
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_2_DW02_mult_1
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_2_DW01_add_5
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_2_DW01_sub_1
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_2_DW01_ash_2
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_3_DW01_add_0
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_3_DW01_add_1
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_3_DW01_add_2
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_3_DW02_mult_0
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_3_DW01_add_3
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_3_DW02_mult_1
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_3_DW01_add_5
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_3_DW01_sub_1
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_3_DW01_ash_2
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_0_DW01_add_0
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_0_DW01_add_1
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_0_DW01_add_2
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_0_DW02_mult_0
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_0_DW01_add_3
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_0_DW02_mult_1
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_0_DW01_add_5
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_0_DW01_sub_1
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mant_32b_0_DW01_ash_2
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+
+
+Global Operating Voltage = 0.8  
+Power-specific unit information :
+    Voltage Units = 1V
+    Capacitance Units = 1.000000pf
+    Time Units = 1ns
+    Dynamic Power Units = 1mW    (derived from V,C,T units)
+    Leakage Power Units = 1nW
+
+
+  Cell Internal Power  = 202.3435 uW   (73%)
+  Net Switching Power  =  76.5493 uW   (27%)
+                         ---------
+Total Dynamic Power    = 278.8928 uW  (100%)
+
+Cell Leakage Power     =   1.6086 uW
+
+Information: report_power power group summary does not include estimated clock tree power. (PWR-789)
+
+                 Internal         Switching           Leakage            Total
+Power Group      Power            Power               Power              Power   (   %    )  Attrs
+--------------------------------------------------------------------------------------------------
+io_pad             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+memory             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+black_box          0.0000            0.0000            0.0000            0.0000  (   0.00%)
+clock_network      0.0000            0.0000            0.0000            0.0000  (   0.00%)
+register           0.0000            0.0000            0.0000            0.0000  (   0.00%)
+sequential     6.1106e-02        2.0831e-03          293.8259        6.3483e-02  (  22.63%)
+combinational      0.1412        7.4466e-02        1.3147e+03            0.2170  (  77.37%)
+--------------------------------------------------------------------------------------------------
+Total              0.2023 mW     7.6549e-02 mW     1.6086e+03 nW         0.2805 mW
+1

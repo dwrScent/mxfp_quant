@@ -21,6 +21,8 @@ import bitfusion.src.benchmarks.olive_bench as olive
 import bitfusion.src.benchmarks.bitfusion_bench as bf
 import bitfusion.src.benchmarks.giant_bench as giant
 import bitfusion.src.benchmarks.awq_bench as awq
+import bitfusion.src.benchmarks.microscopiq_bench as microscopiq
+import bitfusion.src.benchmarks.m2xfp_bench as m2xfp
 
 import os
 
@@ -345,6 +347,58 @@ def get_bench_nn_tender(bench_name, batch_size):
         return create_net(bench_name, tender.llama2_13b, batch_size)
     elif bench_name == 'bert_base':
         return create_net(bench_name, tender.bert_base, batch_size)
+
+def get_bench_nn_m2xfp(bench_name, batch_size):
+    if bench_name == 'gpt2_xl':
+        return create_net(bench_name, m2xfp.gpt2_xl, batch_size)
+    elif bench_name == 'bloom3b':
+        return create_net(bench_name, m2xfp.bloom3b, batch_size)
+    elif bench_name == 'bloom7b1':
+        return create_net(bench_name, m2xfp.bloom7b1, batch_size)
+    elif bench_name == 'opt6b7':
+        return create_net(bench_name, m2xfp.opt6b7, batch_size)
+    elif bench_name == 'opt_13b':
+        return create_net(bench_name, m2xfp.opt_13b, batch_size)
+    elif bench_name == 'llama_7b':
+        return create_net(bench_name, m2xfp.llama_7b, batch_size)
+    elif bench_name == 'llama_13b':
+        return create_net(bench_name, m2xfp.llama_13b, batch_size)
+    elif bench_name == 'llama_30b':
+        return create_net(bench_name, m2xfp.llama_30b, batch_size)
+    elif bench_name == 'llama_65b':
+        return create_net(bench_name, m2xfp.llama_65b, batch_size)
+    elif bench_name == 'llama2_7b':
+        return create_net(bench_name, m2xfp.llama2_7b, batch_size)
+    elif bench_name == 'llama2_13b':
+        return create_net(bench_name, m2xfp.llama2_13b, batch_size)
+    elif bench_name == 'bert_base':
+        return create_net(bench_name, m2xfp.bert_base, batch_size)
+
+def get_bench_nn_microscopiq(bench_name, batch_size):
+    if bench_name == 'gpt2_xl':
+        return create_net(bench_name, microscopiq.gpt2_xl, batch_size)
+    elif bench_name == 'bloom3b':
+        return create_net(bench_name, microscopiq.bloom3b, batch_size)
+    elif bench_name == 'bloom7b1':
+        return create_net(bench_name, microscopiq.bloom7b1, batch_size)
+    elif bench_name == 'opt6b7':
+        return create_net(bench_name, microscopiq.opt6b7, batch_size)
+    elif bench_name == 'opt_13b':
+        return create_net(bench_name, microscopiq.opt_13b, batch_size)
+    elif bench_name == 'llama_7b':
+        return create_net(bench_name, microscopiq.llama_7b, batch_size)
+    elif bench_name == 'llama_13b':
+        return create_net(bench_name, microscopiq.llama_13b, batch_size)
+    elif bench_name == 'llama_30b':
+        return create_net(bench_name, microscopiq.llama_30b, batch_size)
+    elif bench_name == 'llama_65b':
+        return create_net(bench_name, microscopiq.llama_65b, batch_size)
+    elif bench_name == 'llama2_7b':
+        return create_net(bench_name, microscopiq.llama2_7b, batch_size)
+    elif bench_name == 'llama2_13b':
+        return create_net(bench_name, microscopiq.llama2_13b, batch_size)
+    elif bench_name == 'bert_base':
+        return create_net(bench_name, microscopiq.bert_base, batch_size)
     
 def get_bench_nn_giant(bench_name, batch_size):
     if bench_name == 'gpt2_xl':
@@ -371,6 +425,7 @@ def get_bench_nn_giant(bench_name, batch_size):
         return create_net(bench_name, giant.llama2_13b, batch_size, asymmetry=True, mode='giant')
     elif bench_name == 'bert_base':
         return create_net(bench_name, giant.bert_base, batch_size, asymmetry=True, mode='giant')
+
 
 def get_bench_nn_awq(bench_name, batch_size):
     if bench_name == 'gpt2_xl':

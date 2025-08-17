@@ -1,0 +1,151 @@
+Loading db file '/home/design/Desktop/tcbn28hpcplusbwp7t40p140tt0p8v25c.db'
+Information: Propagating switching activity (low effort zero delay simulation). (PWR-6)
+Warning: There is no defined clock in the design. (PWR-80)
+Warning: Design has unannotated primary inputs. (PWR-414)
+Warning: Design has unannotated sequential cell outputs. (PWR-415)
+ 
+****************************************
+Report : power
+        -analysis_effort low
+Design : tile_1x4_microscopiq
+Version: O-2018.06-SP1
+Date   : Mon Aug 18 01:53:56 2025
+****************************************
+
+
+Library(s) Used:
+
+    tcbn28hpcplusbwp7t40p140tt0p8v25c (File: /home/design/Desktop/tcbn28hpcplusbwp7t40p140tt0p8v25c.db)
+
+
+Operating Conditions: tt0p8v25c   Library: tcbn28hpcplusbwp7t40p140tt0p8v25c
+Wire Load Model Mode: segmented
+
+Design        Wire Load Model            Library
+------------------------------------------------
+tile_1x4_microscopiq   ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_0   ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_1   ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_2   ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_3   ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_1_DW01_add_0
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_1_DW01_add_1
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_1_DW01_add_2
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_1_DW01_add_3
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_1_DW02_mult_0
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_1_DW01_add_5
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_1_DW02_mult_1
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_1_DW02_mult_2
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_1_DW01_add_7
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_1_DW02_mult_3
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_1_DW01_add_8
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_2_DW01_add_0
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_2_DW01_add_1
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_2_DW01_add_2
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_2_DW01_add_3
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_2_DW02_mult_0
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_2_DW01_add_5
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_2_DW02_mult_1
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_2_DW02_mult_2
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_2_DW01_add_7
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_2_DW02_mult_3
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_2_DW01_add_8
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_3_DW01_add_0
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_3_DW01_add_1
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_3_DW01_add_2
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_3_DW01_add_3
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_3_DW02_mult_0
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_3_DW01_add_5
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_3_DW02_mult_1
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_3_DW02_mult_2
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_3_DW01_add_7
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_3_DW02_mult_3
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_3_DW01_add_8
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_0_DW01_add_0
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_0_DW01_add_1
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_0_DW01_add_2
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_0_DW01_add_3
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_0_DW02_mult_0
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_0_DW01_add_5
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_0_DW02_mult_1
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_0_DW02_mult_2
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_0_DW01_add_7
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_0_DW02_mult_3
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_32b_0_DW01_add_8
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+
+
+Global Operating Voltage = 0.8  
+Power-specific unit information :
+    Voltage Units = 1V
+    Capacitance Units = 1.000000pf
+    Time Units = 1ns
+    Dynamic Power Units = 1mW    (derived from V,C,T units)
+    Leakage Power Units = 1nW
+
+
+  Cell Internal Power  = 194.4193 uW   (68%)
+  Net Switching Power  =  92.1435 uW   (32%)
+                         ---------
+Total Dynamic Power    = 286.5628 uW  (100%)
+
+Cell Leakage Power     = 913.7137 nW
+
+Information: report_power power group summary does not include estimated clock tree power. (PWR-789)
+
+                 Internal         Switching           Leakage            Total
+Power Group      Power            Power               Power              Power   (   %    )  Attrs
+--------------------------------------------------------------------------------------------------
+io_pad             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+memory             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+black_box          0.0000            0.0000            0.0000            0.0000  (   0.00%)
+clock_network      0.0000            0.0000            0.0000            0.0000  (   0.00%)
+register           0.0000            0.0000            0.0000            0.0000  (   0.00%)
+sequential     3.7499e-02        3.3742e-04          176.6481        3.8013e-02  (  13.22%)
+combinational      0.1569        9.1806e-02          737.0095            0.2495  (  86.78%)
+--------------------------------------------------------------------------------------------------
+Total              0.1944 mW     9.2144e-02 mW       913.6575 nW         0.2875 mW
+1

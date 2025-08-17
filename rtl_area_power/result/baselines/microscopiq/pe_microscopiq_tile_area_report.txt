@@ -1,0 +1,31 @@
+ 
+****************************************
+Report : area
+Design : tile_1x4_microscopiq
+Version: O-2018.06-SP1
+Date   : Mon Aug 18 01:53:51 2025
+****************************************
+
+Information: Updating design information... (UID-85)
+Library(s) Used:
+
+    tcbn28hpcplusbwp7t40p140tt0p8v25c (File: /home/design/Desktop/tcbn28hpcplusbwp7t40p140tt0p8v25c.db)
+
+Number of ports:                         2480
+Number of nets:                          5092
+Number of cells:                         2744
+Number of combinational cells:           2504
+Number of sequential cells:               192
+Number of macros/black boxes:               0
+Number of buf/inv:                        364
+Number of references:                       4
+
+Combinational area:               1499.791991
+Buf/Inv area:                       76.047998
+Noncombinational area:             319.872002
+Macro/Black Box area:                0.000000
+Net Interconnect area:      undefined  (Wire load has zero net area)
+
+Total cell area:                  1819.663992
+Total area:                 undefined
+1

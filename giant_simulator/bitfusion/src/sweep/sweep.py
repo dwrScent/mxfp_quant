@@ -115,6 +115,10 @@ class SimulatorSweep(object):
                                                     nn = benchmarks.get_bench_nn_tender(b, batch_size)
                                                 elif bench_type == 'awq':
                                                     nn = benchmarks.get_bench_nn_awq(b, batch_size)
+                                                elif bench_type == 'm2xfp':
+                                                    nn = benchmarks.get_bench_nn_m2xfp(b, batch_size)
+                                                elif bench_type == 'microscopiq':
+                                                    nn = benchmarks.get_bench_nn_microscopiq(b, batch_size)
 
                                                 if len(results) == 0:
                                                     self.logger.info('Simulating Benchmark: {}'.format(b))

@@ -1,0 +1,81 @@
+Loading db file '/home/design/Desktop/tcbn28hpcplusbwp7t40p140tt0p8v25c.db'
+Information: Propagating switching activity (low effort zero delay simulation). (PWR-6)
+Warning: There is no defined clock in the design. (PWR-80)
+Warning: Design has unannotated primary inputs. (PWR-414)
+Warning: Design has unannotated sequential cell outputs. (PWR-415)
+ 
+****************************************
+Report : power
+        -analysis_effort low
+Design : pe_mac_baseline
+Version: O-2018.06-SP1
+Date   : Sun Aug 17 23:42:31 2025
+****************************************
+
+
+Library(s) Used:
+
+    tcbn28hpcplusbwp7t40p140tt0p8v25c (File: /home/design/Desktop/tcbn28hpcplusbwp7t40p140tt0p8v25c.db)
+
+
+Operating Conditions: tt0p8v25c   Library: tcbn28hpcplusbwp7t40p140tt0p8v25c
+Wire Load Model Mode: segmented
+
+Design        Wire Load Model            Library
+------------------------------------------------
+pe_mac_baseline        ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mac_baseline_DW01_add_0
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mac_baseline_DW01_add_1
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mac_baseline_DW02_mult_0
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mac_baseline_DW02_mult_1
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mac_baseline_DW01_add_3
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mac_baseline_DW01_add_4
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mac_baseline_DW01_add_5
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mac_baseline_DW02_mult_2
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mac_baseline_DW01_add_6
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mac_baseline_DW02_mult_3
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mac_baseline_DW01_add_7
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+
+
+Global Operating Voltage = 0.8  
+Power-specific unit information :
+    Voltage Units = 1V
+    Capacitance Units = 1.000000pf
+    Time Units = 1ns
+    Dynamic Power Units = 1mW    (derived from V,C,T units)
+    Leakage Power Units = 1nW
+
+
+  Cell Internal Power  =  28.1113 uW   (70%)
+  Net Switching Power  =  12.1381 uW   (30%)
+                         ---------
+Total Dynamic Power    =  40.2495 uW  (100%)
+
+Cell Leakage Power     = 199.1602 nW
+
+Information: report_power power group summary does not include estimated clock tree power. (PWR-789)
+
+                 Internal         Switching           Leakage            Total
+Power Group      Power            Power               Power              Power   (   %    )  Attrs
+--------------------------------------------------------------------------------------------------
+io_pad             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+memory             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+black_box          0.0000            0.0000            0.0000            0.0000  (   0.00%)
+clock_network      0.0000            0.0000            0.0000            0.0000  (   0.00%)
+register           0.0000            0.0000            0.0000            0.0000  (   0.00%)
+sequential     6.0956e-03        1.2218e-04           29.4271        6.2472e-03  (  15.44%)
+combinational  2.2016e-02        1.2016e-02          169.7144        3.4201e-02  (  84.56%)
+--------------------------------------------------------------------------------------------------
+Total          2.8111e-02 mW     1.2138e-02 mW       199.1415 nW     4.0449e-02 mW
+1

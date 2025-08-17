@@ -1,0 +1,103 @@
+Loading db file '/home/design/Desktop/tcbn28hpcplusbwp7t40p140tt0p8v25c.db'
+Information: Propagating switching activity (low effort zero delay simulation). (PWR-6)
+Warning: There is no defined clock in the design. (PWR-80)
+Warning: Design has unannotated primary inputs. (PWR-414)
+Warning: Design has unannotated sequential cell outputs. (PWR-415)
+ 
+****************************************
+Report : power
+        -analysis_effort low
+Design : tile_1x4_ant
+Version: O-2018.06-SP1
+Date   : Mon Aug 18 01:47:17 2025
+****************************************
+
+
+Library(s) Used:
+
+    tcbn28hpcplusbwp7t40p140tt0p8v25c (File: /home/design/Desktop/tcbn28hpcplusbwp7t40p140tt0p8v25c.db)
+
+
+Operating Conditions: tt0p8v25c   Library: tcbn28hpcplusbwp7t40p140tt0p8v25c
+Wire Load Model Mode: segmented
+
+Design        Wire Load Model            Library
+------------------------------------------------
+tile_1x4_ant           ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mac_baseline_32b_0  ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mac_baseline_32b_1  ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mac_baseline_32b_2  ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mac_baseline_32b_3  ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mac_baseline_32b_1_DW01_add_0
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mac_baseline_32b_1_DW01_add_1
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mac_baseline_32b_1_DW02_mult_0
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mac_baseline_32b_1_DW02_mult_1
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mac_baseline_32b_1_DW01_add_3
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mac_baseline_32b_2_DW01_add_0
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mac_baseline_32b_2_DW01_add_1
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mac_baseline_32b_2_DW02_mult_0
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mac_baseline_32b_2_DW02_mult_1
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mac_baseline_32b_2_DW01_add_3
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mac_baseline_32b_3_DW01_add_0
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mac_baseline_32b_3_DW01_add_1
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mac_baseline_32b_3_DW02_mult_0
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mac_baseline_32b_3_DW02_mult_1
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mac_baseline_32b_3_DW01_add_3
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mac_baseline_32b_0_DW01_add_0
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mac_baseline_32b_0_DW01_add_1
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mac_baseline_32b_0_DW02_mult_0
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mac_baseline_32b_0_DW02_mult_1
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mac_baseline_32b_0_DW01_add_3
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+
+
+Global Operating Voltage = 0.8  
+Power-specific unit information :
+    Voltage Units = 1V
+    Capacitance Units = 1.000000pf
+    Time Units = 1ns
+    Dynamic Power Units = 1mW    (derived from V,C,T units)
+    Leakage Power Units = 1nW
+
+
+  Cell Internal Power  = 167.2422 uW   (71%)
+  Net Switching Power  =  67.8182 uW   (29%)
+                         ---------
+Total Dynamic Power    = 235.0604 uW  (100%)
+
+Cell Leakage Power     = 700.2806 nW
+
+Information: report_power power group summary does not include estimated clock tree power. (PWR-789)
+
+                 Internal         Switching           Leakage            Total
+Power Group      Power            Power               Power              Power   (   %    )  Attrs
+--------------------------------------------------------------------------------------------------
+io_pad             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+memory             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+black_box          0.0000            0.0000            0.0000            0.0000  (   0.00%)
+clock_network      0.0000            0.0000            0.0000            0.0000  (   0.00%)
+register           0.0000            0.0000            0.0000            0.0000  (   0.00%)
+sequential     3.7823e-02        3.6238e-04          176.5967        3.8362e-02  (  16.27%)
+combinational      0.1294        6.7456e-02          523.6464            0.1974  (  83.73%)
+--------------------------------------------------------------------------------------------------
+Total              0.1672 mW     6.7818e-02 mW       700.2432 nW         0.2358 mW
+1

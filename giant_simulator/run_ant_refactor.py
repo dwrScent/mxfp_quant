@@ -98,7 +98,7 @@ model_name_dict = {
                     # 'llama2_13b':'llama2_13b',
                     }
 def process_result():
-    with open(os.path.join(os.getcwd(), 'results', 'olive_res.csv'), "a") as ff:
+    with open(os.path.join(os.getcwd(), 'results', 'm2xfp_res.csv'), "a") as ff:
         wr_stats_line = "Time, "
         wr_bench_name = ", "
         wr_model_name = ", "
@@ -181,7 +181,7 @@ def process_result():
 # bench_type_list = ['olive', 'ant', 'ola', 'ada']
 # bench_type_list = ['giant', 'olive', 'ant', 'bit']
 # bench_type_list = ['ant', 'tender', 'bit', 'giant', 'olive']
-bench_type_list = ['ant', 'giant', 'awq']
+bench_type_list = ['ant', 'olive', 'microscopiq', 'm2xfp']
 
 for item in bench_type_list:
     run_sim(item)

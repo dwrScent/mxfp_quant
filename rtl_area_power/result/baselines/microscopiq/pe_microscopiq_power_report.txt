@@ -1,0 +1,81 @@
+Loading db file '/home/design/Desktop/tcbn28hpcplusbwp7t40p140tt0p8v25c.db'
+Information: Propagating switching activity (low effort zero delay simulation). (PWR-6)
+Warning: There is no defined clock in the design. (PWR-80)
+Warning: Design has unannotated primary inputs. (PWR-414)
+Warning: Design has unannotated sequential cell outputs. (PWR-415)
+ 
+****************************************
+Report : power
+        -analysis_effort low
+Design : pe_microscopiq
+Version: O-2018.06-SP1
+Date   : Sun Aug 17 23:47:45 2025
+****************************************
+
+
+Library(s) Used:
+
+    tcbn28hpcplusbwp7t40p140tt0p8v25c (File: /home/design/Desktop/tcbn28hpcplusbwp7t40p140tt0p8v25c.db)
+
+
+Operating Conditions: tt0p8v25c   Library: tcbn28hpcplusbwp7t40p140tt0p8v25c
+Wire Load Model Mode: segmented
+
+Design        Wire Load Model            Library
+------------------------------------------------
+pe_microscopiq         ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_DW01_add_0
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_DW01_add_1
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_DW01_add_2
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_DW02_mult_0
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_DW01_add_3
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_DW02_mult_1
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_DW01_add_4
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_DW01_add_5
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_DW02_mult_2
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_DW01_add_6
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_microscopiq_DW02_mult_3
+                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+
+
+Global Operating Voltage = 0.8  
+Power-specific unit information :
+    Voltage Units = 1V
+    Capacitance Units = 1.000000pf
+    Time Units = 1ns
+    Dynamic Power Units = 1mW    (derived from V,C,T units)
+    Leakage Power Units = 1nW
+
+
+  Cell Internal Power  =  32.3292 uW   (71%)
+  Net Switching Power  =  13.0648 uW   (29%)
+                         ---------
+Total Dynamic Power    =  45.3940 uW  (100%)
+
+Cell Leakage Power     = 156.9553 nW
+
+Information: report_power power group summary does not include estimated clock tree power. (PWR-789)
+
+                 Internal         Switching           Leakage            Total
+Power Group      Power            Power               Power              Power   (   %    )  Attrs
+--------------------------------------------------------------------------------------------------
+io_pad             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+memory             0.0000            0.0000            0.0000            0.0000  (   0.00%)
+black_box          0.0000            0.0000            0.0000            0.0000  (   0.00%)
+clock_network      0.0000            0.0000            0.0000            0.0000  (   0.00%)
+register           0.0000            0.0000            0.0000            0.0000  (   0.00%)
+sequential     6.4770e-03        6.6398e-05           29.4170        6.5729e-03  (  14.43%)
+combinational  2.5852e-02        1.2998e-02          127.5196        3.8978e-02  (  85.57%)
+--------------------------------------------------------------------------------------------------
+Total          3.2329e-02 mW     1.3065e-02 mW       156.9366 nW     4.5551e-02 mW
+1

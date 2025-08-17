@@ -66,6 +66,11 @@ CUDA_VISIBLE_DEVICES=1 ./scripts/qwen_run.sh 1.5 gpqa_diamond_cot_n_shot 8 mxfp 
 
 CUDA_VISIBLE_DEVICES=1 ./scripts/qwen_run.sh 1.5 agieval_aqua_rat 4 mxfp float 32 w16a16q16k16v16
 CUDA_VISIBLE_DEVICES=1 ./scripts/qwen_run.sh 1.5 asdiv 4 mxfp float 32 w-1a16q16k16v16
+
+# MX-ANT, MX-olive, MX-MANT
+CUDA_VISIBLE_DEVICES=1 ./scripts/llama3_run.sh 8 wikitext 0 mxant float 32 w4a4q16k16v16 w-sub_group_adaptive+32+max-a-sub_group_adaptive+32+max
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 olive int 32 w4a4q16k16v16
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 mxmant float 32 w4a4q16k16v16 w-sub_group_adaptive+32+max-a-sub_group_adaptive+32+max
 ```
 
 ## Setting

@@ -637,6 +637,14 @@ def make_quant_linear(
                 from .qmodule_mcq import MCQ_Linear
                 q_linear = MCQ_Linear.from_linear(
                     module, w_bit, 32, i, name, init_only=False, ant_config=ant_config, quant_mode="int4")
+            elif quant_mode_config['quant_method'] == 'mxant':
+                from .qmodule_mxant import MXANT_Linear
+                q_linear = MXANT_Linear.from_linear(
+                    module, w_bit, a_bit, q_config['q_group_size'], i, name, init_only=False, ant_config=ant_config, quant_mode="fp4_e2m1")
+            elif quant_mode_config['quant_method'] == 'mxmant':
+                from .qmodule_mxmant import MXMANT_Linear
+                q_linear = MXMANT_Linear.from_linear(
+                    module, w_bit, a_bit, q_config['q_group_size'], i, name, init_only=False, ant_config=ant_config, quant_mode="fp4_e2m1")
 
             else:
                 pass

@@ -144,7 +144,12 @@ def get_quant(tensor_value, quant_grid, outlier_grid, alpha=1.0, group_size=-1):
         normal_max = torch.maximum((mean + 3 * std).abs(), (mean - 3 * std).abs())
 
         max_quant_val = max(quant_grid)
-        scales = (normal_max * alpha) / max_quant_val
+
+        # scales = (normal_max * alpha) / max_quant_val
+        # MX-olive
+        exp = torch.floor(torch.log2(normal_max)) - torch.floor(torch.log2(max_quant_val))
+        scales = torch.pow(2, exp)
+
         zeros = 0
 
         # Batch processing to avoid OOM

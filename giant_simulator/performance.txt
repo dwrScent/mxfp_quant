@@ -1,0 +1,32 @@
+No entry found in /localssd/wmhu/mxfp_quant/giant_simulator/bitfusion/sram/cacti_sweep.csv, running cacti
+('/localssd/wmhu/mxfp_quant/giant_simulator/bitfusion/sram/cacti/cacti', '-infile', '/localssd/wmhu/mxfp_quant/giant_simulator/bitfusion/sram/sweep.cfg')
+No entry found in /localssd/wmhu/mxfp_quant/giant_simulator/bitfusion/sram/cacti_sweep.csv, running cacti
+('/localssd/wmhu/mxfp_quant/giant_simulator/bitfusion/sram/cacti/cacti', '-infile', '/localssd/wmhu/mxfp_quant/giant_simulator/bitfusion/sram/sweep.cfg')
+No entry found in /localssd/wmhu/mxfp_quant/giant_simulator/bitfusion/sram/cacti_sweep.csv, running cacti
+('/localssd/wmhu/mxfp_quant/giant_simulator/bitfusion/sram/cacti/cacti', '-infile', '/localssd/wmhu/mxfp_quant/giant_simulator/bitfusion/sram/sweep.cfg')
+olive cycle [2294286144.0, 2013267520.0, 2810446592.0, 297795816.0, 2533361472.0, 2302673232.0]
+olive energy [[2223690959.34912, 620963199.71328, 1520478471.061504, 1424272950.1835918], [1951319278.4096, 515452220.473344, 1404041403.2389734, 1249819041.2978587], [2723969150.36416, 911801276.301312, 1749017108.3384426, 1744701768.768422], [288632638.74168, 82489134.02265601, 200480166.82516482, 184869066.3770358], [2455409939.5065603, 696395564.5808641, 1663458808.7661364, 1572688955.300905], [2231819976.65136, 746024416.0512, 1566595566.1361969, 1429480481.0160537]]
+No entry found in /localssd/wmhu/mxfp_quant/giant_simulator/bitfusion/sram/cacti_sweep.csv, running cacti
+('/localssd/wmhu/mxfp_quant/giant_simulator/bitfusion/sram/cacti/cacti', '-infile', '/localssd/wmhu/mxfp_quant/giant_simulator/bitfusion/sram/sweep.cfg')
+No entry found in /localssd/wmhu/mxfp_quant/giant_simulator/bitfusion/sram/cacti_sweep.csv, running cacti
+('/localssd/wmhu/mxfp_quant/giant_simulator/bitfusion/sram/cacti/cacti', '-infile', '/localssd/wmhu/mxfp_quant/giant_simulator/bitfusion/sram/sweep.cfg')
+No entry found in /localssd/wmhu/mxfp_quant/giant_simulator/bitfusion/sram/cacti_sweep.csv, running cacti
+('/localssd/wmhu/mxfp_quant/giant_simulator/bitfusion/sram/cacti/cacti', '-infile', '/localssd/wmhu/mxfp_quant/giant_simulator/bitfusion/sram/sweep.cfg')
+ant cycle [1614808832.0, 1258292944.0, 1918368544.0, 209715456.0, 1709180992.0, 1711276368.0]
+ant energy [[1565121164.23936, 413215673.5488, 1249448223.1105943, 1002459038.8693565], [1219575270.11312, 333039758.475264, 1105954032.4148836, 781136924.4500296], [1859340343.9011202, 624416538.673152, 1392260382.699684, 1190907005.6247787], [203262511.41888002, 61207680.12288, 165703306.8956877, 130189486.30688563], [1656589492.8761601, 490168142.266368, 1337598825.0863206, 1061044314.2144983], [1658620394.15664, 555504733.5198721, 1330086214.0022783, 1062346152.5679637]]
+No entry found in /localssd/wmhu/mxfp_quant/giant_simulator/bitfusion/sram/cacti_sweep.csv, running cacti
+('/localssd/wmhu/mxfp_quant/giant_simulator/bitfusion/sram/cacti/cacti', '-infile', '/localssd/wmhu/mxfp_quant/giant_simulator/bitfusion/sram/sweep.cfg')
+No entry found in /localssd/wmhu/mxfp_quant/giant_simulator/bitfusion/sram/cacti_sweep.csv, running cacti
+('/localssd/wmhu/mxfp_quant/giant_simulator/bitfusion/sram/cacti/cacti', '-infile', '/localssd/wmhu/mxfp_quant/giant_simulator/bitfusion/sram/sweep.cfg')
+No entry found in /localssd/wmhu/mxfp_quant/giant_simulator/bitfusion/sram/cacti_sweep.csv, running cacti
+('/localssd/wmhu/mxfp_quant/giant_simulator/bitfusion/sram/cacti/cacti', '-infile', '/localssd/wmhu/mxfp_quant/giant_simulator/bitfusion/sram/sweep.cfg')
+microscopiq cycle [1514145632.0, 1157629744.0, 2067120896.0, 209715456.0, 1627392192.0, 1610613088.0]
+microscopiq energy [[1467555370.9033601, 388894011.949056, 1209703240.3340492, 1193633372.6644309], [1122009476.77712, 308718096.87552, 1066209049.6383387, 912583982.0307498], [2003515586.03008, 672337416.68352, 1451748912.5005722, 1629556937.6679037], [203262511.41888002, 61207680.12288, 165703306.8956877, 165323181.553877], [1577317334.25216, 477500610.183168, 1305753963.7772288, 1282907900.645081], [1561054523.2822402, 523075851.38688, 1289829303.0007603, 1269681959.266091]]
+No entry found in /localssd/wmhu/mxfp_quant/giant_simulator/bitfusion/sram/cacti_sweep.csv, running cacti
+('/localssd/wmhu/mxfp_quant/giant_simulator/bitfusion/sram/cacti/cacti', '-infile', '/localssd/wmhu/mxfp_quant/giant_simulator/bitfusion/sram/sweep.cfg')
+No entry found in /localssd/wmhu/mxfp_quant/giant_simulator/bitfusion/sram/cacti_sweep.csv, running cacti
+('/localssd/wmhu/mxfp_quant/giant_simulator/bitfusion/sram/cacti/cacti', '-infile', '/localssd/wmhu/mxfp_quant/giant_simulator/bitfusion/sram/sweep.cfg')
+No entry found in /localssd/wmhu/mxfp_quant/giant_simulator/bitfusion/sram/cacti_sweep.csv, running cacti
+('/localssd/wmhu/mxfp_quant/giant_simulator/bitfusion/sram/cacti/cacti', '-infile', '/localssd/wmhu/mxfp_quant/giant_simulator/bitfusion/sram/sweep.cfg')
+m2xfp cycle [809503232.0, 805308544.0, 828244992.0, 109052224.0, 872417792.0, 855638464.0]
+m2xfp energy [[784594817.55136, 218642380.750848, 931488360.8982323, 654562085.0274467], [780529200.10112, 223592281.276416, 927101609.9204301, 651170542.0464128], [802759893.59616, 273230983.9872, 956301919.4374553, 669717783.1933215], [105696687.06752001, 29792200.556544, 125510386.92229119, 88179346.25721548], [845573496.5401601, 238337604.452352, 1004083095.3783295, 705434770.0577239], [829310468.46272, 279859235.38944, 987902470.4893746, 691868552.1650647]]

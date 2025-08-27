@@ -88,21 +88,26 @@ model_name_dict = {
                     # 'gpt2_xl':'gpt2_xl',
                     # 'bloom3b':'bloom3b',
                     # 'bloom7b1':'bloom7b1',
-                    # 'opt6b7':'opt6b7',
                     # 'opt_13b':'opt_13b',
-                    'llama_7b':'llama_7b',
+                    # 'llama_7b':'llama_7b',
                     # 'llama_13b':'llama_13b',
                     # 'llama_30b':'llama_30b',
                     # 'llama_65b':'llama_65b',
-                    # 'llama2_7b':'llama2_7b',
                     # 'llama2_13b':'llama2_13b',
+                    'opt6b7':'opt6b7',
+                    'llama2_7b':'llama2_7b',
+                    'falcon_7b':'falcon_7b',
+                    'llama3_8b':'llama3_8b',
+                    'mistral_7b':'mistral_7b',
+                    'llama3_70b':'llama3_70b',
+
                     }
 def process_result():
     with open(os.path.join(os.getcwd(), 'results', 'm2xfp_res.csv'), "a") as ff:
         wr_stats_line = "Time, "
         wr_bench_name = ", "
         wr_model_name = ", "
-        normalized_bench = 'ant'
+        normalized_bench = 'olive'
 
         bf_e_cycles_length = len(bf_e_cycles[normalized_bench])
         tmp_cycle = {}
@@ -178,10 +183,9 @@ def process_result():
             ff.write(wr_stats_line)
 
 
-# bench_type_list = ['olive', 'ant', 'ola', 'ada']
-# bench_type_list = ['giant', 'olive', 'ant', 'bit']
-# bench_type_list = ['ant', 'tender', 'bit', 'giant', 'olive']
-bench_type_list = ['ant', 'olive', 'microscopiq', 'm2xfp']
+bench_type_list = ['olive', 'ant', 'microscopiq', 'm2xfp']
+# bench_type_list = ['olive', 'giant']
+# bench_type_list = ['olive']
 
 for item in bench_type_list:
     run_sim(item)

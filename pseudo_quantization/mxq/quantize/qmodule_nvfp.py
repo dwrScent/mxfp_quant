@@ -552,6 +552,160 @@ def nvfp_sub_group(tensor_value, quant_grid, sub_group_grid, mode="int", zero_po
     else:
         return tensor_deq, quant_mse_sum
 
+@torch.no_grad() 
+def nvfp_sub_group_exscale(
+        tensor_value,
+        quant_grid,
+        q_group_size=-1,
+        sub_group_size=1,
+        es_bit=2):
+    """
+    将输入 tensor_value 按 batch_num=4 分批次执行量化，
+    调用 mxfp_sub_group_exscale_inner，最后把结果拼接回原形状。
+    """
+    batch_num = 16                      # 固定批次大小 
+    dim0 = tensor_value.size(0) 
+    
+    # 保证可以被 batch_num 整除；若不能整除可改为向上取整并 pad 
+    assert dim0 % batch_num == 0, f"dim0={dim0} must be divisible by batch_num={batch_num}"
+    
+    chunk_size = dim0 // batch_num 
+    deq_list = []
+    
+    for i in range(batch_num):
+        start = i * chunk_size 
+        end   = start + chunk_size 
+        sub_tensor = tensor_value[start:end]
+        
+        # 调用 inner 函数 
+        deq_sub, _ = mxfp_sub_group_exscale_inner(
+            sub_tensor,
+            quant_grid,
+            q_group_size=q_group_size,
+            sub_group_size=sub_group_size,
+            es_bit=es_bit 
+        )
+        
+        deq_list.append(deq_sub) 
+    
+    # concat 回完整张量 
+    tensor_deq      = torch.cat(deq_list,  dim=0)
+    
+    return tensor_deq, None
+
+
+
+@torch.no_grad()
+def mxfp_sub_group_exscale_inner(
+        tensor_value,
+        quant_grid,
+        q_group_size=-1,
+        sub_group_size=1,
+        es_bit=2):
+    """
+    Two-level grouping:
+      level-1: q_group_size   -> share one scale 
+      level-2: sub_group_size -> pick one ratio (in {1,1.25,...}) that minimizes MSE 
+    """
+    assert torch.isnan(tensor_value).sum()  == 0 
+    org_shape = tensor_value.shape  
+    quant_grid = quant_grid.to(tensor_value.device) 
+ 
+    # -------------------- level-1 grouping / scale --------------------
+    if q_group_size > 0:
+        assert org_shape[-1] % q_group_size == 0 
+        tensor_value = tensor_value.reshape(-1,  q_group_size)
+ 
+    max_val = tensor_value.abs().amax(dim=1,  keepdim=True)
+    max_quant_val = quant_grid.max() 
+ 
+    scales = max_val / max_quant_val
+    scales = scales.clamp(min=0.001953125, max=448.0)
+
+    scales = scales.to(torch.float8_e4m3fn)
+    int_scales = scales.view(torch.int8)
+    
+    bias_mse = {}
+    range_ = range(-9, 3)
+    for bias in range_:
+        int_scales_ = int_scales + bias
+        int_scales_.clamp_(1, 127)
+        scales = int_scales_.view(torch.float8_e4m3fn)
+        scales = scales.to(torch.float16)
+        sub_groups_per_group = q_group_size // sub_group_size 
+        scales = scales.expand(-1,  sub_groups_per_group).reshape(-1, 1)   # (n_subgrp_total,1)
+
+        # -------------------- level-2 grouping --------------------
+        if sub_group_size > 0:
+            assert q_group_size % sub_group_size == 0 
+            tensor_value = tensor_value.reshape(-1,  sub_group_size)       # (n_subgrp_total, sub_grp_size)
+
+        ratios = torch.tensor([1.,  1.25, 1.5, 1.75] if es_bit == 2 else [1., 1.5],
+                            dtype=torch.float16, 
+                            device=tensor_value.device)                  # (n_ratio,)
+
+        # --- for each sub-group: try every ratio and choose the best one ---
+        # tensor_value : (n_subgrp_total , sub_grp_size)
+        x_expanded = tensor_value.unsqueeze(2)                             # (n_subgrp_total , sub_grp_size , 1)
+        scales_expanded = scales.unsqueeze(2)                              # (n_subgrp_total ,          , 1)
+
+        cand_scales = scales_expanded * ratios.view(1,  1, -1)             # (n_subgrp_total ,          , n_ratio)
+        cand_qval   = x_expanded / cand_scales                              # (n_subgrp_total , sub_grp_size , n_ratio)
+
+        # nearest neighbor on grid 
+        diff = cand_qval.unsqueeze(3)  - quant_grid.view(1,  1, 1, -1)      # (n_subgrp_total , sub_grp_size , n_ratio , n_grid)
+        idx_best_qgrid = diff.abs().argmin(dim=3)                          # (n_subgrp_total , sub_grp_size , n_ratio)
+        cand_dqval = torch.gather( 
+            input=quant_grid.view(1,  1, 1, -1).expand_as(diff),   # shape same as diff 
+            dim=3,
+            index=idx_best_qgrid.unsqueeze(3)).squeeze(3)  * cand_scales   # (* , * , n_ratio)
+        mse_per_ratio = (cand_dqval  - x_expanded).pow(2).mean(dim=1)   # (n_subgrp_total , n_ratio)
+
+        best_ratio_idx = mse_per_ratio.argmin(dim=1)                       # (n_subgrp_total,)
+        best_ratio     = ratios[best_ratio_idx]                             # (n_subgrp_total,)
+        
+        # gather final quantized-dequantized values 
+        row_idx = torch.arange(tensor_value.size(0),  device=tensor_value.device) 
+        best_dqval = cand_dqval[row_idx, :, best_ratio_idx]                 # (n_subgrp_total , sub_grp_size)
+        # print(best_ratio_idx)
+
+        # best_scales_final = scales.squeeze(1)  * best_ratio                # (n_subgrp_total,)
+        
+        # -------------------- statistics --------------------
+        quant_mse_per_subgrp = mse_per_ratio[row_idx, best_ratio_idx]       # (n_subgrp_total,)
+
+        # -------------------- reshape back --------------------
+        tensor_deq = best_dqval.reshape(-1,  q_group_size)
+
+        quant_mse_sum = quant_mse_per_subgrp.view(-1, 
+                                            sub_groups_per_group).mean(dim=1,
+                                                                        keepdim=True)
+        bias_mse[bias] = (tensor_deq, quant_mse_sum)
+
+    all_mse = torch.cat([bias_mse[b][1]  for b in range_], dim=1)
+    # print(all_mse)  
+    # all_mse shape: [n_level1_group, n_bias=4]
+    
+    best_bias_idx = all_mse.argmin(dim=1)           # [n_level1_group]
+    # print(best_bias_idx)
+
+    all_deq = torch.stack([bias_mse[b][0]  for b in range_], dim=0)  
+    # [4, n_level1_group*q_group_size]
+    all_deq = all_deq.view(len(range_),-1,q_group_size)           # [4,n_level1,q_group_size]
+    
+    # repeat index to match last dim 
+    idx_expanded = best_bias_idx.view(1,-1,1).expand(1,-1,q_group_size) 
+    final_deq = torch.gather(all_deq,dim=0, 
+                        index=idx_expanded).squeeze(0)
+    
+    tensor_deq = final_deq.reshape(org_shape).to(tensor_value.dtype) 
+    
+    # -------------------- sanity checks --------------------
+    assert torch.isinf(tensor_deq).sum()  == 0 
+    assert torch.isnan(tensor_deq).sum()  == 0 
+ 
+    return tensor_deq, nn.functional.mse_loss(tensor_deq, tensor_value.reshape(org_shape))
+
 @torch.no_grad()
 def nvfp_sub_group_adaptive(tensor_value, quant_grid, sub_group_grid, mode="int", zero_point=True, q_group_size=-1, sub_group_size=1, alpha=1.0, pos_value=None, get_labels=False, is_input=False, keep_outlier=False, print_stats=False):
     org_shape = tensor_value.shape
@@ -705,6 +859,86 @@ def nvfp_sub_group_em(tensor_value, quant_grid, sub_group_grid, mode="int", zero
         print(f"[Statistics] Sub-groups with >1 potential outlier candidate: {subgroups_with_multiple_candidates}")
         print(f"[Statistics] Final sub-groups with one selected outlier: {final_selected_subgroups_count} / {total_subgroups_count} ({percentage_of_selected_subgroups:.2f}%)")
 
+
+    if get_labels:
+        return tensor_deq, quant_mse_sum, labels, quant_grid * scales
+    else:
+        return tensor_deq, quant_mse_sum
+@torch.no_grad()
+def sub_group_em_real(tensor_value, quant_grid, q_group_size=-1, sub_group_size=1,  get_labels=False, topk=1, em_bit=2):
+    assert torch.isnan(tensor_value).sum() == 0
+    org_shape = tensor_value.shape
+    quant_grid = quant_grid.to(tensor_value.device)
+    sub_group_grid = float_value(4+em_bit, fix_e2b0=True)
+    quant_grid, _ = quant_grid.sort(dim=0)
+    sub_group_grid, _ = sub_group_grid.sort(dim=0)
+    sub_group_grid = sub_group_grid.to(tensor_value.device)
+    if q_group_size > 0:
+        assert org_shape[-1] % q_group_size == 0
+        tensor_value = tensor_value.reshape(-1, q_group_size)
+
+    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+
+    max_quant_val = max(quant_grid)
+        
+    # Compute the scaling factor
+    scales = max_val / max_quant_val
+    scales = scales.clamp(min=0.001953125, max=448.0)
+
+    # scale_fp16 = scales.clone()
+    scales = scales.to(torch.float8_e4m3fn)
+    # scales = scales.to(torch.float8_e4m3fnuz)
+    scales = scales.to(torch.float16)
+
+    zeros = 0
+
+    # Batch processing to avoid OOM
+    batch_num = 8
+    # batch_num = 16
+    assert tensor_value.shape[0] % batch_num == 0
+    batch_size = tensor_value.shape[0] // batch_num
+    tensor_deq = torch.zeros_like(tensor_value)
+    tensor_deq_o_group = torch.zeros_like(tensor_value)
+    zero_fp6 = int(2 ** (3 + em_bit))
+    stride = int(2 ** em_bit)
+    for idx in range(batch_num):
+        tensor_par = tensor_value[idx*batch_size : (idx+1)*batch_size, :]
+        labels1 = (((tensor_par + zeros) / scales[idx*batch_size : (idx+1)*batch_size, :]).unsqueeze(-1) - quant_grid).abs().argmin(dim=-1)
+        abs_1 = torch.where(labels1 > 7, labels1 - 8, 7 - labels1)
+
+        tensor_q_par = quant_grid[labels1] * scales[idx*batch_size : (idx+1)*batch_size, :] - zeros
+        tensor_deq[idx*batch_size : (idx+1)*batch_size, :] = tensor_q_par
+
+        labels2 = (((tensor_par + zeros) / scales[idx*batch_size : (idx+1)*batch_size, :]).unsqueeze(-1) - sub_group_grid).abs().argmin(dim=-1)
+        
+        sign2 = torch.where(labels2 > zero_fp6 - 1, 1, 0)
+        abs_2 = torch.where(labels2 > zero_fp6 - 1, labels2 - zero_fp6, zero_fp6 - 1 - labels2)
+
+        lower = abs_1 * stride - (stride // 2 - 1)
+        upper = abs_2 * stride + (stride // 2)
+        abs_2 = torch.where(abs_2 < lower, lower, torch.where(abs_2 > upper, upper, abs_2))
+        labels2 = torch.where(sign2 > 0, abs_2 + zero_fp6, zero_fp6 - 1 - abs_2)
+
+        tensor_q_par = sub_group_grid[labels2] * scales[idx*batch_size : (idx+1)*batch_size, :] - zeros
+        tensor_deq_o_group[idx*batch_size : (idx+1)*batch_size, :] = tensor_q_par
+    
+    tmp = tensor_deq.reshape(-1, sub_group_size)
+    outlier_mask = torch.zeros_like(tmp, dtype=torch.float16).to(tensor_value.device)
+
+    _, indices = torch.topk(tmp.abs(), topk)
+    outlier_mask.scatter_(1, indices, 1)
+    outlier_group_mask = outlier_mask.reshape(-1, q_group_size)
+
+    tensor_deq = tensor_deq * (1-outlier_group_mask) + tensor_deq_o_group * outlier_group_mask
+
+    quant_mse = (tensor_deq-tensor_value).abs().pow(2).to(torch.float32)
+    quant_mse_sum = torch.mean(quant_mse, dim=1, keepdim=True)
+
+    assert torch.isnan(tensor_deq).sum() == 0
+    assert torch.isnan(scales).sum() == 0
+    assert torch.isnan(quant_mse).sum() == 0
+
+    tensor_deq = tensor_deq.reshape(org_shape)
 
     if get_labels:
         return tensor_deq, quant_mse_sum, labels, quant_grid * scales
@@ -994,6 +1228,10 @@ class NVFP_Linear(nn.Module):
         self.weight_sub_group_mode = ant_config.get('weight_sub_group_mode')
         self.input_sub_group_size = ant_config.get('input_sub_group_size')
         self.input_sub_group_mode = ant_config.get('input_sub_group_mode')
+        self.topk = ant_config.get("topk")
+        self.em_bit = ant_config.get("em_bit")
+        self.es_bit = ant_config.get("es_bit")
+        self.ee_bit = ant_config.get("ee_bit")
 
         assert self.in_features % self.group_size == 0
 
@@ -1065,6 +1303,8 @@ class NVFP_Linear(nn.Module):
             'sub_group': lambda: nvfp_sub_group(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, sub_group_mode=sub_group_mode, print_stats=self.print_stats),
             'sub_group_adaptive': lambda: nvfp_sub_group_adaptive(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, print_stats=self.print_stats),
             # 'sub_group_v3': lambda: nvfp_sub_group_v3(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, print_stats=self.print_stats),
+            'sub_group_es': lambda: nvfp_sub_group_exscale(data, quant_grid=quant_grid, q_group_size=self.group_size, sub_group_size=sub_group_size, es_bit=self.es_bit),
+            'sub_group_em_real': lambda: sub_group_em_real(data, quant_grid=quant_grid, q_group_size=self.group_size, sub_group_size=sub_group_size, topk=self.topk, em_bit=self.em_bit),
             'sub_group_heuristic': lambda: nvfp_sub_group_heuristic(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, print_stats=self.print_stats),
             'sub_group_em': lambda: nvfp_sub_group_em(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, sub_group_mode=sub_group_mode, print_stats=self.print_stats),
             'sub_group_adaptive_em': lambda: nvfp_sub_group_adaptive_em(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, sub_group_mode=sub_group_mode, print_stats=self.print_stats),

@@ -31,5 +31,5 @@ make # get the executable cacti
 ## Baseline accelerator untis
 
 + ANT: `vsrc/baselines/ant_olive`
-+ ANT: `vsrc/baselines/mant`
++ MANT: `vsrc/baselines/mant`
 + MicroScopiQ: `vsrc/baselines/microscopiq`

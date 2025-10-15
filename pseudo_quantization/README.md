@@ -14,7 +14,7 @@ pip install -e .
 cd mxq/eval
 pip install -e .
 
-# CUDA 12.3，推荐使用 torch=2.3.1
+# CUDA 12.3，推荐使用 torch=2.3.1, lm-eval==0.4.4 (Also works for latest lm-eval==0.4.9)
 pip install protobuf -i https://pypi.tuna.tsinghua.edu.cn/simple
 pip install transformers_stream_generator -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```

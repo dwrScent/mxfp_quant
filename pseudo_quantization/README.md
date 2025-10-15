@@ -27,6 +27,34 @@ Evaluate LLaMa on multiple tasks with MXFP.
 ```bash
 # baseline MXFP4 
 CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 mxfp float 32 w4a4q16k16v16 w-base-a-base quant
+# NVFP, g16
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 nvfp float 16 w4a4q16k16v16 w-base-a-base quant
+# SMX
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 smxfp float 16 w4a4q16k16v16 w-base-a-base quant
+
+# MX-ANT, MX-olive, MX-MANT, MicroscopiQ
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 mxant float 32 w4a4q16k16v16 w-sub_group_adaptive+32+max-a-sub_group_adaptive+32+max
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 olive int 32 w4a4q16k16v16
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 mxmant float 32 w4a4q16k16v16 w-sub_group_adaptive+32+max-a-sub_group_adaptive+32+max
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 mcq float 32 w4a4q16k16v16
+
+# Ours, M2XFP
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 mxfp float 32 w4a4q16k16v16 w-sub_group_es+8+max-a-sub_group_em_real+8+max quant
+
+
+# zero-show tasks with MXFP4
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 arc_easy,hellaswag,piqa,winogrande,arc_challenge,boolq 0 mxfp float 32 w4a4q16k16v16 w-base-a-base quant
+# run AIME-2025 on DeepSeek-R1-Distill-Qwen-1.5B
+CUDA_VISIBLE_DEVICES=0 ./scripts/deepseek_run.sh 1.5 AIME-2025 0 mxfp float 32 w4a4q16k16v16 w-base-a-base quant
+
+```
+
+
+### Old setting
+
+```shell
+# baseline MXFP4 
+CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 mxfp float 32 w4a4q16k16v16 w-base-a-base quant
 CUDA_VISIBLE_DEVICES=0 ./scripts/llama2_run.sh 7 wikitext 0 mxfp float 32 w4a4q16k16v16 w-base-a-base quant
 # group-wise data type search [E3M0, E2M1, E1M2], basic data type is MXINT
 CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 mxfp int 32 w4a4q16k16v16 w-dtype_search-a-dtype_search quant
@@ -54,24 +82,6 @@ CUDA_VISIBLE_DEVICES=0 ./scripts/deepseek_run.sh 1.5 AIME-2025 0 mxfp float 32 w
 
 ```
 
-### Other baselines
-```shell
-# Run NVFP
-CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 nvfp float 16 w4a4q16k16v16 w-base-a-base quant
-# SMXFP
-
-# Reasoning Task, need to set `apply_chat_template` and `fewshot_as_multiturn` to True
-CUDA_VISIBLE_DEVICES=1 ./scripts/qwen_run.sh 1.5 gsm8k_cot 8 mxfp float 32 w-1a16q16k16v16
-CUDA_VISIBLE_DEVICES=1 ./scripts/qwen_run.sh 1.5 gpqa_diamond_cot_n_shot 8 mxfp float 32 w-1a16q16k16v16
-
-CUDA_VISIBLE_DEVICES=1 ./scripts/qwen_run.sh 1.5 agieval_aqua_rat 4 mxfp float 32 w16a16q16k16v16
-CUDA_VISIBLE_DEVICES=1 ./scripts/qwen_run.sh 1.5 asdiv 4 mxfp float 32 w-1a16q16k16v16
-
-# MX-ANT, MX-olive, MX-MANT
-CUDA_VISIBLE_DEVICES=1 ./scripts/llama3_run.sh 8 wikitext 0 mxant float 32 w4a4q16k16v16 w-sub_group_adaptive+32+max-a-sub_group_adaptive+32+max
-CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 olive int 32 w4a4q16k16v16
-CUDA_VISIBLE_DEVICES=0 ./scripts/llama3_run.sh 8 wikitext 0 mxmant float 32 w4a4q16k16v16 w-sub_group_adaptive+32+max-a-sub_group_adaptive+32+max
-```
 
 ## Setting
 

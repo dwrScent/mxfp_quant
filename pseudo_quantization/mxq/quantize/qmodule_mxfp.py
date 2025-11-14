@@ -48,6 +48,102 @@ def outlier_value(n_bit, signed=True, exp_bit=2, exp_base=5):
 
 
 @torch.no_grad()
+def mxfp_search(
+    tensor_value,
+    quant_grid,
+    q_group_size=-1,
+):
+    """
+    Batch-wise wrapper for mxfp_search_inner.
+    """
+    batch_num=1
+    dim0 = tensor_value.size(0)
+    assert dim0 % batch_num == 0, f"dim0={dim0} must be divisible by batch_num={batch_num}"
+    
+    chunk_size = dim0 // batch_num
+    deq_list = []
+    
+    for i in range(batch_num):
+        start = i * chunk_size
+        end = start + chunk_size
+        sub_tensor = tensor_value[start:end]
+        
+        deq_sub, _ = mxfp_search_inner(
+            sub_tensor,
+            quant_grid,
+            q_group_size=q_group_size
+        )
+        deq_list.append(deq_sub)
+    
+    tensor_deq = torch.cat(deq_list, dim=0)
+    return tensor_deq, None
+
+
+@torch.no_grad()
+def mxfp_search_inner(
+    tensor_value,
+    quant_grid,
+    q_group_size=-1
+):
+    """
+    MXFP-style quantization with scale bias search (no subgroup, no ratio).
+    For each group (size = q_group_size), try bias ∈ {-1, 0, 1} on exponent-based scale,
+    and pick the one minimizing MSE after quantization via nearest neighbor on quant_grid.
+    """
+    assert torch.isnan(tensor_value).sum() == 0
+    org_shape = tensor_value.shape
+    quant_grid = quant_grid.to(tensor_value.device)
+
+    # Level-1 grouping
+    if q_group_size > 0:
+        assert org_shape[-1] % q_group_size == 0
+        tensor_value = tensor_value.reshape(-1, q_group_size)  # (n_groups, group_size)
+
+    n_groups, group_size = tensor_value.shape
+    max_val = tensor_value.abs().amax(dim=1, keepdim=True).clamp(min=1e-5)  # (n_groups, 1)
+    max_quant_val = quant_grid.max()
+
+    # Compute base exponent
+    exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))  # (n_groups, 1)
+
+    bias_range = [-1, 0, 1]
+    deq_candidates = []
+    mse_candidates = []
+
+    for bias in bias_range:
+        # Construct scale = 2^(exp + bias)
+        scale = torch.pow(2.0, exp + bias)  # (n_groups, 1)
+    
+        # Nearest neighbor on quant_grid
+
+        labels = ((tensor_value / scale).unsqueeze(-1) - quant_grid).abs().argmin(dim=-1)
+        dq_val = quant_grid[labels] * scale
+
+        # Compute MSE
+        mse = (dq_val - tensor_value).pow(2).mean(dim=1, keepdim=True)  # (n_groups, 1)
+
+        deq_candidates.append(dq_val)
+        mse_candidates.append(mse)
+
+    # Stack all candidates
+    all_deq = torch.stack(deq_candidates, dim=0)   # (3, n_groups, group_size)
+    all_mse = torch.stack(mse_candidates, dim=0)   # (3, n_groups, 1)
+
+    # Choose best bias per group
+    best_bias_idx = all_mse.argmin(dim=0).squeeze(-1)  # (n_groups,)
+    group_indices = torch.arange(n_groups, device=tensor_value.device)
+    final_deq = all_deq[best_bias_idx, group_indices, :]  # (n_groups, group_size)
+
+    # Reshape back to original shape
+    tensor_deq = final_deq.reshape(org_shape).to(tensor_value.dtype)
+
+    # Sanity checks
+    assert torch.isinf(tensor_deq).sum() == 0
+    assert torch.isnan(tensor_deq).sum() == 0
+
+    return tensor_deq, nn.functional.mse_loss(tensor_deq, tensor_value.reshape(org_shape))
+
+@torch.no_grad()
 def mxfp_sub_group(tensor_value, quant_grid, sub_group_grid, mode="int", zero_point=True, q_group_size=-1, sub_group_size=1, sub_group_mode='max', alpha=1.0, pos_value=None, get_labels=False, is_input=False, keep_outlier=False, print_stats=False):
     assert torch.isnan(tensor_value).sum() == 0
     org_shape = tensor_value.shape
@@ -167,7 +263,8 @@ def mxfp_sub_group_exscale(
         quant_grid,
         q_group_size=-1,
         sub_group_size=1,
-        es_bit=2):
+        es_bit=2,
+        scale_method=1):
     """
     将输入 tensor_value 按 batch_num=4 分批次执行量化，
     调用 mxfp_sub_group_exscale_inner，最后把结果拼接回原形状。
@@ -192,7 +289,8 @@ def mxfp_sub_group_exscale(
             quant_grid,
             q_group_size=q_group_size,
             sub_group_size=sub_group_size,
-            es_bit=es_bit 
+            es_bit=es_bit,
+            scale_method=scale_method
         )
         
         deq_list.append(deq_sub) 
@@ -210,7 +308,8 @@ def mxfp_sub_group_exscale_inner(
         quant_grid,
         q_group_size=-1,
         sub_group_size=1,
-        es_bit=2):
+        es_bit=2,
+        scale_method=1):
     """
     Two-level grouping:
       level-1: q_group_size   -> share one scale 
@@ -228,7 +327,18 @@ def mxfp_sub_group_exscale_inner(
     max_val = tensor_value.abs().amax(dim=1,  keepdim=True)
     max_quant_val = quant_grid.max() 
  
-    exp = torch.floor(torch.log2(max_val))  - torch.floor(torch.log2(max_quant_val))
+    if scale_method == 1:
+        exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
+    elif scale_method == 2:
+        exp = torch.ceil(torch.log2(max_val / max_quant_val))
+    elif scale_method == 3:
+        exp = torch.ceil(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
+    elif scale_method == 4:
+        exp = torch.round(torch.log2(max_val / max_quant_val))
+    elif scale_method == 5:
+        exp = torch.round(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
+    else:
+        raise NotImplementedError
     bias_mse = {}
     for bias in range(-1, 2):
         scales = torch.pow(2.,  exp+bias)                    # (n_group, 1)
@@ -703,7 +813,7 @@ def sub_group_em_search(tensor_value, quant_grid, q_group_size=-1, sub_group_siz
  
     return tensor_deq, nn.functional.mse_loss(tensor_deq, tensor_value.reshape(org_shape))
 @torch.no_grad()
-def sub_group_em_real(tensor_value, quant_grid, q_group_size=-1, sub_group_size=1,  get_labels=False, topk=1, em_bit=2):
+def sub_group_em_real(tensor_value, quant_grid, q_group_size=-1, sub_group_size=1,  get_labels=False, topk=1, em_bit=2, scale_method=1):
     assert torch.isnan(tensor_value).sum() == 0
     org_shape = tensor_value.shape
     quant_grid = quant_grid.to(tensor_value.device)
@@ -720,7 +830,18 @@ def sub_group_em_real(tensor_value, quant_grid, q_group_size=-1, sub_group_size=
     max_quant_val = max(quant_grid)
         
     # Compute the scaling factor
-    exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
+    if scale_method == 1:
+        exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
+    elif scale_method == 2:
+        exp = torch.ceil(torch.log2(max_val / max_quant_val))
+    elif scale_method == 3:
+        exp = torch.ceil(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
+    elif scale_method == 4:
+        exp = torch.round(torch.log2(max_val / max_quant_val))
+    elif scale_method == 5:
+        exp = torch.round(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
+    else:
+        raise NotImplementedError
     scales = torch.pow(2, exp)
 
     zeros = 0
@@ -1305,14 +1426,27 @@ class MXFP_Linear(nn.Module):
         # sub_group_grid = [0, -2.0, -2.5, -3.0, -3.5, -4.0, -5.0, -6.0, -7.0, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 6.0, 7.0]
         sub_group_grid = torch.tensor(sub_group_grid)    
         quantize_methods = {
-            'base': lambda: get_quant_mxfp(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, is_input=is_input, keep_outlier=self.keep_outlier, print_stats=self.print_stats),
+            'base': lambda: get_quant_mxfp(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, is_input=is_input, keep_outlier=self.keep_outlier, print_stats=self.print_stats, scale_method=1),
+            'base2': lambda: get_quant_mxfp(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, is_input=is_input, keep_outlier=self.keep_outlier, print_stats=self.print_stats, scale_method=2),
+            'base3': lambda: get_quant_mxfp(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, is_input=is_input, keep_outlier=self.keep_outlier, print_stats=self.print_stats, scale_method=3),
+            'base4': lambda: get_quant_mxfp(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, is_input=is_input, keep_outlier=self.keep_outlier, print_stats=self.print_stats, scale_method=4),
+            'base5': lambda: get_quant_mxfp(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, is_input=is_input, keep_outlier=self.keep_outlier, print_stats=self.print_stats, scale_method=5),
+            'base_search': lambda: mxfp_search(data, quant_grid=quant_grid, q_group_size=self.group_size),
             'sub_group': lambda: mxfp_sub_group(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, sub_group_mode=sub_group_mode, print_stats=self.print_stats),
             'sub_group_adaptive': lambda: mxfp_sub_group_adaptive(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, sub_group_mode=sub_group_mode, print_stats=self.print_stats),
             'sub_group_heuristic': lambda: mxfp_sub_group_heuristic(data, quant_grid=quant_grid, sub_group_grid=sub_group_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, sub_group_mode=sub_group_mode, print_stats=self.print_stats),
             'sub_group_em': lambda: sub_group_em(data, quant_grid=quant_grid, q_group_size=self.group_size, sub_group_size=sub_group_size, topk=self.topk, em_bit=self.em_bit),
-            'sub_group_em_real': lambda: sub_group_em_real(data, quant_grid=quant_grid, q_group_size=self.group_size, sub_group_size=sub_group_size, topk=self.topk, em_bit=self.em_bit),
+            'sub_group_em_real': lambda: sub_group_em_real(data, quant_grid=quant_grid, q_group_size=self.group_size, sub_group_size=sub_group_size, topk=self.topk, em_bit=self.em_bit, scale_method=1),
+            'sub_group_em_real2': lambda: sub_group_em_real(data, quant_grid=quant_grid, q_group_size=self.group_size, sub_group_size=sub_group_size, topk=self.topk, em_bit=self.em_bit, scale_method=2),
+            'sub_group_em_real3': lambda: sub_group_em_real(data, quant_grid=quant_grid, q_group_size=self.group_size, sub_group_size=sub_group_size, topk=self.topk, em_bit=self.em_bit, scale_method=3),
+            'sub_group_em_real4': lambda: sub_group_em_real(data, quant_grid=quant_grid, q_group_size=self.group_size, sub_group_size=sub_group_size, topk=self.topk, em_bit=self.em_bit, scale_method=4),
+            'sub_group_em_real5': lambda: sub_group_em_real(data, quant_grid=quant_grid, q_group_size=self.group_size, sub_group_size=sub_group_size, topk=self.topk, em_bit=self.em_bit, scale_method=5),
             'sub_group_em_search': lambda: sub_group_em_search(data, quant_grid=quant_grid, q_group_size=self.group_size, sub_group_size=sub_group_size, topk=self.topk, em_bit=self.em_bit),
-            'sub_group_es': lambda: mxfp_sub_group_exscale(data, quant_grid=quant_grid, q_group_size=self.group_size, sub_group_size=sub_group_size, es_bit=self.es_bit),
+            'sub_group_es': lambda: mxfp_sub_group_exscale(data, quant_grid=quant_grid, q_group_size=self.group_size, sub_group_size=sub_group_size, es_bit=self.es_bit, scale_method=1),
+            'sub_group_es2': lambda: mxfp_sub_group_exscale(data, quant_grid=quant_grid, q_group_size=self.group_size, sub_group_size=sub_group_size, es_bit=self.es_bit, scale_method=2),
+            'sub_group_es3': lambda: mxfp_sub_group_exscale(data, quant_grid=quant_grid, q_group_size=self.group_size, sub_group_size=sub_group_size, es_bit=self.es_bit, scale_method=3),
+            'sub_group_es4': lambda: mxfp_sub_group_exscale(data, quant_grid=quant_grid, q_group_size=self.group_size, sub_group_size=sub_group_size, es_bit=self.es_bit, scale_method=4),
+            'sub_group_es5': lambda: mxfp_sub_group_exscale(data, quant_grid=quant_grid, q_group_size=self.group_size, sub_group_size=sub_group_size, es_bit=self.es_bit, scale_method=5),
             'sub_group_es_direct': lambda: mxfp_sub_group_exscale_direct(data, quant_grid=quant_grid, q_group_size=self.group_size, sub_group_size=sub_group_size, es_bit=self.es_bit),
             'sub_group_ee': lambda: mxfp_sub_group_exscale_exp(data, quant_grid=quant_grid, q_group_size=self.group_size, sub_group_size=sub_group_size, ee_bit=self.ee_bit),
             'sub_group_exscale_exp_direct': lambda: sub_group_exscale_exp_direct(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, sub_group_size=sub_group_size, sub_group_mode=sub_group_mode, extra_exp_bits=self.ee_bit, print_stats=self.print_stats),

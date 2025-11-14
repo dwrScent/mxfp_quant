@@ -164,7 +164,7 @@ def get_quant_grid(tensor_value, quant_grid, group_size, alpha=1.0):
 
 
 @torch.no_grad()
-def get_quant_mxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_group_size=-1, alpha=1.0, pos_value=None, get_labels=False, is_input=False, keep_outlier=False, print_stats=False):
+def get_quant_mxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_group_size=-1, alpha=1.0, pos_value=None, get_labels=False, is_input=False, keep_outlier=False, print_stats=False, scale_method=1):
     '''
     return : dequantized weight, mse?
     '''
@@ -195,7 +195,18 @@ def get_quant_mxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_grou
 
     assert torch.isinf(max_val).sum() == 0
 
-    exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
+    if scale_method == 1:
+        exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
+    elif scale_method == 2:
+        exp = torch.ceil(torch.log2(max_val / max_quant_val))
+    elif scale_method == 3:
+        exp = torch.ceil(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
+    elif scale_method == 4:
+        exp = torch.round(torch.log2(max_val / max_quant_val))
+    elif scale_method == 5:
+        exp = torch.round(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
+    else:
+        raise NotImplementedError
     scales = torch.pow(2, exp)
 
     assert not (scales == 0).any(), "Scale should contain 0 values"
@@ -482,39 +493,47 @@ def get_quant_smxfp_inner(tensor_value, quant_grid, q_group_size=-1, get_labels=
     # Scale each q_group by its corresponding scale.
     # scales shape: (num_q_groups, 1, 1). This allows broadcasting with tensor_processed_subgrouped.
     # Example: (N, 1, 1) * (N, S, 2) -> (N, S, 2)
-    normalized_sub_groups = (tensor_processed_subgrouped + zeros) / scales.unsqueeze(-1)
+    # --- Decide grid per sub-group based on max normalized magnitude ---
+    normalized_sub_groups = (tensor_processed_subgrouped + zeros) / scales.unsqueeze(-1)  # (N, S, 2)
+    
+    # Compute max absolute value in each sub-group after normalization
+    max_abs_norm = normalized_sub_groups.abs().amax(dim=-1)  # (N, S)
+    
+    # Threshold: max of grid1 (assuming grid1 covers lower-magnitude values)
+    grid1_max_val = grid1_tensor.abs().max()
+    
+    # Selection mask: True → use grid1, False → use grid2
+    use_grid1 = max_abs_norm <= grid1_max_val  # (N, S)
+    
+    # Flatten normalized_sub_groups for efficient indexing
+    # Shape: (total_subgroups, 2)
+    flat_norm = normalized_sub_groups.view(-1, sub_group_size)  # (N*S, 2)
+    flat_use_grid1 = use_grid1.view(-1)  # (N*S,)
 
-    # --- Quantize with grid1_tensor ---
-    # Reshape normalized_sub_groups for element-wise comparison with grid1_tensor
-    # From (num_q_groups, num_sub_groups_per_q_group, sub_group_size)
-    # To (num_q_groups, num_sub_groups_per_q_group, sub_group_size, 1) for broadcasting with grid1_tensor
-    
-    # (N, S, 2, 1) - (4,) -> (N, S, 2, 4)
-    # labels_grid1 shape: (num_q_groups, num_sub_groups_per_q_group, sub_group_size)
-    labels_grid1 = ((normalized_sub_groups.unsqueeze(-1) - grid1_tensor).abs().argmin(dim=-1))
-    
-    # quantized_normalized_grid1 shape: (num_q_groups, num_sub_groups_per_q_group, sub_group_size)
-    quantized_normalized_grid1 = grid1_tensor[labels_grid1]
-    
-    # dequantized_grid1 shape: (num_q_groups, num_sub_groups_per_q_group, sub_group_size)
-    dequantized_grid1 = quantized_normalized_grid1 * scales.unsqueeze(-1) - zeros
-    
-    # Calculate MSE for grid1
-    # MSE will be (num_q_groups, num_sub_groups_per_q_group), representing MSE for each sub-group
-    mse_grid1 = (dequantized_grid1 - tensor_processed_subgrouped).abs().pow(2).mean(dim=-1)
+    # Prepare output containers
+    quantized_flat = torch.empty_like(flat_norm)  # (N*S, 2)
 
-    # --- Quantize with grid2_tensor ---
-    labels_grid2 = ((normalized_sub_groups.unsqueeze(-1) - grid2_tensor).abs().argmin(dim=-1))
-    quantized_normalized_grid2 = grid2_tensor[labels_grid2]
-    dequantized_grid2 = quantized_normalized_grid2 * scales.unsqueeze(-1) - zeros
-    mse_grid2 = (dequantized_grid2 - tensor_processed_subgrouped).abs().pow(2).mean(dim=-1)
+    # Quantize with grid1 where applicable
+    if flat_use_grid1.any():
+        idx1 = torch.where(flat_use_grid1)[0]
+        norm_vals1 = flat_norm[idx1].unsqueeze(-1)  # (K, 2, 1)
+        diffs1 = (norm_vals1 - grid1_tensor).abs()  # (K, 2, len(grid1))
+        labels1 = diffs1.argmin(dim=-1)  # (K, 2)
+        quantized_flat[idx1] = grid1_tensor[labels1]
 
-    # Choose the grid that yields lower MSE for each sub-group
-    # selection_mask shape: (num_q_groups, num_sub_groups_per_q_group)
-    selection_mask = (mse_grid1 <= mse_grid2).unsqueeze(-1) # Add a new dim for broadcasting with data
+    # Quantize with grid2 where applicable
+    if (~flat_use_grid1).any():
+        idx2 = torch.where(~flat_use_grid1)[0]
+        norm_vals2 = flat_norm[idx2].unsqueeze(-1)  # (M, 2, 1)
+        diffs2 = (norm_vals2 - grid2_tensor).abs()  # (M, 2, len(grid2))
+        labels2 = diffs2.argmin(dim=-1)  # (M, 2)
+        quantized_flat[idx2] = grid2_tensor[labels2]
+
+    # Reshape back to (N, S, 2)
+    quantized_normalized = quantized_flat.view(num_q_groups, num_sub_groups_per_q_group, sub_group_size)
     
-    # tensor_deq_subgrouped shape: (num_q_groups, num_sub_groups_per_q_group, sub_group_size)
-    tensor_deq_subgrouped = torch.where(selection_mask, dequantized_grid1, dequantized_grid2)
+    # Dequantize
+    tensor_deq_subgrouped = quantized_normalized * scales.unsqueeze(-1) - zeros
 
     # Flatten back to the original q_group_size shape
     tensor_deq = tensor_deq_subgrouped.reshape(num_q_groups, q_group_size)

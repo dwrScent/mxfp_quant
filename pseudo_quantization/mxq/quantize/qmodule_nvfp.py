@@ -552,6 +552,7 @@ def nvfp_sub_group(tensor_value, quant_grid, sub_group_grid, mode="int", zero_po
     else:
         return tensor_deq, quant_mse_sum
 
+
 @torch.no_grad() 
 def nvfp_sub_group_exscale(
         tensor_value,
@@ -578,7 +579,7 @@ def nvfp_sub_group_exscale(
         sub_tensor = tensor_value[start:end]
         
         # 调用 inner 函数 
-        deq_sub, _ = mxfp_sub_group_exscale_inner(
+        deq_sub, _ = nvfp_sub_group_exscale_inner(
             sub_tensor,
             quant_grid,
             q_group_size=q_group_size,
@@ -596,7 +597,7 @@ def nvfp_sub_group_exscale(
 
 
 @torch.no_grad()
-def mxfp_sub_group_exscale_inner(
+def nvfp_sub_group_exscale_inner(
         tensor_value,
         quant_grid,
         q_group_size=-1,
@@ -704,6 +705,120 @@ def mxfp_sub_group_exscale_inner(
     assert torch.isinf(tensor_deq).sum()  == 0 
     assert torch.isnan(tensor_deq).sum()  == 0 
  
+    return tensor_deq, nn.functional.mse_loss(tensor_deq, tensor_value.reshape(org_shape))
+
+@torch.no_grad()
+def nvfp_search(
+    tensor_value,
+    quant_grid,
+    q_group_size=-1,
+):
+    """
+    将输入 tensor_value 按 batch_num 分批次执行量化，
+    调用 nvfp_search_inner，最后拼接回原形状。
+    """
+    batch_num = 1
+    dim0 = tensor_value.size(0)
+    assert dim0 % batch_num == 0, f"dim0={dim0} must be divisible by batch_num={batch_num}"
+    
+    chunk_size = dim0 // batch_num
+    deq_list = []
+    
+    for i in range(batch_num):
+        start = i * chunk_size
+        end = start + chunk_size
+        sub_tensor = tensor_value[start:end]
+        
+        deq_sub, _ = nvfp_search_inner(
+            sub_tensor,
+            quant_grid,
+            q_group_size=q_group_size
+        )
+        deq_list.append(deq_sub)
+    
+    tensor_deq = torch.cat(deq_list, dim=0)
+    return tensor_deq, None
+
+
+@torch.no_grad()
+def nvfp_search_inner(
+    tensor_value,
+    quant_grid,
+    q_group_size=-1
+):
+    """
+    Only level-1 grouping with scale bias search.
+    For each group, try different scale biases (int8 offset) and pick the one minimizing MSE.
+    """
+    assert torch.isnan(tensor_value).sum() == 0
+    org_shape = tensor_value.shape
+    quant_grid = quant_grid.to(tensor_value.device)
+
+    # Level-1 grouping
+    if q_group_size > 0:
+        assert org_shape[-1] % q_group_size == 0
+        tensor_value = tensor_value.reshape(-1, q_group_size)  # (n_groups, q_group_size)
+    else:
+        tensor_value = tensor_value.reshape(1, -1)  # treat whole tensor as one group
+
+    n_groups = tensor_value.size(0)
+    max_val = tensor_value.abs().amax(dim=1, keepdim=True)  # (n_groups, 1)
+    max_quant_val = quant_grid.max()
+
+    # Base scale
+    base_scales = max_val / max_quant_val
+    base_scales = base_scales.clamp(min=0.001953125, max=448.0)
+    base_scales_fp8 = base_scales.to(torch.float8_e4m3fn)
+    base_scales_int8 = base_scales_fp8.view(torch.int8)  # (n_groups, 1)
+
+    bias_range = range(-9, 3)
+    best_deq_list = []
+    best_mse_list = []
+
+    for bias in bias_range:
+        # Apply bias to scale
+        biased_scale_int8 = (base_scales_int8 + bias).clamp_(1, 127)
+        biased_scale_fp8 = biased_scale_int8.view(torch.float8_e4m3fn)
+        scale = biased_scale_fp8.to(torch.float16)  # (n_groups, 1)
+
+        # Quantize and dequantize
+        x = tensor_value  # (n_groups, group_size)
+        q_val = x / scale  # broadcasting
+        # Find nearest in quant_grid
+        diff = q_val.unsqueeze(-1) - quant_grid.view(1, 1, -1)  # (n_groups, group_size, n_grid)
+        idx = diff.abs().argmin(dim=-1)  # (n_groups, group_size)
+        dq_val = torch.gather(quant_grid.expand(n_groups, q_group_size if q_group_size > 0 else org_shape[-1], -1), 
+                              dim=-1, index=idx.unsqueeze(-1)).squeeze(-1)
+        dq_val = dq_val * scale
+
+        # Compute MSE
+        mse = (dq_val - x).pow(2).mean(dim=1, keepdim=True)  # (n_groups, 1)
+
+        best_deq_list.append(dq_val)
+        best_mse_list.append(mse)
+
+    # Stack all candidates
+    all_deq = torch.stack(best_deq_list, dim=0)   # (n_bias, n_groups, group_size)
+    all_mse = torch.stack(best_mse_list, dim=0)   # (n_bias, n_groups, 1)
+
+    # Choose best bias per group
+    best_bias_idx = all_mse.argmin(dim=0).squeeze(-1)  # (n_groups,)
+    # Gather best dequantized values
+    group_indices = torch.arange(n_groups, device=tensor_value.device)
+    final_deq = all_deq[best_bias_idx, group_indices, :]  # (n_groups, group_size)
+
+    # Reshape back
+    if q_group_size > 0:
+        tensor_deq = final_deq.reshape(org_shape)
+    else:
+        tensor_deq = final_deq.reshape(org_shape)
+
+    tensor_deq = tensor_deq.to(tensor_value.dtype)
+
+    # Sanity checks
+    assert torch.isinf(tensor_deq).sum() == 0
+    assert torch.isnan(tensor_deq).sum() == 0
+
     return tensor_deq, nn.functional.mse_loss(tensor_deq, tensor_value.reshape(org_shape))
 
 @torch.no_grad()
@@ -1296,6 +1411,7 @@ class NVFP_Linear(nn.Module):
         sub_group_grid = torch.tensor(sub_group_grid) * max(quant_grid) / max(sub_group_grid)       
         quantize_methods = {
             'base': lambda: get_quant_nvfp(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, is_input=is_input, keep_outlier=self.keep_outlier, print_stats=self.print_stats),
+            'base_search': lambda: nvfp_search(data, quant_grid=quant_grid,  q_group_size=self.group_size),
             # 'scale_search': lambda: nvfp_search(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, keep_outlier=self.keep_outlier, print_stats=self.print_stats),
             # 'dtype_search': lambda: dtype_search_v2(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, keep_outlier=self.keep_outlier),
             # 'dtype_search_olive': lambda: dtype_search_olive(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, n_bit=n_bit, exp_base=exp_base),

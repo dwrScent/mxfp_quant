@@ -6,6 +6,157 @@ import torch.nn.functional as F
 from .quant_func import get_quant_smxfp
 
 
+@torch.no_grad()
+def smxfp_search(tensor_value, quant_grid, q_group_size=-1):
+    org_shape = tensor_value.shape
+    tensor_value = tensor_value.reshape(-1, q_group_size)
+    batch_num = 1
+    dim0 = tensor_value.size(0) 
+    
+    # 保证可以被 batch_num 整除；若不能整除可改为向上取整并 pad 
+    assert dim0 % batch_num == 0, f"dim0={dim0} must be divisible by batch_num={batch_num}"
+    
+    chunk_size = dim0 // batch_num 
+    deq_list= []
+    
+    for i in range(batch_num):
+        start = i * chunk_size 
+        end   = start + chunk_size 
+        sub_tensor = tensor_value[start:end]
+        
+        # 调用 inner 函数 
+        deq_sub, _ = get_quant_smxfp_inner(
+            sub_tensor,
+            quant_grid,
+            q_group_size=q_group_size,
+        )
+        
+        deq_list.append(deq_sub) 
+    
+    # concat 回完整张量 
+    tensor_deq      = torch.cat(deq_list,  dim=0).reshape(org_shape)
+    
+    return tensor_deq, None
+
+
+
+@torch.no_grad()
+def get_quant_smxfp_inner(tensor_value, quant_grid, q_group_size=-1, get_labels=False, is_input=False, keep_outlier=False, print_stats=False):
+    '''
+    return : dequantized weight, mse?
+    '''
+    val_info = torch.finfo(tensor_value.dtype)
+    tensor_value = tensor_value.nan_to_num(0.0, val_info.min, val_info.max).clamp(val_info.min, val_info.max)
+    assert torch.isinf(tensor_value).sum() == 0
+    assert torch.isnan(tensor_value).sum() == 0
+    org_shape = tensor_value.shape
+    quant_grid = quant_grid.to(tensor_value.device)
+    
+    if q_group_size > 0:
+        assert org_shape[-1] % q_group_size == 0, f"Last dimension {org_shape[-1]} must be divisible by q_group_size {q_group_size}"
+        tensor_value_reshaped = tensor_value.reshape(-1, q_group_size)
+    else:
+        tensor_value_reshaped = tensor_value.reshape(-1, org_shape[-1])
+        
+    num_q_groups = tensor_value_reshaped.shape[0]
+
+    # Compute base exponent (same for all bias)
+    max_val = tensor_value_reshaped.abs().amax(dim=1, keepdim=True).clamp(min=1e-5)
+    max_quant_val = max(quant_grid)
+    exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
+
+    # Prepare grids
+    half = quant_grid.shape[0] // 2
+    grid1_tensor = quant_grid[:half]
+    grid2_tensor = quant_grid[half:]
+    
+    sub_group_size = 2
+    if q_group_size > 0 and q_group_size % sub_group_size == 0:
+        num_sub_groups_per_q_group = q_group_size // sub_group_size
+    else:
+        raise ValueError("q_group_size must be an even number (>0) for sub-grouping with fixed size 2.")
+
+    # Handle outliers once (same across all bias trials)
+    if keep_outlier:
+        outlier_mask = torch.zeros_like(tensor_value_reshaped, dtype=torch.bool, device=tensor_value_reshaped.device)
+        _, indices = torch.topk(tensor_value_reshaped.abs(), 1, dim=1)
+        outlier_mask.scatter_(1, indices, 1)
+        org_tensor_for_outlier = tensor_value_reshaped.clone()
+        tensor_value_processed = tensor_value_reshaped * ~outlier_mask
+    else:
+        tensor_value_processed = tensor_value_reshaped.clone()
+
+    # Reshape processed tensor for subgroup
+    tensor_processed_subgrouped = tensor_value_processed.reshape(num_q_groups, num_sub_groups_per_q_group, sub_group_size)
+
+    # Bias search
+    bias_range = [-2, -1, 0, 1, 2]
+    deq_candidates = []   # list of (num_q_groups, q_group_size)
+    mse_candidates = []   # list of (num_q_groups, 1)
+
+    for bias in bias_range:
+        # Compute scale with bias
+        scale = torch.pow(2.0, exp + bias)  # (num_q_groups, 1)
+        assert not (scale == 0).any()
+
+        # Normalize
+        normalized = (tensor_processed_subgrouped) / scale.unsqueeze(-1)  # (N, S, 2)
+
+        # Quantize with grid1
+        labels1 = (normalized.unsqueeze(-1) - grid1_tensor).abs().argmin(dim=-1)
+        dq1 = grid1_tensor[labels1] * scale.unsqueeze(-1)
+        mse1 = (dq1 - tensor_processed_subgrouped).pow(2).mean(dim=-1)  # (N, S)
+
+        # Quantize with grid2
+        labels2 = (normalized.unsqueeze(-1) - grid2_tensor).abs().argmin(dim=-1)
+        dq2 = grid2_tensor[labels2] * scale.unsqueeze(-1)
+        mse2 = (dq2 - tensor_processed_subgrouped).pow(2).mean(dim=-1)
+
+        # Choose per sub-group
+        select_mask = (mse1 <= mse2).unsqueeze(-1)  # (N, S, 1)
+        dq_subgrouped = torch.where(select_mask, dq1, dq2)  # (N, S, 2)
+
+        # Reshape back to (num_q_groups, q_group_size)
+        dq_group = dq_subgrouped.reshape(num_q_groups, q_group_size)
+
+        # Apply outlier restoration
+        if keep_outlier:
+            dq_group = dq_group * ~outlier_mask + org_tensor_for_outlier * outlier_mask
+
+        # Compute group-level MSE (mean over all elements in group)
+        mse_group = (dq_group - tensor_value_reshaped).pow(2).mean(dim=1, keepdim=True)  # (N, 1)
+
+        deq_candidates.append(dq_group)
+        mse_candidates.append(mse_group)
+
+    # Stack candidates
+    all_deq = torch.stack(deq_candidates, dim=0)   # (3, N, q_group_size)
+    all_mse = torch.stack(mse_candidates, dim=0)   # (3, N, 1)
+
+    # Select best bias per group
+    best_bias_idx = all_mse.argmin(dim=0).squeeze(-1)  # (N,)
+    group_indices = torch.arange(num_q_groups, device=tensor_value.device)
+    final_deq = all_deq[best_bias_idx, group_indices, :]  # (N, q_group_size)
+
+    # Final sanity and reshape
+    final_deq = final_deq.nan_to_num(0.0, val_info.min, val_info.max).clamp(val_info.min, val_info.max)
+    assert torch.isinf(final_deq).sum() == 0
+    assert torch.isnan(final_deq).sum() == 0
+
+    tensor_deq = final_deq.reshape(org_shape)
+    quant_mse_sum = all_mse[best_bias_idx, group_indices, :].reshape(num_q_groups, 1)
+
+    quant_obj = 'input' if is_input else 'weight'
+    if print_stats:
+        print(f"Quantization MSE: {quant_mse_sum.mean().item()}, quant_obj: {quant_obj}, keep_outlier: {keep_outlier}")
+    
+    if get_labels:
+        print("Warning: 'get_labels=True' is complex with sub-group logic. Returning dummy labels.")
+        dummy_labels = torch.zeros(tensor_value_reshaped.shape, dtype=torch.long, device=tensor_value.device)
+        return tensor_deq, quant_mse_sum, dummy_labels, exp.reshape(org_shape[0], 1)  # or scale? adjust as needed
+    else:
+        return tensor_deq, quant_mse_sum
+
 class SMXFP_Linear(nn.Module):
     def __init__(self, w_bit, a_bit, group_size, in_features, out_features, bias, dev, ant_config, layer_id, layer_name):
         super().__init__()
@@ -67,18 +218,16 @@ class SMXFP_Linear(nn.Module):
             smxfp_linear.bias = linear.bias.clone().half()
         
         fp4_e1m2 = torch.tensor([ 0.0000, -0.0000,  0.2500, -0.2500,  0.5000, -0.5000,  0.7500, -0.7500,
-                                  1.0000, -1.0000,  1.2500, -1.2500,  1.5000, -1.5000,  1.7500, -1.7500]
+                                  0.0000, -0.0000,  0.5000, -0.5000,  1.0000, -1.0000,  1.5000, -1.5000,]
                                 ,dtype=linear.weight.data.dtype)
 
         fp6_e1m4 = torch.tensor([ 0.0000, -0.0000,  0.0625, -0.0625,  0.1250, -0.1250,  0.1875, -0.1875, 
                                 0.2500, -0.2500,  0.3125, -0.3125,  0.3750, -0.3750,  0.4375, -0.4375,
                                 0.5000, -0.5000,  0.5625, -0.5625,  0.6250, -0.6250,  0.6875, -0.6875,
                                 0.7500, -0.7500,  0.8125, -0.8125,  0.8750, -0.8750,  0.9375, -0.9375,
-                                1.0000, -1.0000,  1.0625, -1.0625,  1.1250, -1.1250,  1.1875, -1.1875,
-                                1.2500, -1.2500,  1.3125, -1.3125,  1.3750, -1.3750,  1.4375, -1.4375,
-                                1.5000, -1.5000,  1.5625, -1.5625,  1.6250, -1.6250,  1.6875, -1.6875,
-                                1.7500, -1.7500,  1.8125, -1.8125,  1.8750, -1.8750,  1.9375, -1.9375]
+                                ]
                                 ,dtype=linear.weight.data.dtype)
+        fp6_e1m4 = torch.cat(fp6_e1m4, fp6_e1m4*2)
         if w_bit == 4:
             smxfp_linear.weight_quant_grid = fp4_e1m2
         elif w_bit == 6:
@@ -103,6 +252,7 @@ class SMXFP_Linear(nn.Module):
         # sub_group_grid = [0, -4.0, -4.5, -5.0, -5.5, -6.0, -6.5, -7.0, -7.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5]     
         quantize_methods = {
             'base': lambda: get_quant_smxfp(data, quant_grid=quant_grid, q_group_size=self.group_size, is_input=is_input),
+            'base_search': lambda: smxfp_search(data, quant_grid=quant_grid, q_group_size=self.group_size),
             # 'scale_search': lambda: smxfp_search(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, keep_outlier=self.keep_outlier, print_stats=self.print_stats),
             # 'dtype_search': lambda: dtype_search_v2(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, keep_outlier=self.keep_outlier),
             # 'dtype_search_olive': lambda: dtype_search_olive(data, quant_grid=quant_grid, mode=None, zero_point=False, q_group_size=self.group_size, n_bit=n_bit, exp_base=exp_base),

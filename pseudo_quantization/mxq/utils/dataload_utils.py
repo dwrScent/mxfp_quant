@@ -7,7 +7,6 @@ def get_loaders(
     name, nsamples=128, seed=0, seqlen=2048, model=''
 ):
     if 'wikitext' in name:
-        print("wikekwkw")
         return get_wikitext2(nsamples, seed, seqlen, model)
     if 'ptb' in name:
         return get_ptb(nsamples, seed, seqlen, model)

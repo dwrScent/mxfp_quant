@@ -1,568 +1,250 @@
-
 import torch
 import torch.nn.functional as F
 from torch import nn
-from .ant_quant import get_quant_weight
-from .utils_stats import calculate_max_error
 
-def pseudo_quantize_int(tensor, n_bit=8, zero_point=False, q_group_size=-1, get_scale=False):
-    org_shape = tensor.shape
-    padding_size = 0
-    
-    if q_group_size > 0:
-        if org_shape[-1] % q_group_size != 0:
-            # Calculate padding size
-            padding_size = q_group_size - (org_shape[-1] % q_group_size)
-            # Apply padding
-            tensor = F.pad(tensor, (0, padding_size), "constant", 0)
-            padding_shape = tensor.shape
-            assert padding_shape[-1] % q_group_size == 0
-        tensor = tensor.reshape(-1, q_group_size)
-    assert tensor.dim() == 2
-    if zero_point:
-        max_val = tensor.amax(dim=1, keepdim=True)
-        min_val = tensor.amin(dim=1, keepdim=True)
-        max_int = 2 ** n_bit - 1
-        min_int = 0
-        scales = (max_val - min_val).clamp(min=1e-5) / max_int
-        zeros = (-torch.round(min_val / scales)).clamp_(min_int, max_int)
-    else:
-        max_val = tensor.abs().amax(dim=1, keepdim=True)
-        max_val = max_val.clamp(min=1e-5)
-
-        max_int = 2 ** (n_bit - 1) - 1
-        min_int = - 2 ** (n_bit - 1)
-        scales = max_val / max_int
-        zeros = 0
-
-    assert torch.isnan(scales).sum() == 0
-    assert torch.isnan(tensor).sum() == 0
-
-    tensor = (torch.clamp(torch.round(tensor / scales) +
-                        zeros, min_int, max_int) - zeros) * scales
-    assert torch.isnan(tensor).sum() == 0
-
-    if padding_size > 0:
-        tensor = tensor.reshape(padding_shape)
-        tensor = tensor[:, :org_shape[-1]]
-    else:
-        tensor = tensor.reshape(org_shape)
-
-    if get_scale:
-        return tensor, max_val, scales
-    else:
-        return tensor
-
-def pseudo_quantize_giant(tensor, n_bit=8, zero_point=False, q_group_size=-1, get_scale=False):
-    quantized_part_shape = tensor.shape
-
-    if q_group_size > 0:
-        quantized_part_group = tensor.reshape(-1, q_group_size)
-    else:
-        raise ValueError('not support yet')
-    max_val = torch.max(torch.abs(quantized_part_group), dim=1, keepdim=True).values
-    value_var = torch.var(quantized_part_group / max_val, dim=1, keepdim=True)
-
-    quant_grid_set = {}
-    quant_grid_set['coefficient_25'] = torch.tensor([-1.0000, -0.7061, -0.5181, -0.3828, -0.2739, -0.1782, -0.0891, -0.0033, 0.0033,  0.0891,  0.1782,  0.2739,  0.3828,  0.5181,  0.7061,  1.0000])
-    quant_grid_set['int'] = torch.tensor([-0., -7., -6., -5., -4., -3., -2., -1.,  0.,  1.,  2.,  3.,  4.,  5., 6.,  7.])
-    quant_grid_set['coefficient_0'] = torch.tensor([-1.0000, -0.5000, -0.2500, -0.1250, -0.0625, -0.0312, -0.0156, -0.0078, 0.0078,  0.0156,  0.0312,  0.0625,  0.1250,  0.2500,  0.5000,  1.0000])
-
-
-    quantized_part_group_deq_nf, _ = get_quant_weight(quantized_part_group, quant_grid_set['coefficient_25'], mode='coefficient_25', q_group_size=q_group_size)
-    quantized_part_group_deq_int, _ = get_quant_weight(quantized_part_group, quant_grid_set['int'], mode='int', q_group_size=q_group_size)
-    quantized_part_group_deq_pot, _ = get_quant_weight(quantized_part_group, quant_grid_set['coefficient_0'], mode='coefficient_0', q_group_size=q_group_size)
-
-    mask_pot = (value_var < 0.05).expand_as(quantized_part_group_deq_pot)
-    mask_nf = ((value_var >= 0.05) & (value_var <= 0.25)).expand_as(quantized_part_group_deq_nf)
-    mask_int = (value_var > 0.25).expand_as(quantized_part_group_deq_int)
-
-    # 使用 mask 选取对应的量化后 tensor
-    quantized_part_group_deq = torch.zeros_like(quantized_part_group)
-
-    quantized_part_group_deq = torch.where(mask_pot, quantized_part_group_deq_pot, quantized_part_group_deq)
-    quantized_part_group_deq = torch.where(mask_nf, quantized_part_group_deq_nf, quantized_part_group_deq)
-    quantized_part_group_deq = torch.where(mask_int, quantized_part_group_deq_int, quantized_part_group_deq)
-
-    quantized_part_deq = quantized_part_group_deq.reshape(quantized_part_shape)
-    quantized_part_deq = quantized_part_deq.to(dtype=tensor.dtype, device=tensor.device)
-
-    assert torch.isnan(quantized_part_deq).sum() == 0
-
-    return quantized_part_deq
+FLOAT4_E2M1_MAX = 6.0
+FLOAT8_E4M3_EPS = torch.finfo(torch.float8_e4m3fn).tiny
+FLOAT8_E4M3_MAX = 448.0
 
 
 @torch.no_grad()
-def get_quant_grid(tensor_value, quant_grid, group_size, alpha=1.0):
+def fp16(tensor_value: torch.Tensor, group_size: int):
+    return tensor_value
+
+
+def float_value(exp_bit, man_bit):
+    bias = 0
+    values = []
+    min_to_zero = True
+    subnormal = True
+    for i in range(2**exp_bit):
+        for j in range(2**man_bit):
+            if min_to_zero:
+                values.append(0.0)
+                min_to_zero = False
+            else:
+                if subnormal:
+                    values.append((2 ** (i - bias)) * (j * 2 ** (-man_bit)))
+                else:
+                    values.append((2 ** (i - 1 - bias)) * (1 + j * 2 ** (-man_bit)))
+
+        subnormal = False
+
+    return values
+
+
+FP4_E2M1_GRID = torch.tensor(float_value(2, 1), device="cuda")
+FP6_E2M3_GRID = torch.tensor(float_value(2, 3), device="cuda")
+
+
+def quantize_to_grid(x: torch.Tensor, levels: torch.Tensor) -> torch.Tensor:
+    levels = levels.to(x.device)
+    boundaries = (levels[:-1] + levels[1:]) / 2.0
+    indices = torch.bucketize(x, boundaries, right=True)
+    indices = torch.clamp(indices, 0, len(levels) - 1)
+
+    quantized = levels[indices]
+    return quantized, indices
+
+
+def cast_to_fp4(x: torch.Tensor):
+    sign = torch.sign(x)
+    x_abs = torch.abs(x)
+    x_quant, _ = quantize_to_grid(x_abs, FP4_E2M1_GRID)
+    return x_quant * sign
+
+
+def cast_to_fp4_em(x: torch.Tensor):
+    sign = torch.sign(x)
+    x_abs = torch.abs(x)
+    fp4, fp4_index = quantize_to_grid(x_abs, FP4_E2M1_GRID)
+    _, fp6_index = quantize_to_grid(x_abs, FP6_E2M3_GRID)
+    fp6_index = torch.clamp(fp6_index, min=fp4_index * 4 - 1, max=fp4_index * 4 + 2)
+    fp6 = FP6_E2M3_GRID.to(x.device)[fp6_index]
+
+    return fp4 * sign, fp6 * sign
+
+
+@torch.no_grad()
+def get_quant_mxfp(tensor_value: torch.Tensor, group_size: int):
 
     org_shape = tensor_value.shape
-    quant_grid = quant_grid.to(tensor_value.device)
-    assert torch.isnan(tensor_value).sum() == 0
+
+    if group_size > 0:
+        assert org_shape[-1] % group_size == 0
+        tensor_value = tensor_value.reshape(-1, group_size)
+
+    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+    # avoid divide a too small value
+    max_val = max_val.clamp(min=1e-8)
+
+    max_quant_val = torch.tensor(FLOAT4_E2M1_MAX, device=tensor_value.device)
+
+    # Compute the scaling factor
+    exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
+    scales = torch.pow(2, exp)
+    tensor_quant = cast_to_fp4(tensor_value / scales) * scales
+
+    return tensor_quant.reshape(org_shape).to(tensor_value.dtype)
 
 
-    max_quant_val = max(quant_grid)
+@torch.no_grad()
+def get_quant_nvfp(tensor_value: torch.Tensor, group_size: int):
 
-    if group_size == -2:
-        # tensor-wise
-        tensor_value = tensor_value.view(-1)
+    org_shape = tensor_value.shape
 
-        max_val = tensor_value.abs().amax()
-        scales = (max_val * alpha) / max_quant_val
-        zeros = 0
+    if group_size > 0:
+        assert org_shape[-1] % group_size == 0
+        tensor_value = tensor_value.reshape(-1, group_size)
 
-        batch_num = 4
-        assert tensor_value.shape[0] % batch_num == 0
-        batch_size = tensor_value.shape[0] // batch_num
-        tensor_deq = torch.zeros_like(tensor_value)
-        for idx in range(batch_num):
-            tensor_par = tensor_value[idx*batch_size : (idx+1)*batch_size]
-            labels = (((tensor_par + zeros) / scales).unsqueeze(-1) - quant_grid).abs().argmin(dim=-1)
-            tensor_q_par = quant_grid[labels] * scales - zeros
-            tensor_deq[idx*batch_size : (idx+1)*batch_size] = tensor_q_par
-        
-    # channel or group wise
-    elif group_size >= -1:
+    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+    scales = max_val / FLOAT4_E2M1_MAX
+    # avoid divide a too small value
+    global_scale = scales.max() / FLOAT8_E4M3_MAX
+    scales = (
+        (scales / global_scale)
+        .clamp(min=FLOAT8_E4M3_EPS)
+        .to(torch.float8_e4m3fn)
+        .to(tensor_value.dtype)
+    ) * global_scale
 
-        if group_size > 0:
-            assert org_shape[-1] % group_size == 0
-            tensor_value = tensor_value.reshape(-1, group_size)
+    tensor_quant = cast_to_fp4(tensor_value / scales) * scales
 
-        assert tensor_value.dim() == 2
-
-        max_val = tensor_value.abs().amax(dim=1, keepdim=True)
-        scales = (max_val * alpha) / max_quant_val
-
-        # if group_size > 0:
-            # scales = scales.to(dtype=torch.float8_e4m3fn).to(dtype=torch.float16)
-            # scales = scales.to(dtype=torch.float8_e5m2).to(dtype=torch.float16)
-
-        zeros = 0
-
-        # Batch processing to avoid OOM
-        # batch_num = 4
-        batch_num = 4
-        assert tensor_value.shape[0] % batch_num == 0
-        batch_size = tensor_value.shape[0] // batch_num
-        tensor_deq = torch.zeros_like(tensor_value)
-        for idx in range(batch_num):
-            tensor_par = tensor_value[idx*batch_size : (idx+1)*batch_size, :]
-            labels = (((tensor_par + zeros) / scales[idx*batch_size : (idx+1)*batch_size, :]).unsqueeze(-1) - quant_grid).abs().argmin(dim=-1)
-            tensor_q_par = quant_grid[labels] * scales[idx*batch_size : (idx+1)*batch_size, :] - zeros
-            tensor_deq[idx*batch_size : (idx+1)*batch_size, :] = tensor_q_par
+    return tensor_quant.reshape(org_shape).to(tensor_value.dtype)
 
 
-    assert torch.isnan(tensor_deq).sum() == 0
-    assert torch.isnan(scales).sum() == 0
+@torch.no_grad()
+def get_quant_mxes(tensor_value: torch.Tensor, group_size: int):
 
-    # tensor_deq = tensor_deq.half()
-    tensor_deq = tensor_deq.reshape(org_shape)
+    sub_group_size = 8  # extra 2 bit for scale in subgroup
+    assert group_size % sub_group_size == 0
 
-    # if group_size > 0:
-    #     calculate_max_error(tensor_value, tensor_deq, q_group_size=group_size)
+    org_shape = tensor_value.shape
 
+    if group_size > 0:
+        assert org_shape[-1] % group_size == 0
+        tensor_value = tensor_value.reshape(-1, group_size)
+
+    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+    # avoid divide a too small value
+    max_val = max_val.clamp(min=1e-8)
+
+    max_quant_val = torch.tensor(FLOAT4_E2M1_MAX, device=tensor_value.device)
+
+    tensor_value = tensor_value.reshape(-1, sub_group_size)
+    # Compute the scaling factor
+    exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
+    bias_mse = {}
+    range_ = range(0, 2)
+    for bias in range_:
+        scales = torch.pow(2, exp + bias)
+        sub_groups_per_group = group_size // sub_group_size
+        scales = scales.expand(-1, sub_groups_per_group).reshape(-1, 1)
+        ratios = torch.tensor(
+            [1.0, 1.25, 1.5, 1.75], dtype=tensor_value.dtype, device=tensor_value.device
+        )
+        x_expanded = tensor_value.unsqueeze(2)
+        scales_expanded = scales.unsqueeze(2)
+
+        cand_scales = scales_expanded * ratios.view(1, 1, -1)
+        cand_qval = cast_to_fp4(x_expanded / cand_scales) * cand_scales
+        mse_per_ratio = (cand_qval - x_expanded).pow(2).mean(dim=1)
+        best_ratio_idx = mse_per_ratio.argmin(dim=1)
+        row_idx = torch.arange(tensor_value.size(0), device=tensor_value.device)
+        best_dqval = cand_qval[row_idx, :, best_ratio_idx]
+        quant_mse_per_subgrp = mse_per_ratio[row_idx, best_ratio_idx]
+        tensor_deq = best_dqval.reshape(-1, group_size)
+        quant_mse_sum = quant_mse_per_subgrp.view(-1, sub_groups_per_group).mean(
+            dim=1, keepdim=True
+        )
+        bias_mse[bias] = (tensor_deq, quant_mse_sum)
+    all_mse = torch.cat([bias_mse[b][1] for b in range_], dim=1)
+    best_bias_idx = all_mse.argmin(dim=1)
+    all_deq = torch.stack([bias_mse[b][0] for b in range_], dim=0)
+    all_deq = all_deq.view(len(range_), -1, group_size)
+    idx_expanded = best_bias_idx.view(1, -1, 1).expand(1, -1, group_size)
+    final_deq = torch.gather(all_deq, dim=0, index=idx_expanded).squeeze(0)
+    tensor_deq = final_deq.reshape(org_shape).to(tensor_value.dtype)
     return tensor_deq
 
 
 @torch.no_grad()
-def get_quant_mxfp(tensor_value, quant_grid, mode="int", zero_point=True, q_group_size=-1, alpha=1.0, pos_value=None, get_labels=False, is_input=False, keep_outlier=False, print_stats=False, scale_method=1):
-    '''
-    return : dequantized weight, mse?
-    '''
-    assert torch.isinf(tensor_value).sum() == 0
-    assert torch.isnan(tensor_value).sum() == 0
+def get_quant_mxem(tensor_value: torch.Tensor, group_size: int):
+
+    sub_group_size = 8  # extra 2 bit for mantissa in subgroup
+    assert group_size % sub_group_size == 0
 
     org_shape = tensor_value.shape
-    quant_grid = quant_grid.to(tensor_value.device)
 
-    if q_group_size > 0:
-        assert org_shape[-1] % q_group_size == 0
-        tensor_value = tensor_value.reshape(-1, q_group_size)
+    if group_size > 0:
+        assert org_shape[-1] % group_size == 0
+        tensor_value = tensor_value.reshape(-1, group_size)
 
     max_val = tensor_value.abs().amax(dim=1, keepdim=True)
     # avoid divide a too small value
-    max_val = max_val.clamp(min=1e-5)
+    max_val = max_val.clamp(min=1e-8)
 
-    max_quant_val = max(quant_grid)
-    
+    max_quant_val = torch.tensor(FLOAT4_E2M1_MAX, device=tensor_value.device)
+
     # Compute the scaling factor
-    # pow(2, math.floor(math.log2(25)) - math.floor(math.log2(6)))
-    # exp = torch.ceil(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
-    
-    scales = (max_val * alpha) / max_quant_val
-
-    # scales = scales.to(torch.float8_e3m4)
-
-
-    assert torch.isinf(max_val).sum() == 0
-
-    if scale_method == 1:
-        exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
-    elif scale_method == 2:
-        exp = torch.ceil(torch.log2(max_val / max_quant_val))
-    elif scale_method == 3:
-        exp = torch.ceil(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
-    elif scale_method == 4:
-        exp = torch.round(torch.log2(max_val / max_quant_val))
-    elif scale_method == 5:
-        exp = torch.round(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
-    else:
-        raise NotImplementedError
+    exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
     scales = torch.pow(2, exp)
 
-    assert not (scales == 0).any(), "Scale should contain 0 values"
-    assert torch.isnan(scales).sum() == 0
+    fp4, fp6 = cast_to_fp4_em(tensor_value / scales)
 
-    # exp_max_val = torch.floor(torch.log2(max_val))
-    # mask = torch.where(tensor_value > torch.pow(2, exp_max_val), torch.tensor(1), torch.tensor(0))
+    tmp = fp4.reshape(-1, sub_group_size)
+    outlier_mask = torch.zeros_like(tmp, dtype=tensor_value.dtype).to(
+        tensor_value.device
+    )
 
-    zeros = 0
-    # org_value = tensor_value.clone()
+    _, indices = torch.topk(tmp.abs(), 1)
+    outlier_mask.scatter_(1, indices, 1)
+    outlier_group_mask = outlier_mask.reshape(-1, group_size)
+    tensor_quant = (fp4 * (1 - outlier_group_mask) + fp6 * outlier_group_mask) * scales
 
-    if keep_outlier:
-        outlier_mask = torch.zeros_like(tensor_value, dtype=torch.bool).to(tensor_value.device)
-        _, indices = torch.topk(tensor_value.abs(), 1)
-        outlier_mask.scatter_(1, indices, 1)
-
-        # print(outlier_mask.shape[0], "Original outlier_mask count of 1s:", outlier_mask.sum().item())
-        org_tensor = tensor_value.clone()
-
-        tensor_value = tensor_value * ~outlier_mask
-
-    # Batch processing to avoid OOM
-    # batch_num = 4
-    batch_num = 4
-    assert tensor_value.shape[0]  % batch_num == 0, \
-    f"Batch dimension mismatch! Current tensor shape[0]={tensor_value.shape[0]},  batch_num={batch_num}. " \
-    f"The first dimension of tensor ({tensor_value.shape[0]})  must be divisible by batch_num ({batch_num})"
-    batch_size = tensor_value.shape[0] // batch_num
-    tensor_deq = torch.zeros_like(tensor_value)
-    for idx in range(batch_num):
-        tensor_par = tensor_value[idx*batch_size : (idx+1)*batch_size, :]
-        labels = (((tensor_par + zeros) / scales[idx*batch_size : (idx+1)*batch_size, :]).unsqueeze(-1) - quant_grid).abs().argmin(dim=-1)
-        tensor_q_par = quant_grid[labels] * scales[idx*batch_size : (idx+1)*batch_size, :] - zeros
-        tensor_deq[idx*batch_size : (idx+1)*batch_size, :] = tensor_q_par
-
-    # tensor_deq = org_value * mask + tensor_deq * (1-mask)
-    quant_mse = (tensor_deq-tensor_value).abs().pow(2).to(torch.float32)
-    quant_mse_sum = torch.mean(quant_mse, dim=1, keepdim=True)
-
-    # print('test', tensor_deq, scales, quant_mse, quant_mse_sum, quant_mse_sum.max())
-    if keep_outlier:
-        tensor_deq = tensor_deq * ~outlier_mask + org_tensor * outlier_mask
+    return tensor_quant.reshape(org_shape).to(tensor_value.dtype)
 
 
-    assert torch.isinf(tensor_deq).sum() == 0
-    assert torch.isnan(tensor_deq).sum() == 0
-    assert torch.isnan(scales).sum() == 0
-    # assert torch.isnan(quant_mse).sum() == 0
-
-    tensor_deq = tensor_deq.reshape(org_shape)
-
-    # calculate_max_error(tensor_value, tensor_deq, q_group_size=q_group_size)
-
-    quant_obj = 'input' if is_input else 'weight'
-    if print_stats:
-        print(f"Quantization MSE: {quant_mse_sum.mean().item()}, quant_obj: {quant_obj}, keep_outlier: {keep_outlier}")
-    # print('init', scales, tensor_deq, tensor_value)
-
-    if get_labels:
-        return tensor_deq, quant_mse_sum, labels, quant_grid * scales
-    else:
-        return tensor_deq, quant_mse_sum
-    
-
-@torch.no_grad()
-def get_quant_nvfp(tensor_value, quant_grid, mode="int", zero_point=True, q_group_size=-1, alpha=1.0, pos_value=None, get_labels=False, is_input=False, keep_outlier=False, print_stats=False):
-    '''
-    return : dequantized weight, mse?
-    '''
-    assert torch.isinf(tensor_value).sum() == 0
-    assert torch.isnan(tensor_value).sum() == 0
-
-    org_shape = tensor_value.shape
-    quant_grid = quant_grid.to(tensor_value.device)
-
-    if q_group_size > 0:
-        assert org_shape[-1] % q_group_size == 0
-        tensor_value = tensor_value.reshape(-1, q_group_size)
-
-    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
-    # avoid divide a too small value
-    max_val = max_val.clamp(min=1e-5)
-
-    max_quant_val = max(quant_grid)
-    assert torch.isinf(max_val).sum() == 0
-    
-    # Compute the scaling factor
-    # pow(2, math.floor(math.log2(25)) - math.floor(math.log2(6)))
-    # exp = torch.ceil(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
-    
-    scales = (max_val * alpha) / max_quant_val
-    scales = scales.clamp(min=0.001953125, max=448.0)
-
-    # scale_fp16 = scales.clone()
-    scales = scales.to(torch.float8_e4m3fn)
-    # scales = scales.to(torch.float8_e4m3fnuz)
-    scales = scales.to(torch.float16)
-
-    # test_tensor = torch.tensor(272.5, device=scales.device, dtype=torch.float16)
-    # print(test_tensor, test_tensor.to(torch.float8_e4m3fnuz), test_tensor.to(torch.float8_e4m3fn))
-    # exit(0)
-
-    # if not torch.isnan(scales).sum() == 0:
-    #     nan_mask = torch.where(torch.isnan(scales), torch.tensor(1.0, device=scales.device), torch.tensor(0.0, device=scales.device))
-    #     nan_max_val = max_val * nan_mask    
-    #     nan_scales = scales * nan_mask
-    #     nan_scales_fp16 = scale_fp16 * nan_mask
-
-    #     print(max_val.max(), max_val.min(), scales, nan_max_val.max(), nan_max_val.min(), max_quant_val, nan_scales_fp16.max())
-    #     exit(0)
-
-    assert not (scales == 0).any(), "Scale should contain 0 values"
-    assert torch.isnan(scales).sum() == 0
-
-    # exp_max_val = torch.floor(torch.log2(max_val))
-    # mask = torch.where(tensor_value > torch.pow(2, exp_max_val), torch.tensor(1), torch.tensor(0))
-
-    zeros = 0
-    # org_value = tensor_value.clone()
-
-    if keep_outlier:
-        outlier_mask = torch.zeros_like(tensor_value, dtype=torch.bool).to(tensor_value.device)
-        _, indices = torch.topk(tensor_value.abs(), 1)
-        outlier_mask.scatter_(1, indices, 1)
+QUANT_METHOD_MAP = {
+    "mxfp": get_quant_mxfp,
+    "nvfp": get_quant_nvfp,
+    "mxes": get_quant_mxes,
+    "mxem": get_quant_mxem,
+}
 
 
-        # 对每 3 个 group，保留第 3 行（index % 3 == 2），其他两行清零
-        # mask = torch.arange(outlier_mask.shape[0], device=outlier_mask.device) % 3 != 0
-        # outlier_mask[mask] = 0
+class QuantUnit:
+    def __init__(self, bit: int, mode: str, group_size: int):
+        self.bit = bit
+        self.mode = mode
+        self.group_size = group_size
 
-        # 使用 olive 的方法得到 victim 的位置
-        # victim_odd = torch.roll(outlier_mask.view(-1), 1, -1)
-        # victim_odd[::2] = 0
-        # victim_even = torch.roll(outlier_mask.view(-1) & (~victim_odd), -1, -1)
-        # victim_even[1::2] = 0
-        # non_victim_mask = ~(victim_even | victim_odd)
-        # non_victim_mask = non_victim_mask.reshape(tensor_value.shape)
+        if self.bit == 16:
+            self.quant_func = fp16
+        elif self.bit == 4:
+            assert mode in QUANT_METHOD_MAP
+            self.quant_func = QUANT_METHOD_MAP[mode]
 
-        # print(outlier_mask.shape[0], "Original outlier_mask count of 1s:", outlier_mask.sum().item())
-        org_tensor = tensor_value.clone()
+            if "nv" in mode:
+                assert self.group_size == 16
+            else:
+                assert self.group_size == 32
+        else:
+            raise NotImplementedError
 
-        tensor_value = tensor_value * ~outlier_mask
-
-    # Batch processing to avoid OOM
-    # batch_num = 4
-    batch_num = 4
-    assert tensor_value.shape[0] % batch_num == 0
-    batch_size = tensor_value.shape[0] // batch_num
-    tensor_deq = torch.zeros_like(tensor_value)
-    for idx in range(batch_num):
-        tensor_par = tensor_value[idx*batch_size : (idx+1)*batch_size, :]
-        labels = (((tensor_par + zeros) / scales[idx*batch_size : (idx+1)*batch_size, :]).unsqueeze(-1) - quant_grid).abs().argmin(dim=-1)
-        tensor_q_par = quant_grid[labels] * scales[idx*batch_size : (idx+1)*batch_size, :] - zeros
-        tensor_deq[idx*batch_size : (idx+1)*batch_size, :] = tensor_q_par
-
-    # tensor_deq = org_value * mask + tensor_deq * (1-mask)
-    quant_mse = (tensor_deq-tensor_value).abs().pow(2).to(torch.float32)
-    quant_mse_sum = torch.mean(quant_mse, dim=1, keepdim=True)
-
-    # print('test', tensor_deq, scales, quant_mse, quant_mse_sum, quant_mse_sum.max())
-    if keep_outlier:
-        tensor_deq = tensor_deq * ~outlier_mask + org_tensor * outlier_mask
-
-    # if not torch.isnan(tensor_deq).sum() == 0:
-    #     print(torch.isnan(tensor_deq).sum(), torch.isnan(scales).sum(), scales.max(), scales.min())
-    #     exit(0)
-    assert torch.isinf(tensor_deq).sum() == 0
-    assert torch.isnan(tensor_deq).sum() == 0
-    assert torch.isnan(scales).sum() == 0
-    # assert torch.isnan(quant_mse).sum() == 0
-
-    tensor_deq = tensor_deq.reshape(org_shape)
-
-    # calculate_max_error(tensor_value, tensor_deq, q_group_size=q_group_size)
-
-    quant_obj = 'input' if is_input else 'weight'
-    if print_stats:
-        print(f"Quantization MSE: {quant_mse_sum.mean().item()}, quant_obj: {quant_obj}, keep_outlier: {keep_outlier}")
-    # print('init', scales, tensor_deq, tensor_value)
-
-    if get_labels:
-        return tensor_deq, quant_mse_sum, labels, quant_grid * scales
-    else:
-        return tensor_deq, quant_mse_sum
+    def forward(self, x):
+        return self.quant_func(x, self.group_size)
 
 
-@torch.no_grad()
-def get_quant_smxfp(tensor_value, quant_grid, q_group_size=-1, is_input=False):
-    org_shape = tensor_value.shape
-    tensor_value = tensor_value.reshape(-1, q_group_size)
-    batch_num = 1 if is_input else 4                      # 固定批次大小 
-    dim0 = tensor_value.size(0) 
-    
-    # 保证可以被 batch_num 整除；若不能整除可改为向上取整并 pad 
-    assert dim0 % batch_num == 0, f"dim0={dim0} must be divisible by batch_num={batch_num}"
-    
-    chunk_size = dim0 // batch_num 
-    deq_list= []
-    
-    for i in range(batch_num):
-        start = i * chunk_size 
-        end   = start + chunk_size 
-        sub_tensor = tensor_value[start:end]
-        
-        # 调用 inner 函数 
-        deq_sub, _ = get_quant_smxfp_inner(
-            sub_tensor,
-            quant_grid,
-            q_group_size=q_group_size,
-            is_input=is_input
-        )
-        
-        deq_list.append(deq_sub) 
-    
-    # concat 回完整张量 
-    tensor_deq      = torch.cat(deq_list,  dim=0).reshape(org_shape)
-    
-    return tensor_deq, None
+class QuantConfig:
+    def __init__(
+        self, w_bit: int, w_mode: str, a_bit: int, a_mode: str, group_size: int
+    ):
+        self.w_unit = QuantUnit(w_bit, w_mode, group_size)
+        self.a_unit = QuantUnit(a_bit, a_mode, group_size)
 
-@torch.no_grad()
-def get_quant_smxfp_inner(tensor_value, quant_grid, q_group_size=-1, get_labels=False, is_input=False, keep_outlier=False, print_stats=False):
-    '''
-    return : dequantized weight, mse?
-    '''
-    val_info = torch.finfo(tensor_value.dtype)
-    tensor_value = tensor_value.nan_to_num(0.0,  val_info.min, val_info.max).clamp(val_info.min, val_info.max)
-    assert torch.isinf(tensor_value).sum() == 0
-    assert torch.isnan(tensor_value).sum() == 0
-    org_shape = tensor_value.shape # Original shape, e.g., (128, 512)
-    quant_grid = quant_grid.to(tensor_value.device)
-    
-    # Reshape for q_group_size processing
-    # Example: if org_shape=(128, 512) and q_group_size=16, then tensor_value_reshaped will be (128*32, 16)
-    if q_group_size > 0:
-        assert org_shape[-1] % q_group_size == 0, f"Last dimension {org_shape[-1]} must be divisible by q_group_size {q_group_size}"
-        tensor_value_reshaped = tensor_value.reshape(-1, q_group_size)
-    else:
-        # If q_group_size is not set, treat the whole last dim as one group (though this specific code
-        # will error out below if sub_group_size is not -1, as it expects q_group_size to be even)
-        tensor_value_reshaped = tensor_value.reshape(-1, org_shape[-1])
-        
-    num_q_groups = tensor_value_reshaped.shape[0] # Number of total q_groups
+    def weight(self, weight):
+        return self.w_unit.forward(weight)
 
-    # Calculate scales for each q_group
-    max_val = tensor_value_reshaped.abs().amax(dim=1, keepdim=True) # Max value per q_group
-    max_val = max_val.clamp(min=1e-5) # Avoid division by too small value
-    max_quant_val = max(quant_grid)
-    
-    exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
-    scales = torch.pow(2, exp) # scales shape: (num_q_groups, 1)
-    
-    assert not (scales == 0).any(), "Scale should contain 0 values"
-    
-    zeros = 0 # Assuming zero_point=False, otherwise integrate it here
-    
-    # Handle outliers (still at q_group level)
-    if keep_outlier:
-        outlier_mask = torch.zeros_like(tensor_value_reshaped, dtype=torch.bool, device=tensor_value_reshaped.device)
-        # Using topk to find the largest absolute value in each q_group and mark it as outlier
-        _, indices = torch.topk(tensor_value_reshaped.abs(), 1, dim=1) # indices shape: (num_q_groups, 1)
-        outlier_mask.scatter_(1, indices, 1) # Mark the outlier position with True
-        org_tensor_for_outlier = tensor_value_reshaped.clone() # Keep original values for outliers
-        tensor_value_processed = tensor_value_reshaped * ~outlier_mask # Zero out outliers
-    else:
-        tensor_value_processed = tensor_value_reshaped.clone()
-
-    # Define the two new grids for sub-group quantization
-    half = quant_grid.shape[0]  // 2
-    grid1_tensor = quant_grid[:half]
-    grid2_tensor = quant_grid[half:]
-    
-    # Check if q_group_size is defined and is an even number for sub-grouping
-    # This now effectively becomes the main path. If not met, it will raise an error.
-    sub_group_size = 2
-    if q_group_size > 0 and q_group_size % sub_group_size == 0:
-        num_sub_groups_per_q_group = q_group_size // sub_group_size
-    else:
-        raise ValueError("q_group_size must be an even number (>0) for sub-grouping with fixed size 2.")
-    
-    # Reshape tensor_value_processed to expose sub-groups
-    # From (num_q_groups, q_group_size) to (num_q_groups, num_sub_groups_per_q_group, sub_group_size)
-    tensor_processed_subgrouped = tensor_value_processed.reshape(num_q_groups, num_sub_groups_per_q_group, sub_group_size)
-    
-    # Scale each q_group by its corresponding scale.
-    # scales shape: (num_q_groups, 1, 1). This allows broadcasting with tensor_processed_subgrouped.
-    # Example: (N, 1, 1) * (N, S, 2) -> (N, S, 2)
-    # --- Decide grid per sub-group based on max normalized magnitude ---
-    normalized_sub_groups = (tensor_processed_subgrouped + zeros) / scales.unsqueeze(-1)  # (N, S, 2)
-    
-    # Compute max absolute value in each sub-group after normalization
-    max_abs_norm = normalized_sub_groups.abs().amax(dim=-1)  # (N, S)
-    
-    # Threshold: max of grid1 (assuming grid1 covers lower-magnitude values)
-    grid1_max_val = grid1_tensor.abs().max()
-    
-    # Selection mask: True → use grid1, False → use grid2
-    use_grid1 = max_abs_norm <= grid1_max_val  # (N, S)
-    
-    # Flatten normalized_sub_groups for efficient indexing
-    # Shape: (total_subgroups, 2)
-    flat_norm = normalized_sub_groups.view(-1, sub_group_size)  # (N*S, 2)
-    flat_use_grid1 = use_grid1.view(-1)  # (N*S,)
-
-    # Prepare output containers
-    quantized_flat = torch.empty_like(flat_norm)  # (N*S, 2)
-
-    # Quantize with grid1 where applicable
-    if flat_use_grid1.any():
-        idx1 = torch.where(flat_use_grid1)[0]
-        norm_vals1 = flat_norm[idx1].unsqueeze(-1)  # (K, 2, 1)
-        diffs1 = (norm_vals1 - grid1_tensor).abs()  # (K, 2, len(grid1))
-        labels1 = diffs1.argmin(dim=-1)  # (K, 2)
-        quantized_flat[idx1] = grid1_tensor[labels1]
-
-    # Quantize with grid2 where applicable
-    if (~flat_use_grid1).any():
-        idx2 = torch.where(~flat_use_grid1)[0]
-        norm_vals2 = flat_norm[idx2].unsqueeze(-1)  # (M, 2, 1)
-        diffs2 = (norm_vals2 - grid2_tensor).abs()  # (M, 2, len(grid2))
-        labels2 = diffs2.argmin(dim=-1)  # (M, 2)
-        quantized_flat[idx2] = grid2_tensor[labels2]
-
-    # Reshape back to (N, S, 2)
-    quantized_normalized = quantized_flat.view(num_q_groups, num_sub_groups_per_q_group, sub_group_size)
-    
-    # Dequantize
-    tensor_deq_subgrouped = quantized_normalized * scales.unsqueeze(-1) - zeros
-
-    # Flatten back to the original q_group_size shape
-    tensor_deq = tensor_deq_subgrouped.reshape(num_q_groups, q_group_size)
-    
-    # Apply outlier handling if enabled
-    if keep_outlier:
-        tensor_deq = tensor_deq * ~outlier_mask + org_tensor_for_outlier * outlier_mask
-
-    # Calculate final MSE (mean across elements in each q_group)
-    # quant_mse shape: (num_q_groups, q_group_size)
-    quant_mse = (tensor_deq - tensor_value_reshaped).abs().pow(2).to(torch.float32)
-    # quant_mse_sum shape: (num_q_groups, 1)
-    quant_mse_sum = torch.mean(quant_mse, dim=1, keepdim=True)
-    
-    tensor_deq = tensor_deq.nan_to_num(0.0,  val_info.min, val_info.max).clamp(val_info.min, val_info.max)
-    assert torch.isinf(tensor_deq).sum() == 0
-    assert torch.isnan(tensor_deq).sum() == 0
-    assert torch.isnan(scales).sum() == 0
-    
-    # Reshape quantized tensor back to original input shape
-    tensor_deq = tensor_deq.reshape(org_shape)
-    
-    quant_obj = 'input' if is_input else 'weight'
-    if print_stats:
-        print(f"Quantization MSE: {quant_mse_sum.mean().item()}, quant_obj: {quant_obj}, keep_outlier: {keep_outlier}")
-    
-    if get_labels:
-        print("Warning: 'get_labels=True' is complex with sub-group logic. Returning dummy labels.")
-        dummy_labels = torch.zeros(tensor_value_reshaped.shape, dtype=torch.long, device=tensor_value.device)
-        return tensor_deq, quant_mse_sum, dummy_labels, scales.reshape(org_shape[0], 1)
-    else:
-        return tensor_deq, quant_mse_sum
+    def activation(self, acitivation):
+        return self.a_unit.forward(acitivation)

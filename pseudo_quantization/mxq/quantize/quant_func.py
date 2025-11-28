@@ -135,7 +135,7 @@ def get_quant_mxes(tensor_value: torch.Tensor, group_size: int):
     # Compute the scaling factor
     exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
     bias_mse = {}
-    range_ = range(0, 2)
+    range_ = range(-1, 2)
     for bias in range_:
         scales = torch.pow(2, exp + bias)
         sub_groups_per_group = group_size // sub_group_size

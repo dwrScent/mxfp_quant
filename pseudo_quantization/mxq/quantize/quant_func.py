@@ -40,7 +40,7 @@ FP6_E2M3_GRID = torch.tensor(float_value(2, 3), device="cuda")
 def quantize_to_grid(x: torch.Tensor, levels: torch.Tensor) -> torch.Tensor:
     levels = levels.to(x.device)
     boundaries = (levels[:-1] + levels[1:]) / 2.0
-    indices = torch.bucketize(x, boundaries, right=True)
+    indices = torch.bucketize(x, boundaries)
     indices = torch.clamp(indices, 0, len(levels) - 1)
 
     quantized = levels[indices]

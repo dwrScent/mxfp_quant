@@ -41,7 +41,7 @@ def quantize_to_grid(x: torch.Tensor, levels: torch.Tensor) -> torch.Tensor:
     levels = levels.to(x.device)
     boundaries = (levels[:-1] + levels[1:]) / 2.0
     indices = torch.bucketize(x, boundaries)
-    indices = torch.clamp(indices, 0, len(levels) - 1)
+    indices.clamp_(0, len(levels) - 1)
 
     quantized = levels[indices]
     return quantized, indices
@@ -59,7 +59,7 @@ def cast_to_fp4_em(x: torch.Tensor):
     x_abs = torch.abs(x)
     fp4, fp4_index = quantize_to_grid(x_abs, FP4_E2M1_GRID)
     _, fp6_index = quantize_to_grid(x_abs, FP6_E2M3_GRID)
-    fp6_index = torch.clamp(fp6_index, min=fp4_index * 4 - 1, max=fp4_index * 4 + 2)
+    fp6_index.clamp_(min=fp4_index * 4 - 1, max=fp4_index * 4 + 2)
     fp6 = FP6_E2M3_GRID.to(x.device)[fp6_index]
 
     return fp4 * sign, fp6 * sign

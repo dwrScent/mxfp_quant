@@ -21,6 +21,7 @@ def make_quant_linear(model: nn.Module, quant_config: QuantConfig):
             q_linear = QuantLinear(module, quant_config)
             q_linear.to(next(layer.parameters()).device)
             set_op_by_name(layer, name, q_linear)
-
-    torch.cuda.empty_cache()
-    gc.collect()
+            
+            del module
+            torch.cuda.empty_cache()
+            gc.collect()

@@ -72,7 +72,9 @@ def cast_to_fp4_em(x: torch.Tensor):
 def get_quant_mxfp(tensor_value: torch.Tensor, group_size: int):
 
     org_shape = tensor_value.shape
+    org_dtype = tensor_value.dtype
 
+    tensor_value = tensor_value.float()
     if group_size > 0:
         assert org_shape[-1] % group_size == 0
         tensor_value = tensor_value.reshape(-1, group_size)
@@ -88,14 +90,16 @@ def get_quant_mxfp(tensor_value: torch.Tensor, group_size: int):
     scales = torch.pow(2, exp)
     tensor_quant = cast_to_fp4(tensor_value / scales) * scales
 
-    return tensor_quant.reshape(org_shape).to(tensor_value.dtype)
+    return tensor_quant.reshape(org_shape).to(org_dtype)
 
 
 @torch.no_grad()
 def get_quant_nvfp(tensor_value: torch.Tensor, group_size: int):
 
     org_shape = tensor_value.shape
+    org_dtype = tensor_value.dtype
 
+    tensor_value = tensor_value.float()
     if group_size > 0:
         assert org_shape[-1] % group_size == 0
         tensor_value = tensor_value.reshape(-1, group_size)
@@ -113,7 +117,7 @@ def get_quant_nvfp(tensor_value: torch.Tensor, group_size: int):
 
     tensor_quant = cast_to_fp4(tensor_value / scales) * scales
 
-    return tensor_quant.reshape(org_shape).to(tensor_value.dtype)
+    return tensor_quant.reshape(org_shape).to(org_dtype)
 
 
 @torch.no_grad()
@@ -123,6 +127,9 @@ def get_quant_mxes(tensor_value: torch.Tensor, group_size: int):
     assert group_size % sub_group_size == 0
 
     org_shape = tensor_value.shape
+    org_dtype = tensor_value.dtype
+
+    tensor_value = tensor_value.float()
 
     if group_size > 0:
         assert org_shape[-1] % group_size == 0
@@ -167,7 +174,7 @@ def get_quant_mxes(tensor_value: torch.Tensor, group_size: int):
     all_deq = all_deq.view(len(range_), -1, group_size)
     idx_expanded = best_bias_idx.view(1, -1, 1).expand(1, -1, group_size)
     final_deq = torch.gather(all_deq, dim=0, index=idx_expanded).squeeze(0)
-    tensor_deq = final_deq.reshape(org_shape).to(tensor_value.dtype)
+    tensor_deq = final_deq.reshape(org_shape).to(org_dtype)
     return tensor_deq
 
 
@@ -178,6 +185,9 @@ def get_quant_mxem(tensor_value: torch.Tensor, group_size: int):
     assert group_size % sub_group_size == 0
 
     org_shape = tensor_value.shape
+    org_dtype = tensor_value.dtype
+
+    tensor_value = tensor_value.float()
 
     if group_size > 0:
         assert org_shape[-1] % group_size == 0
@@ -205,7 +215,7 @@ def get_quant_mxem(tensor_value: torch.Tensor, group_size: int):
     outlier_group_mask = outlier_mask.reshape(-1, group_size)
     tensor_quant = (fp4 * (1 - outlier_group_mask) + fp6 * outlier_group_mask) * scales
 
-    return tensor_quant.reshape(org_shape).to(tensor_value.dtype)
+    return tensor_quant.reshape(org_shape).to(org_dtype)
 
 
 QUANT_METHOD_MAP = {

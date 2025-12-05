@@ -12,6 +12,7 @@ conda activate mxq
 
 2. Install the package in development mode:
 ```bash
+pip install vllm==0.7.0 --extra-index-url https://download.pytorch.org/whl/cu128
 cd pseudo_quantization
 pip install -e .
 ```

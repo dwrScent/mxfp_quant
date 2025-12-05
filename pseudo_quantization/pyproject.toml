@@ -14,10 +14,10 @@ classifiers = [
 ]
 dependencies = [
     "accelerate", "sentencepiece", "tokenizers>=0.12.1",
-    "torch", "torchvision", 
+    "vllm", "torch", "torchvision", 
     "transformers==4.47.0", 
     "lm_eval==0.4.4", "peft==0.17.1",
-    "datasets==3.6.0", "lighteval", "lighteval[math]", "more_itertools"
+    "datasets==3.6.0", "lighteval[math]==0.8.1", "more_itertools"
 ]
 
 [tool.setuptools.packages.find]

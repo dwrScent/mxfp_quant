@@ -8,7 +8,6 @@ from transformers import (
 )
 import torch
 import argparse
-from mxq.utils.parallel import auto_parallel
 from mxq.quantize.quant_func import QuantConfig
 from mxq.quantize.quantizer import make_quant_linear
 
@@ -27,13 +26,7 @@ parser.add_argument("--model_path", type=str, help="path of the hf model")
 parser.add_argument("--batch_size", type=int, default=32, help="batch size")
 parser.add_argument("--tasks", default=None, type=str)
 parser.add_argument("--num_fewshot", type=int, default=0)
-# model config
-parser.add_argument("--parallel", action="store_true", help="enable model parallelism")
-parser.add_argument(
-    "--auto_parallel",
-    action="store_true",
-    help="automatically set parallel and batch_size",
-)
+
 # quantization config
 parser.add_argument("--w_bit", type=int, default=16)
 parser.add_argument(
@@ -45,28 +38,10 @@ parser.add_argument(
 )
 parser.add_argument("--group_size", type=int, default=-1)
 
-
-# max memory to offload larger models to CPU
-parser.add_argument(
-    "--max_memory",
-    type=str,
-    nargs="*",
-    help="List of device_id:max_memory pairs to be parsed into a dictionary; "
-    + "Example: 0:10GiB 1:10GiB cpu:30GiB; "
-    + "mode details here: "
-    + "https://huggingface.co/docs/accelerate/usage_guides/big_modeling",
-)
 args = parser.parse_args()
 
-if args.auto_parallel:
-    gpu_list = auto_parallel(args)
-
-max_memory = [v.split(":") for v in (args.max_memory or [])]
-max_memory = {(int(k) if k.isdigit() else k): v for k, v in max_memory}
 
 # build model and tokenizer
-
-
 def build_model_and_enc(model_path):
     print(f"* Building model {model_path}")
 

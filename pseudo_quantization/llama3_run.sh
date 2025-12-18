@@ -2,12 +2,13 @@
 
 TASKS=${1:-"wikitext"}
 WBIT=4
-WMODE="mxes"
+WMODE="nvfp"
 ABIT=4
-AMODE="mxem"
-GROUP_SIZE=32
+AMODE="nvfp"
+GROUP_SIZE=16
 
-MODEL=meta-llama/Meta-Llama-3-8B
+# MODEL=meta-llama/Meta-Llama-3-8B
+MODEL=/cephfs/shared/model/llama-3-8b-hf
 
 python -m mxq.entry \
     --model_path "$MODEL" \

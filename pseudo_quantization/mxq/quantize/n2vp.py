@@ -70,6 +70,59 @@ def cast_to_fp4_em(x: torch.Tensor):
     return fp4 * sign, fp6 * sign
 
 
+@torch.no_grad()
+def get_quant_mxfp(tensor_value: torch.Tensor, group_size: int):
+
+    org_shape = tensor_value.shape
+    org_dtype = tensor_value.dtype
+
+    tensor_value = tensor_value.float()
+    if group_size > 0:
+        assert org_shape[-1] % group_size == 0
+        tensor_value = tensor_value.reshape(-1, group_size)
+
+    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+    # avoid divide a too small value
+    max_val = max_val.clamp(min=1e-8)
+
+    max_quant_val = torch.tensor(FLOAT4_E2M1_MAX, device=tensor_value.device)
+
+    # Compute the scaling factor
+    exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
+    scales = torch.pow(2, exp)
+    tensor_quant = cast_to_fp4(tensor_value / scales) * scales
+
+    return tensor_quant.reshape(org_shape).to(org_dtype)
+
+
+
+@torch.no_grad()
+def get_quant_nvfp(tensor_value: torch.Tensor, group_size: int):
+
+    org_shape = tensor_value.shape
+    org_dtype = tensor_value.dtype
+
+    tensor_value = tensor_value.float()
+    if group_size > 0:
+        assert org_shape[-1] % group_size == 0
+        tensor_value = tensor_value.reshape(-1, group_size)
+
+    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+    scales = max_val / FLOAT4_E2M1_MAX
+    # avoid divide a too small value
+    global_scale = scales.max() / FLOAT8_E4M3_MAX
+    scales = (
+        (scales / global_scale)
+        .clamp(min=FLOAT8_E4M3_EPS)
+        .to(torch.float8_e4m3fn)
+        .to(tensor_value.dtype)
+    ) * global_scale
+
+    tensor_quant = cast_to_fp4(tensor_value / scales) * scales
+
+    return tensor_quant.reshape(org_shape).to(org_dtype)
+
+
 def get_quant_mxem(tensor_value: torch.Tensor, group_size: int):
 
     sub_group_size = 4  # extra 2 bit for mantissa in subgroup
@@ -145,7 +198,7 @@ def get_quant_nves(tensor_value: torch.Tensor, group_size: int):
     exp = torch.floor(torch.log2(scales))
     # exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
     bias_mse = {}
-    range_ = range(-1, 2)
+    range_ = range(-2, 2)
     org_scales = scales
     for bias in range_:
         # scales = torch.pow(2, exp + bias)
@@ -227,9 +280,23 @@ __name__ = "__main__"
 a = torch.tensor([-0.27, 10.26, 6.41, 10.78, 9.25, 45.36, 10.72, 1.26])
 
 res = get_quant_nvem(a, 8)
+mse1 = (res - a).pow(2).mean()
 
 print(res)
+print("MSE NVEM:", mse1)
 
 res = get_quant_nves(a, 8)
+mse2 = (res - a).pow(2).mean()
 
 print(res)
+print("MSE NVES:", mse2)
+
+res = get_quant_nvfp(a, 8)
+mse3 = (res - a).pow(2).mean()
+print(res)
+print("MSE NVFP:", mse3)
+
+res = get_quant_mxfp(a, 8)
+mse4 = (res - a).pow(2).mean()
+print(res)
+print("MSE MXFP:", mse4)

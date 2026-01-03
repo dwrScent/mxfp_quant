@@ -30,11 +30,11 @@ parser.add_argument("--num_fewshot", type=int, default=0)
 # quantization config
 parser.add_argument("--w_bit", type=int, default=16)
 parser.add_argument(
-    "--w_mode", type=str, choices=["mxfp", "nvfp", "mxem", "mxes"], default=None
+        "--w_mode", type=str, choices=["mxfp", "nvfp", "mxem", "mxes", "nvem", "nves"], default=None
 )
 parser.add_argument("--a_bit", type=int, default=16)
 parser.add_argument(
-    "--a_mode", type=str, choices=["mxfp", "nvfp", "mxem", "mxes"], default=None
+    "--a_mode", type=str, choices=["mxfp", "nvfp", "mxem", "mxes", "nvem", "nves"], default=None
 )
 parser.add_argument("--group_size", type=int, default=-1)
 

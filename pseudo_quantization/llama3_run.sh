@@ -2,9 +2,9 @@
 
 TASKS=${1:-"wikitext"}
 WBIT=4
-WMODE="nvfp"
+WMODE="nves"
 ABIT=4
-AMODE="nvfp"
+AMODE="nves"
 GROUP_SIZE=16
 
 # MODEL=meta-llama/Meta-Llama-3-8B

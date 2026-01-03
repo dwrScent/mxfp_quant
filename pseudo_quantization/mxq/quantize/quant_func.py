@@ -253,7 +253,7 @@ def get_quant_nves(tensor_value: torch.Tensor, group_size: int):
     exp = torch.floor(torch.log2(scales))
     # exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
     bias_mse = {}
-    range_ = range(-2, 2)
+    range_ = range(-1, 2)
     org_scales = scales
     for bias in range_:
         # scales = torch.pow(2, exp + bias)

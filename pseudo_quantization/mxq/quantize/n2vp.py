@@ -1,4 +1,5 @@
 import torch
+from transformers.models.llama.modeling_llama import LlamaForCausalLM
 
 FLOAT4_E2M1_MAX = 6.0
 FLOAT8_E4M3_EPS = torch.finfo(torch.float8_e4m3fn).tiny
@@ -277,26 +278,32 @@ def get_quant_nvem(tensor_value: torch.Tensor, group_size: int):
 
 __name__ = "__main__"
 
-a = torch.tensor([-0.27, 10.26, 6.41, 10.78, 9.25, 45.36, 10.72, 1.26])
+    model_path = "/cephfs/shared/model/llama-3-8b-hf"
+    config = AutoConfig.from_pretrained(model_path)
+    # fp16 to quantized
+    kwargs = {"device_map": "balanced", "torch_dtype": torch.float16}
+    model = AutoModelForCausalLM.from_pretrained(model_path, config=config, **kwargs)
 
-res = get_quant_nvem(a, 8)
-mse1 = (res - a).pow(2).mean()
-
-print(res)
-print("MSE NVEM:", mse1)
-
-res = get_quant_nves(a, 8)
-mse2 = (res - a).pow(2).mean()
-
-print(res)
-print("MSE NVES:", mse2)
-
-res = get_quant_nvfp(a, 8)
-mse3 = (res - a).pow(2).mean()
-print(res)
-print("MSE NVFP:", mse3)
-
-res = get_quant_mxfp(a, 8)
-mse4 = (res - a).pow(2).mean()
-print(res)
-print("MSE MXFP:", mse4)
+# a = torch.tensor([-0.27, 10.26, 6.41, 10.78, 9.25, 45.36, 10.72, 1.26])
+#
+# res = get_quant_nvem(a, 8)
+# mse1 = (res - a).pow(2).mean()
+#
+# print(res)
+# print("MSE NVEM:", mse1)
+#
+# res = get_quant_nves(a, 8)
+# mse2 = (res - a).pow(2).mean()
+#
+# print(res)
+# print("MSE NVES:", mse2)
+#
+# res = get_quant_nvfp(a, 8)
+# mse3 = (res - a).pow(2).mean()
+# print(res)
+# print("MSE NVFP:", mse3)
+#
+# res = get_quant_mxfp(a, 8)
+# mse4 = (res - a).pow(2).mean()
+# print(res)
+# print("MSE MXFP:", mse4)

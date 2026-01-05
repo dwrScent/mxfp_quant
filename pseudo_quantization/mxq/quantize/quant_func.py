@@ -381,6 +381,7 @@ QUANT_METHOD_MAP = {
     "mxem": get_quant_mxem,
     "nves": get_quant_nves,
     "nvem": get_quant_nvem,
+    "hif4": get_quant_hif4,
 }
 
 

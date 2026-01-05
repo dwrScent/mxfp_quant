@@ -5,6 +5,7 @@ from torch import nn
 FLOAT4_E2M1_MAX = 6.0
 FLOAT8_E4M3_EPS = torch.finfo(torch.float8_e4m3fn).tiny
 FLOAT8_E4M3_MAX = 448.0
+LEVEL_2_MAX = 7
 
 
 @torch.no_grad()
@@ -327,6 +328,48 @@ def get_quant_nvem(tensor_value: torch.Tensor, group_size: int):
     outlier_mask.scatter_(1, indices, 1)
     outlier_group_mask = outlier_mask.reshape(-1, group_size)
     tensor_quant = (fp4 * (1 - outlier_group_mask) + fp6 * outlier_group_mask) * scales
+
+    return tensor_quant.reshape(org_shape).to(org_dtype)
+
+
+def cast_to_E6M2(x: torch.Tensor):
+    x = x.clamp(min=2 ** (-48) * 1.0, max=2 ** 15 * 1.5)
+    E = torch.floor(torch.log2(x))
+    return torch.round(x * 2 ** (-E + 2)) * 2 ** (E - 2)
+
+
+@torch.no_grad()
+def get_quant_hif4(tensor_value: torch.Tensor, group_size: int):
+
+    org_shape = tensor_value.shape
+    org_dtype = tensor_value.dtype
+
+    tensor_value = tensor_value.float()
+
+    assert group_size == 64
+    tensor_value = tensor_value.reshape(-1, group_size)
+
+    sign = torch.sign(tensor_value)
+
+    v_max16 = torch.zeros((tensor_value.shape[0], 16), device=tensor_value.device)
+    v_max8 = torch.zeros((tensor_value.shape[0], 8), device=tensor_value.device)
+    for i in range(16):
+        v_max16[:, i] = tensor_value[:, i*4:(i+1)*4].abs().max()
+    for i in range(8):
+        v_max8[:, i] = v_max16[:, i*2:(i+1)*2].max()
+    v_max = v_max8.amax(dim=1, keepdim=True)
+    SF = cast_to_E6M2(v_max / LEVEL_2_MAX)
+    E1_8 = (v_max8 / SF) >= 4
+    E1_8 = E1_8.to(v_max8.dtype)
+    E1_8x2 = E1_8.repeat_interleave(2, dim=1)
+    E1_16 = (v_max16 / SF * 2.0 ** (-E1_8x2)) >= 2
+    E1_16 = E1_16.to(v_max16.dtype)
+    DE16 = E1_16 + E1_8x2
+    DE64 = DE16.repeat_interleave(4, dim=1)
+    in_grp = torch.floor(tensor_value / (SF * 2.0 ** (DE64 - 2) + 0.5)) * 2.0 ** (-2)
+    print(in_grp)
+    in_grp[in_grp >= 2.0] = 1.75
+    tensor_quant = sign * in_grp * (SF * 2.0 ** DE64)
 
     return tensor_quant.reshape(org_shape).to(org_dtype)
 

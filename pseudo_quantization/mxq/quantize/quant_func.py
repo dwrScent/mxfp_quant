@@ -353,10 +353,10 @@ def get_quant_hif4(tensor_value: torch.Tensor, group_size: int):
 
     v_max16 = torch.zeros((tensor_value.shape[0], 16), device=tensor_value.device)
     v_max8 = torch.zeros((tensor_value.shape[0], 8), device=tensor_value.device)
-    for i in range(16):
-        v_max16[:, i] = tensor_value[:, i*4:(i+1)*4].abs().max()
-    for i in range(8):
-        v_max8[:, i] = v_max16[:, i*2:(i+1)*2].max()
+    v_max16 = tensor_value.abs().reshape(tensor_value.shape[0], -1, 4).amax(dim=2)
+    v_max16 = v_max16.reshape(tensor_value.shape[0], 16)
+    v_max8 = v_max16.reshape(tensor_value.shape[0], -1, 2).amax(dim=2)
+    v_max8 = v_max8.reshape(tensor_value.shape[0], 8)
     v_max = v_max8.amax(dim=1, keepdim=True)
     SF = cast_to_E6M2(v_max / LEVEL_2_MAX)
     E1_8 = (v_max8 / SF) >= 4
@@ -366,7 +366,7 @@ def get_quant_hif4(tensor_value: torch.Tensor, group_size: int):
     E1_16 = E1_16.to(v_max16.dtype)
     DE16 = E1_16 + E1_8x2
     DE64 = DE16.repeat_interleave(4, dim=1)
-    in_grp = torch.floor(tensor_value / (SF * 2.0 ** (DE64 - 2) + 0.5)) * 2.0 ** (-2)
+    in_grp = torch.floor(tensor_value.abs() / (SF * 2.0 ** (DE64 - 2)) + 0.5) * 2.0 ** (-2)
     in_grp[in_grp >= 2.0] = 1.75
     tensor_quant = sign * in_grp * (SF * 2.0 ** DE64)
 

@@ -4,7 +4,7 @@ from transformers.models.llama.modeling_llama import LlamaForCausalLM
 FLOAT4_E2M1_MAX = 6.0
 FLOAT8_E4M3_EPS = torch.finfo(torch.float8_e4m3fn).tiny
 FLOAT8_E4M3_MAX = 448.0
-LEVEL_2_MAX = 7
+LEVEL_2_MAX = 7.05
 
 
 @torch.no_grad()
@@ -306,21 +306,25 @@ def get_quant_hif4(tensor_value: torch.Tensor, group_size: int):
 
     v_max16 = torch.zeros((tensor_value.shape[0], 16), device=tensor_value.device)
     v_max8 = torch.zeros((tensor_value.shape[0], 8), device=tensor_value.device)
-    for i in range(16):
-        v_max16[:, i] = tensor_value[:, i*4:(i+1)*4].abs().max()
-    for i in range(8):
-        v_max8[:, i] = v_max16[:, i*2:(i+1)*2].max()
+    v_max16 = tensor_value.abs().reshape(tensor_value.shape[0], -1, 4).amax(dim=2)
+    v_max16 = v_max16.reshape(tensor_value.shape[0], 16)
+    v_max8 = v_max16.reshape(tensor_value.shape[0], -1, 2).amax(dim=2)
+    v_max8 = v_max8.reshape(tensor_value.shape[0], 8)
     v_max = v_max8.amax(dim=1, keepdim=True)
+    print("v_max8:", v_max8)
+    print("v_max16:", v_max16)
     SF = cast_to_E6M2(v_max / LEVEL_2_MAX)
     E1_8 = (v_max8 / SF) >= 4
     E1_8 = E1_8.to(v_max8.dtype)
     E1_8x2 = E1_8.repeat_interleave(2, dim=1)
+    print("E1_8x2:", E1_8x2)
     E1_16 = (v_max16 / SF * 2.0 ** (-E1_8x2)) >= 2
     E1_16 = E1_16.to(v_max16.dtype)
+    print("E1_16:", E1_16)
     DE16 = E1_16 + E1_8x2
     DE64 = DE16.repeat_interleave(4, dim=1)
-    in_grp = torch.floor(tensor_value / (SF * 2.0 ** (DE64 - 2) + 0.5)) * 2.0 ** (-2)
-    print(in_grp)
+    print(DE64)
+    in_grp = torch.floor(tensor_value.abs() / (SF * 2.0 ** (DE64 - 2)) + 0.5) * 2.0 ** (-2)
     in_grp[in_grp >= 2.0] = 1.75
     tensor_quant = sign * in_grp * (SF * 2.0 ** DE64)
 
@@ -334,11 +338,18 @@ __name__ = "__main__"
 # kwargs = {"device_map": "balanced", "torch_dtype": torch.float16}
 # model = AutoModelForCausalLM.from_pretrained(model_path, config=config, **kwargs)
 
-a = torch.tensor([-0.27, 10.26, 6.41, 10.78, 9.25, 45.36, 10.72, 1.26])
+# a = torch.tensor([-0.27, 10.26, 6.41, 10.78, 9.25, 45.36, 10.72, 1.26])
+a = torch.tensor([-0.27, 10.26, 6.41, 70.08, 9.25, 45.36, 10.72, 1.26])
 a = a.repeat(2, 8)
+# res = get_quant_hif4(a, 64)
 
-res = get_quant_hif4(a, 64)
+b = torch.randn(128) * 100
+print(b)
+res = get_quant_hif4(b, 64)
+mse = (res - b).pow(2).mean()
+
 print(res)
+print("MSE HIF4:", mse)
 
 # print("MSE NVEM:", mse1)
 #
@@ -348,10 +359,10 @@ print(res)
 # print(res)
 # print("MSE NVES:", mse2)
 #
-# res = get_quant_nvfp(a, 8)
-# mse3 = (res - a).pow(2).mean()
-# print(res)
-# print("MSE NVFP:", mse3)
+res = get_quant_nvfp(b, 8)
+mse3 = (res - b).pow(2).mean()
+print(res)
+print("MSE NVFP:", mse3)
 #
 # res = get_quant_mxfp(a, 8)
 # mse4 = (res - a).pow(2).mean()

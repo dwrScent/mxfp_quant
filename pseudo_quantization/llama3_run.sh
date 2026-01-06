@@ -2,10 +2,10 @@
 
 TASKS=${1:-"wikitext"}
 WBIT=4
-WMODE="nvem"
+WMODE="hif4"
 ABIT=4
-AMODE="nvem"
-GROUP_SIZE=16
+AMODE="hif4"
+GROUP_SIZE=64
 
 # MODEL=meta-llama/Meta-Llama-3-8B
 MODEL=/cephfs/shared/model/llama-3-8b-hf

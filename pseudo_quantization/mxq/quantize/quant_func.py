@@ -367,7 +367,6 @@ def get_quant_hif4(tensor_value: torch.Tensor, group_size: int):
     DE16 = E1_16 + E1_8x2
     DE64 = DE16.repeat_interleave(4, dim=1)
     in_grp = torch.floor(tensor_value / (SF * 2.0 ** (DE64 - 2) + 0.5)) * 2.0 ** (-2)
-    print(in_grp)
     in_grp[in_grp >= 2.0] = 1.75
     tensor_quant = sign * in_grp * (SF * 2.0 ** DE64)
 
@@ -399,6 +398,8 @@ class QuantUnit:
 
             if "nv" in mode:
                 assert self.group_size == 16
+            elif "hif" in mode:
+                assert self.group_size == 64
             else:
                 assert self.group_size == 32
         else:

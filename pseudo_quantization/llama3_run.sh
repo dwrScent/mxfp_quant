@@ -2,9 +2,9 @@
 
 TASKS=${1:-"wikitext"}
 WBIT=4
-WMODE="hif4"
+WMODE="hifem"
 ABIT=4
-AMODE="hif4"
+AMODE="hifem"
 GROUP_SIZE=64
 
 # MODEL=meta-llama/Meta-Llama-3-8B

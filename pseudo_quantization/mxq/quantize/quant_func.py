@@ -354,9 +354,9 @@ def get_quant_hif4(tensor_value: torch.Tensor, group_size: int):
     v_max16 = torch.zeros((tensor_value.shape[0], 16), device=tensor_value.device)
     v_max8 = torch.zeros((tensor_value.shape[0], 8), device=tensor_value.device)
     v_max16 = tensor_value.abs().reshape(tensor_value.shape[0], -1, 4).amax(dim=2)
-    v_max16 = v_max16.reshape(tensor_value.shape[0], 16)
+    # v_max16 = v_max16.reshape(tensor_value.shape[0], 16)
     v_max8 = v_max16.reshape(tensor_value.shape[0], -1, 2).amax(dim=2)
-    v_max8 = v_max8.reshape(tensor_value.shape[0], 8)
+    # v_max8 = v_max8.reshape(tensor_value.shape[0], 8)
     v_max = v_max8.amax(dim=1, keepdim=True)
     SF = cast_to_E6M2(v_max / LEVEL_2_MAX)
     E1_8 = (v_max8 / SF) >= 4
@@ -405,16 +405,16 @@ def get_quant_hifem(tensor_value: torch.Tensor, group_size: int):
     in_grp = tensor_value.abs() / (SF * 2.0 ** (DE64)) 
     e1m2 = torch.floor(in_grp * 2.0 ** 2 + 0.5) * 2.0 ** (-2)
     e1m4 = torch.floor(in_grp * 2.0 ** 4 + 0.5) * 2.0 ** (-4)
-    outlier_mask = torch.zeros_like(e1m2, dtype=tensor_value.dtype).to(
+    outlier_mask = torch.zeros_like(tensor_value, dtype=tensor_value.dtype).to(
         tensor_value.device
     )
     e1m2[e1m2 >= 2.0] = 1.75
     e1m4[e1m4 >= 2.0] = 1.9375
-    outlier_mask = outlier_mask.reshape(-1, 16)
+    indices = indices.view(-1, 1)
+    outlier_mask = outlier_mask.reshape(-1, 4).scatter_(1, indices , 1)
     outlier_mask.scatter_(1, indices, 1)
     outlier_mask = outlier_mask.reshape(-1, group_size)
     in_grp = e1m2 * (1 - outlier_mask) + e1m4 * outlier_mask
-    print(in_grp)
     tensor_quant = sign * in_grp * (SF * 2.0 ** DE64)
 
     return tensor_quant.reshape(org_shape).to(org_dtype)
@@ -428,6 +428,7 @@ QUANT_METHOD_MAP = {
     "nves": get_quant_nves,
     "nvem": get_quant_nvem,
     "hif4": get_quant_hif4,
+    "hifem": get_quant_hifem,
 }
 
 

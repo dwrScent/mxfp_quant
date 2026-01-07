@@ -357,13 +357,16 @@ def get_quant_hifem(tensor_value: torch.Tensor, group_size: int):
     in_grp = tensor_value.abs() / (SF * 2.0 ** (DE64)) 
     e1m2 = torch.floor(in_grp * 2.0 ** 2 + 0.5) * 2.0 ** (-2)
     e1m4 = torch.floor(in_grp * 2.0 ** 4 + 0.5) * 2.0 ** (-4)
-    outlier_mask = torch.zeros_like(e1m2, dtype=tensor_value.dtype).to(
+    outlier_mask = torch.zeros_like(tensor_value, dtype=tensor_value.dtype).to(
         tensor_value.device
     )
     e1m2[e1m2 >= 2.0] = 1.75
     e1m4[e1m4 >= 2.0] = 1.9375
-    outlier_mask = outlier_mask.reshape(-1, 16)
+    indices = indices.view(-1, 1)
+    outlier_mask = outlier_mask.reshape(-1, 4).scatter_(1, indices , 1)
+    print(indices)
     outlier_mask.scatter_(1, indices, 1)
+    print(outlier_mask)
     outlier_mask = outlier_mask.reshape(-1, group_size)
     in_grp = e1m2 * (1 - outlier_mask) + e1m4 * outlier_mask
     print(in_grp)

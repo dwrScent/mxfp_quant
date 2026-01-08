@@ -1,4 +1,5 @@
 import torch
+from new_quant_func import get_quant_hifes
 from transformers.models.llama.modeling_llama import LlamaForCausalLM
 
 FLOAT4_E2M1_MAX = 6.0
@@ -363,61 +364,12 @@ def get_quant_hifem(tensor_value: torch.Tensor, group_size: int):
     e1m4[e1m4 >= 2.0] = 1.9375
     indices = indices.view(-1, 1)
     outlier_mask = outlier_mask.reshape(-1, 4).scatter_(1, indices , 1)
-    print(indices)
     outlier_mask.scatter_(1, indices, 1)
-    print(outlier_mask)
     outlier_mask = outlier_mask.reshape(-1, group_size)
     in_grp = e1m2 * (1 - outlier_mask) + e1m4 * outlier_mask
-    print(in_grp)
     tensor_quant = sign * in_grp * (SF * 2.0 ** DE64)
 
     return tensor_quant.reshape(org_shape).to(org_dtype)
-
-
-def get_quant_hifes(tensor_value: torch.Tensor, group_size: int):
-    org_shape = tensor_value.shape
-    org_dtype = tensor_value.dtype
-    tensor_value = tensor_value.float()
-    assert group_size == 64
-    tensor_value = tensor_value.reshape(-1, group_size)
-    sign = torch.sign(tensor_value)
-    v_max16 = torch.zeros((tensor_value.shape[0], 16), device=tensor_value.device)
-    v_max8 = torch.zeros((tensor_value.shape[0], 8), device=tensor_value.device)
-    v_max16 = tensor_value.abs().reshape(tensor_value.shape[0], -1, 4).amax(dim=2)
-    v_max16 = v_max16.reshape(tensor_value.shape[0], 16)
-    v_max8 = v_max16.reshape(tensor_value.shape[0], -1, 2).amax(dim=2)
-    v_max8 = v_max8.reshape(tensor_value.shape[0], 8)
-    v_max = v_max8.amax(dim=1, keepdim=True)
-    exp = torch.floor(torch.log2(v_max)) - torch.floor(torch.log2(torch.tensor(LEVEL_2_MAX, device=tensor_value.device)))
-    range_ = range(-1, 2)
-    bias_mse = {}
-    for bias in range_:
-        scales = torch.pow(2, exp + bias)
-        ratio = [1.0, 1.25, 1.5, 1.75]
-        scales_expanded = scales.unsqueeze(2)
-        # cand_scale shape is (N_group, 1, 4)
-        cand_scales = scales_expanded * torch.tensor(ratio, device=tensor_value.device, dtype=tensor_value.dtype).view(1, 1, -1)
-        # x_expanded shape is (N_group, group_size, 1)
-        x_expanded = tensor_value.abs().unsqueeze(2)
-        cand_qval = torch.floor(x_expanded / cand_scales * 4.0 + 0.5) * 2.0 ** (-2)
-        cand_qval[cand_qval >= 2.0] = 1.75
-        cand_qval = cand_qval * cand_scales
-        mse_per_ratio = (cand_qval - x_expanded).pow(2).mean(dim=1)
-        best_ratio_idx = mse_per_ratio.argmin(dim=1)
-        row_idx = torch.arange(tensor_value.size(0), device=tensor_value.device)
-        best_dqval = cand_qval[row_idx, :, best_ratio_idx]
-        quant_mse_per_grp = mse_per_ratio[row_idx, best_ratio_idx]
-        tensor_deq = best_dqval.reshape(-1, group_size)
-        quant_mse_sum = quant_mse_per_grp.view(-1, 1)
-        bias_mse[bias] = (tensor_deq, quant_mse_sum)
-    all_mse = torch.cat([bias_mse[b][1] for b in range_], dim=1)
-    best_bias_idx = all_mse.argmin(dim=1)
-    all_deq = torch.stack([bias_mse[b][0] for b in range_], dim=0)
-    all_deq = all_deq.view(len(range_), -1, group_size)
-    idx_expanded = best_bias_idx.view(1, -1, 1).expand(1, -1, group_size)
-    final_deq = torch.gather(all_deq, dim=0, index=idx_expanded).squeeze(0)
-    tensor_deq = final_deq.reshape(org_shape).to(org_dtype)
-    return tensor_deq
 
 
 __name__ = "__main__"

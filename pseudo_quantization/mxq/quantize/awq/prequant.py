@@ -203,20 +203,20 @@ def run_awq(
 
         # compute protection mask based on input feature importance
         # use for metadata implementation
-        named_linears = get_named_linears(layer)
-
-        for name, module in named_linears.items():
-            x = input_feat[name]  # [N, T, Cin]
-            x_flat = x.view(-1, x.shape[-1])
-
-            importance = x_flat.abs().mean(dim=0)
-            k = max(1, int(0.01 * importance.numel()))
-            topk_idx = torch.topk(importance, k).indices
-
-            weight_mask = torch.zeros_like(module.weight, dtype=torch.bool)
-            weight_mask[:, topk_idx] = True
-
-            module.awq_protect_mask = weight_mask
+        # named_linears = get_named_linears(layer)
+        #
+        # for name, module in named_linears.items():
+        #     x = input_feat[name]  # [N, T, Cin]
+        #     x_flat = x.view(-1, x.shape[-1])
+        #
+        #     importance = x_flat.abs().mean(dim=0)
+        #     k = max(1, int(0.01 * importance.numel()))
+        #     topk_idx = torch.topk(importance, k).indices
+        #
+        #     weight_mask = torch.zeros_like(module.weight, dtype=torch.bool)
+        #     weight_mask[:, topk_idx] = True
+        #
+        #     module.awq_protect_mask = weight_mask
 
 
         if (

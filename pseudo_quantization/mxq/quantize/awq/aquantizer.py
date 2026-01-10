@@ -3,7 +3,7 @@ import torch.nn as nn
 from tqdm import tqdm
 import gc
 from .qmodule import ScaledActivation
-from ..utils.amodule import set_op_by_name
+from ..autils.amodule import set_op_by_name
 
 from transformers.models.bloom.modeling_bloom import BloomBlock
 

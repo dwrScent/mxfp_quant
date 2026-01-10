@@ -4,7 +4,7 @@ TASKS=${1:-"wikitext"}
 WBIT=4
 WMODE="mxfp"
 ABIT=16
-AMODE="nvem"
+AMODE="nvfp"
 GROUP_SIZE=32
 AWQ=False
 
@@ -18,4 +18,4 @@ python -m mxq.entry \
     --w_mode "$WMODE" \
     --a_bit "$ABIT" \
     --a_mode "$AMODE" \
-    --group_size "$GROUP_SIZE" --awq
+    --group_size "$GROUP_SIZE" #--awq

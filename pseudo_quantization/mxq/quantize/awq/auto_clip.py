@@ -85,7 +85,7 @@ def auto_clip_block(module, w_bit, q_config, input_feat):
 
 @torch.no_grad()
 def apply_clip(module, clip_list):
-    from ..utils.amodule import get_op_by_name
+    from ..autils.amodule import get_op_by_name
 
     for name, max_val in clip_list:
         layer = get_op_by_name(module, name)

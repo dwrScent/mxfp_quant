@@ -10,6 +10,8 @@ import torch
 import argparse
 from mxq.quantize.quant_func import QuantConfig
 from mxq.quantize.quantizer import make_quant_linear
+from mxq.quantize.awq.prequant import run_awq
+from mxq.quantize.awq.prequant import apply_awq
 
 import datetime
 import tqdm
@@ -37,6 +39,7 @@ parser.add_argument(
     "--a_mode", type=str, choices=["mxfp", "nvfp", "mxem", "mxes", "nvem", "nves", "hif4", "hifem", "hifes"], default=None
 )
 parser.add_argument("--group_size", type=int, default=-1)
+parser.add_argument("--awq", type=bool, default=False)
 
 args = parser.parse_args()
 
@@ -70,6 +73,35 @@ def main():
     print("\nargs:", args, "\n")
 
     model = build_model_and_enc(args.model_path)
+
+    if args.awq:
+        from transformers import AutoTokenizer
+
+        tokenizer = AutoTokenizer.from_pretrained(args.model_path)
+        # if tokenizer.pad_token is None:
+        #     tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+        model.resize_token_embeddings(len(tokenizer))
+
+        q_config = {
+            "zero_point": True,  # by default True
+            "q_group_size": 128,  # whether to use group quantization
+        }
+
+        print_time("Start AWQ quantization")
+        awq_results = run_awq(
+            model,
+            tokenizer,
+            w_bit=args.w_bit,
+            q_config=q_config,
+            n_samples=512,
+            seqlen=512,
+            auto_scale=True,
+            mse_range=True,
+            calib_data="pileval",
+        )
+        print_time("Finish AWQ quantization")
+
+        apply_awq(model, awq_results)
 
     if args.tasks is not None:
         if args.tasks in ["wikitext", "c4", "ptb"]:

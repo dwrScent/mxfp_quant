@@ -1,9 +1,9 @@
 #!/bin/bash
 
 TASKS=${1:-"wikitext"}
-WBIT=4
+WBIT=16
 WMODE="nvem"
-ABIT=4
+ABIT=16
 AMODE="nvem"
 GROUP_SIZE=16
 
@@ -17,4 +17,5 @@ python -m mxq.entry \
     --w_mode "$WMODE" \
     --a_bit "$ABIT" \
     --a_mode "$AMODE" \
+    --awq \
     --group_size "$GROUP_SIZE"

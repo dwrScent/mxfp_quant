@@ -111,8 +111,8 @@ def run_awq(
     # some configs for ablation study
     calib_data="pileval",
 ):
-    from ..utils.calib_data import get_calib_dataset
-    from ..utils.amodule import append_str_prefix, get_op_name
+    from ..autils.calib_data import get_calib_dataset
+    from ..autils.amodule import append_str_prefix, get_op_name
 
     if "bigcode" in str(model.__class__).lower():
         # otherwise attention_mask will always be on cpu.
@@ -200,6 +200,24 @@ def run_awq(
 
         # Clear GPU memory
         torch.cuda.empty_cache()
+
+        # compute protection mask based on input feature importance
+        # use for metadata implementation
+        named_linears = get_named_linears(layer)
+
+        for name, module in named_linears.items():
+            x = input_feat[name]  # [N, T, Cin]
+            x_flat = x.view(-1, x.shape[-1])
+
+            importance = x_flat.abs().mean(dim=0)
+            k = max(1, int(0.01 * importance.numel()))
+            topk_idx = torch.topk(importance, k).indices
+
+            weight_mask = torch.zeros_like(module.weight, dtype=torch.bool)
+            weight_mask[:, topk_idx] = True
+
+            module.awq_protect_mask = weight_mask
+
 
         if (
             auto_scale

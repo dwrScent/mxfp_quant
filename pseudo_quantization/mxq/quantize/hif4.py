@@ -46,6 +46,7 @@ def exp_man_value(exp_bit, man_bit):
 # FP6_E2M3_GRID = torch.tensor(float_value(2, 3), device="cuda")
 FP4_E2M1_GRID = torch.tensor(float_value(2, 1))
 FP6_E2M3_GRID = torch.tensor(float_value(2, 3))
+FP8_E5M3_GRID = torch.tensor(float_value(5, 3))
 E6M2_GRID = torch.tensor(exp_man_value(6, 2))
 
 def quantize_to_grid(x: torch.Tensor, levels: torch.Tensor) -> torch.Tensor:
@@ -134,6 +135,42 @@ def get_quant_nvfp(tensor_value: torch.Tensor, group_size: int):
     ) * global_scale
 
     tensor_quant = cast_to_fp4(tensor_value / scales) * scales
+
+    return tensor_quant.reshape(org_shape).to(org_dtype)
+
+
+FLOAT8_E5M3_MAX = 2 ** 16 * 1.75
+def cast_to_E5M3(x: torch.Tensor):
+    x_quant, _ = quantize_to_grid(x, FP8_E5M3_GRID)
+    return x_quant
+    # x = x.clamp(min=2 ** (-17), max=FLOAT8_E5M3_MAX)
+    # E = torch.floor(torch.log2(x))
+    # return torch.round(x * 2 ** (-E + 3)) * 2 ** (E - 3)
+@torch.no_grad()
+def get_quant_nvfpe5(tensor_value: torch.Tensor, group_size: int):
+
+    org_shape = tensor_value.shape
+    org_dtype = tensor_value.dtype
+
+    tensor_value = tensor_value.float()
+    if group_size > 0:
+        assert org_shape[-1] % group_size == 0
+        tensor_value = tensor_value.reshape(-1, group_size)
+
+    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+    scales = max_val / FLOAT4_E2M1_MAX
+    # avoid divide a too small value
+    global_scale = scales.max() / FLOAT8_E5M3_MAX
+    sign = torch.sign(scales)
+    scales = cast_to_E5M3(scales.abs() / global_scale) * global_scale
+    # scales = (
+    #     (scales / global_scale)
+    #     .clamp(min=FLOAT8_E4M3_EPS)
+    #     .to(torch.float8_e4m3fn)
+    #     .to(tensor_value.dtype)
+    # ) * global_scale
+
+    tensor_quant = cast_to_fp4(tensor_value / scales) * scales * sign
 
     return tensor_quant.reshape(org_shape).to(org_dtype)
 
@@ -383,7 +420,6 @@ __name__ = "__main__"
 # a = torch.tensor([-0.27, 10.26, 6.41, 10.78, 9.25, 45.36, 10.72, 1.26])
 a = torch.tensor([-0.27, 10.26, 6.41, 70.08, 9.25, 45.36, 10.72, 1.26])
 a = a.repeat(2, 8)
-# res = get_quant_hif4(a, 64)
 
 b = torch.randn(128) * 100
 print(b)
@@ -393,15 +429,20 @@ mse = (res - b).pow(2).mean()
 print(res)
 print("MSE HIF4:", mse)
 
-res = get_quant_hifem(b, 64)
-mse_em = (res - b).pow(2).mean()
+res = get_quant_nvfpe5(b, 8)
+mse5 = (res - b).pow(2).mean()
 print(res)
-print("MSE HIFEM:", mse_em)
+print("MSE NVFPE5:", mse5)
 
-res = get_quant_hifes(b, 64)
-mse_es = (res - b).pow(2).mean()
-print(res)
-print("MSE HIFES:", mse_es)
+# res = get_quant_hifem(b, 64)
+# mse_em = (res - b).pow(2).mean()
+# print(res)
+# print("MSE HIFEM:", mse_em)
+#
+# res = get_quant_hifes(b, 64)
+# mse_es = (res - b).pow(2).mean()
+# print(res)
+# print("MSE HIFES:", mse_es)
 
 # print("MSE NVEM:", mse1)
 #

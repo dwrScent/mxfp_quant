@@ -37,6 +37,7 @@ def float_value(exp_bit, man_bit):
 
 FP4_E2M1_GRID = torch.tensor(float_value(2, 1), device="cuda")
 FP6_E2M3_GRID = torch.tensor(float_value(2, 3), device="cuda")
+FP8_E5M3_GRID = torch.tensor(float_value(5, 3), device="cuda")
 
 
 def quantize_to_grid(x: torch.Tensor, levels: torch.Tensor) -> torch.Tensor:
@@ -335,9 +336,45 @@ def get_quant_nvem(tensor_value: torch.Tensor, group_size: int):
     return tensor_quant.reshape(org_shape).to(org_dtype)
 
 
+FLOAT8_E5M3_MAX = 2 ** 16 * 1.75
+def cast_to_E5M3(x: torch.Tensor):
+    x_quant, _ = quantize_to_grid(x, FP8_E5M3_GRID)
+    return x_quant
+    # x = x.clamp(min=2 ** (-17), max=FLOAT8_E5M3_MAX)
+    # E = torch.floor(torch.log2(x))
+    # return torch.round(x * 2 ** (-E + 3)) * 2 ** (E - 3)
+@torch.no_grad()
+def get_quant_nvfpe5(tensor_value: torch.Tensor, group_size: int):
+
+    org_shape = tensor_value.shape
+    org_dtype = tensor_value.dtype
+
+    tensor_value = tensor_value.float()
+    if group_size > 0:
+        assert org_shape[-1] % group_size == 0
+        tensor_value = tensor_value.reshape(-1, group_size)
+
+    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+    scales = max_val / FLOAT4_E2M1_MAX
+    # avoid divide a too small value
+    global_scale = scales.max() / FLOAT8_E5M3_MAX
+    sign = torch.sign(scales)
+    scales = cast_to_E5M3(scales.abs() / global_scale) * global_scale
+    # scales = (
+    #     (scales / global_scale)
+    #     .clamp(min=FLOAT8_E4M3_EPS)
+    #     .to(torch.float8_e4m3fn)
+    #     .to(tensor_value.dtype)
+    # ) * global_scale
+
+    tensor_quant = cast_to_fp4(tensor_value / scales) * scales * sign
+
+    return tensor_quant.reshape(org_shape).to(org_dtype)
+
+
 QUANT_METHOD_MAP = {
     "mxfp": get_quant_mxfp,
-    "nvfp": get_quant_nvfp,
+    "nvfp": get_quant_nvfpe5,
     "mxes": get_quant_mxes,
     "mxem": get_quant_mxem,
     "nves": get_quant_nves,

@@ -144,3 +144,4 @@ def get_quant_hif4(tensor_value: torch.Tensor, group_size: int):
 
     return tensor_quant.reshape(org_shape).to(org_dtype)
 
+

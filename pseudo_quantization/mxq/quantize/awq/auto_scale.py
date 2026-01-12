@@ -9,7 +9,8 @@ from transformers.activations import GELUActivation
 from transformers.models.qwen2.modeling_qwen2 import Qwen2RMSNorm, Qwen2DecoderLayer
 
 from .qmodule import ScaledActivation
-from ..utils.amodule import get_op_by_name, get_op_name, set_op_by_name
+from ..autils.amodule import get_op_by_name, get_op_name, set_op_by_name
+from ..quant_func import get_quant_nvfp, get_quant_mxfp
 
 __all__ = ["auto_scale_block", "apply_scale"]
 
@@ -89,13 +90,18 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
 
     # firstly, get the weight quantize function
     if w_bit is not None:
-
+    
+        group_size = q_config.get("q_group_size", -1)
         def w_quantize_func(p):
-            return pseudo_quantize_tensor(
+            return get_quant_mxfp( 
                 p,
-                n_bit=w_bit,
-                **q_config,
+                group_size=group_size,
             ).detach()
+            # return pseudo_quantize_tensor(
+            #     p,
+            #     n_bit=w_bit,
+            #     **q_config,
+            # ).detach()
 
     else:
 
@@ -104,6 +110,29 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
 
     if "use_cache" in module_kwargs:
         module_kwargs.pop("use_cache")
+
+    def inspect_x(x, name="x"):
+        # x: [n, ci]
+        x_cpu = x.detach().float().cpu()
+
+        # 只取前 2 个 token，前 16 个 channel
+        xs = x_cpu[0, :16]
+
+        print(f"{name}.shape =", x_cpu.shape)
+        print(f"{name}[0, :16] =\n", xs)
+        print(f"{name} channel-wise max =", x_cpu.abs().max(dim=0)[0][:16])
+
+    def inspect_w(w, name="w"):
+        # w: [co, ci]
+        w_cpu = w.detach().float().cpu()
+
+        # 取前 4 个 output，对应前 16 个 channel
+        ws = w_cpu[:4, :16]
+
+        print(f"{name}.shape =", w_cpu.shape)
+        print(f"{name}[:4, :16] =\n", ws)
+        print(f"{name} channel-wise max =", w_cpu.abs().max(dim=0)[0][:16])
+
 
     # find the best scale ratio
     def _search_module_scale(block, linears2scale: list, x, kwargs={}):
@@ -116,6 +145,15 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
                 org_out = org_out[0]
 
         x_max = get_act_scale(x)
+
+        # check inputs and weights
+        inspect_x(x, "input x")
+        print(x_max.shape, x_max[:16])
+
+        for fc in linears2scale:
+            inspect_w(fc.weight, f"{fc.__class__.__name__}.weight")
+            break
+        # check done
 
         best_error = float("inf")
         best_ratio = -1

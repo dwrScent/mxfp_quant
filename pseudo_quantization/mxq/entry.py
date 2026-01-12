@@ -1,6 +1,6 @@
 from lm_eval import evaluator
-from lm_eval.models.huggingface import HFLM
-from lm_eval.utils import make_table
+# from lm_eval.models.huggingface import HFLM
+# from lm_eval.utils import make_table
 
 from transformers import (
     AutoModelForCausalLM,
@@ -10,6 +10,8 @@ import torch
 import argparse
 from mxq.quantize.quant_func import QuantConfig
 from mxq.quantize.quantizer import make_quant_linear
+from mxq.quantize.awq.prequant import run_awq
+from mxq.quantize.awq.prequant import apply_awq
 
 import datetime
 import tqdm
@@ -37,6 +39,7 @@ parser.add_argument(
     "--a_mode", type=str, choices=["mxfp", "nvfp", "mxem", "mxes", "nvem", "nves", "hif4", "hifem", "hifes"], default=None
 )
 parser.add_argument("--group_size", type=int, default=-1)
+parser.add_argument("--awq", action="store_true", help="Whether to use AWQ")
 
 args = parser.parse_args()
 
@@ -47,8 +50,56 @@ def build_model_and_enc(model_path):
 
     config = AutoConfig.from_pretrained(model_path)
     # fp16 to quantized
-    kwargs = {"device_map": "balanced", "torch_dtype": torch.float16}
-    model = AutoModelForCausalLM.from_pretrained(model_path, config=config, **kwargs)
+    # kwargs = {"device_map": "balanced", "torch_dtype": torch.float16}
+    # model = AutoModelForCausalLM.from_pretrained(model_path, config=config, **kwargs)
+    config.use_cache = False
+    model = AutoModelForCausalLM.from_pretrained(
+        model_path,
+        config=config,
+        torch_dtype=torch.float16,
+        low_cpu_mem_usage=True,
+        device_map=None          # ★ 禁止 balanced
+    )
+
+    if args.awq:
+        from transformers import AutoTokenizer
+
+        tokenizer = AutoTokenizer.from_pretrained(
+            args.model_path, use_fast=False
+        )
+        # # if tokenizer.pad_token is None:
+        # #     tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+        # model.resize_token_embeddings(len(tokenizer))
+
+        q_config = {
+            "zero_point": True,  # by default True
+            "q_group_size": args.group_size,  # whether to use group quantization
+        }
+        model.eval().cuda()
+
+        print_time("Start AWQ quantization")
+        awq_results = run_awq(
+            model,
+            tokenizer,
+            w_bit=args.w_bit,
+            q_config=q_config,
+            n_samples=128,
+            seqlen=512,
+            auto_scale=True,
+            mse_range=True,
+            calib_data="pileval",
+        )
+        print_time("Finish AWQ quantization")
+
+        apply_awq(model, awq_results)
+
+    model = model.to("cuda")
+
+    pseudo_quantize_model(model)
+    return model
+
+
+def pseudo_quantize_model(model):
 
     print_time("Start pseudo quantize")
 
@@ -62,14 +113,12 @@ def build_model_and_enc(model_path):
     make_quant_linear(model, quant_config)
     print_time("Finish pseudo quantize")
 
-    return model
-
-
 def main():
 
     print("\nargs:", args, "\n")
 
     model = build_model_and_enc(args.model_path)
+
 
     if args.tasks is not None:
         if args.tasks in ["wikitext", "c4", "ptb"]:
@@ -107,18 +156,19 @@ def main():
 
         else:
             # do other evaluations
-            lm_eval_model = HFLM(pretrained=model, batch_size=args.batch_size)
-            print_time("Start a task")
-            task_names = args.tasks.split(",")
-
-            results = evaluator.simple_evaluate(
-                model=lm_eval_model,
-                tasks=task_names,
-                batch_size=args.batch_size,
-                num_fewshot=args.num_fewshot,
-            )
-            print_time("Task finish!")
-            print(make_table(results))
+            print("no implementation yet")
+            # lm_eval_model = HFLM(pretrained=model, batch_size=args.batch_size)
+            # print_time("Start a task")
+            # task_names = args.tasks.split(",")
+            #
+            # results = evaluator.simple_evaluate(
+            #     model=lm_eval_model,
+            #     tasks=task_names,
+            #     batch_size=args.batch_size,
+            #     num_fewshot=args.num_fewshot,
+            # )
+            # print_time("Task finish!")
+            # print(make_table(results))
 
 
 if __name__ == "__main__":

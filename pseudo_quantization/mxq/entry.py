@@ -74,6 +74,7 @@ def build_model_and_enc(model_path):
         q_config = {
             "zero_point": True,  # by default True
             "q_group_size": args.group_size,  # whether to use group quantization
+            "quant_mode": args.w_mode,  # quantization mode
         }
         model.eval().cuda()
 

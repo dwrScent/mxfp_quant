@@ -359,7 +359,6 @@ def get_quant_nvfpe5(tensor_value: torch.Tensor, group_size: int):
     scales = max_val / FLOAT4_E2M1_MAX
     # avoid divide a too small value
     global_scale = scales.max() / FLOAT8_E5M3_MAX
-    sign = torch.sign(scales)
     scales = cast_to_E5M3(scales.abs() / global_scale) * global_scale
     # scales = (
     #     (scales / global_scale)
@@ -368,7 +367,7 @@ def get_quant_nvfpe5(tensor_value: torch.Tensor, group_size: int):
     #     .to(tensor_value.dtype)
     # ) * global_scale
 
-    tensor_quant = cast_to_fp4(tensor_value / scales) * scales * sign
+    tensor_quant = cast_to_fp4(tensor_value / scales) * scales
 
     return tensor_quant.reshape(org_shape).to(org_dtype)
 
@@ -395,25 +394,16 @@ def get_quant_nvfpm4(tensor_value: torch.Tensor, group_size: int):
     scales = max_val / FLOAT4_E2M1_MAX
     # avoid divide a too small value
     global_scale = scales.max() / FLOAT8_E4M4_MAX
-    print("global scale:", global_scale)
-    sign = torch.sign(scales)
-    scales = cast_to_E4M4(scales.abs() / global_scale) * global_scale
-    print("scales in e4m4:", scales)
-    # scales = (
-    #     (scales / global_scale)
-    #     .clamp(min=FLOAT8_E4M3_EPS)
-    #     .to(torch.float8_e4m3fn)
-    #     .to(tensor_value.dtype)
-    # ) * global_scale
+    scales = cast_to_E4M4( (scales.abs() / global_scale).clamp(min=FLOAT8_E4M3_EPS) ) * global_scale
 
-    tensor_quant = cast_to_fp4(tensor_value / scales) * scales * sign
+    tensor_quant = cast_to_fp4(tensor_value / scales) * scales
 
     return tensor_quant.reshape(org_shape).to(org_dtype)
 
 
 QUANT_METHOD_MAP = {
     "mxfp": get_quant_mxfp,
-    "nvfp": get_quant_nvfpm4,
+    "nvfp": get_quant_nvfp,
     "mxes": get_quant_mxes,
     "mxem": get_quant_mxem,
     "nves": get_quant_nves,
@@ -421,6 +411,8 @@ QUANT_METHOD_MAP = {
     "hif4": get_quant_hif4,
     "hifem": get_quant_hifem,
     "hifes": get_quant_hifes,
+    "nvfpe5": get_quant_nvfpe5,
+    "nvfpm4": get_quant_nvfpm4,
 }
 
 

@@ -10,9 +10,24 @@ from transformers.models.qwen2.modeling_qwen2 import Qwen2RMSNorm, Qwen2DecoderL
 
 from .qmodule import ScaledActivation
 from ..autils.amodule import get_op_by_name, get_op_name, set_op_by_name
-from ..quant_func import get_quant_nvfp, get_quant_mxfp
+from ..quant_func import get_quant_nvfp, get_quant_mxfp, get_quant_nvfpe5, get_quant_mxes, get_quant_mxem, get_quant_nves, get_quant_nvem, get_quant_hif4, get_quant_hifem, get_quant_hifes, get_quant_nvfpm4
 
 __all__ = ["auto_scale_block", "apply_scale"]
+
+
+QUANT_METHOD_MAP = {
+    "mxfp": get_quant_mxfp,
+    "nvfp": get_quant_nvfpe5,
+    "mxes": get_quant_mxes,
+    "mxem": get_quant_mxem,
+    "nves": get_quant_nves,
+    "nvem": get_quant_nvem,
+    "hif4": get_quant_hif4,
+    "hifem": get_quant_hifem,
+    "hifes": get_quant_hifes,
+    "nvfpe5": get_quant_nvfpe5,
+    "nvfpm4": get_quant_nvfpm4,
+}
 
 
 @torch.no_grad()
@@ -93,7 +108,8 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
     
         group_size = q_config.get("q_group_size", -1)
         def w_quantize_func(p):
-            return get_quant_mxfp( 
+            func = QUANT_METHOD_MAP[q_config['quant_mode']]
+            return func(
                 p,
                 group_size=group_size,
             ).detach()
@@ -147,12 +163,12 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
         x_max = get_act_scale(x)
 
         # check inputs and weights
-        inspect_x(x, "input x")
-        print(x_max.shape, x_max[:16])
-
-        for fc in linears2scale:
-            inspect_w(fc.weight, f"{fc.__class__.__name__}.weight")
-            break
+        # inspect_x(x, "input x")
+        # print(x_max.shape, x_max[:16])
+        #
+        # for fc in linears2scale:
+        #     inspect_w(fc.weight, f"{fc.__class__.__name__}.weight")
+        #     break
         # check done
 
         best_error = float("inf")

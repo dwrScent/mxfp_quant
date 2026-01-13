@@ -465,50 +465,54 @@ mse3 = (res - b).pow(2).mean()
 print(res)
 print("MSE NVFP:", mse3)
 
+import torch
 import matplotlib.pyplot as plt
 
 # 存储结果用于绘图
 x_axis = []
 mse_hif4, mse_nvfp, mse_nvfpm4, mse_nvfpe5 = [], [], [], []
 
+# 采样次数
+num_samples = 100
+
 for j in range(1, 34):
-    sigma = 0.01 * 2 ** (j/2)
-    m1 = 0.0
-    m2 = 0.0
-    m3 = 0.0
-    m4 = 0.0
-    for i in range(100):
-        b = torch.randn(1024) * sigma ** 2
+    x_val = j / 2
+    x_axis.append(x_val) # 修正1：填充横坐标
+    sigma = 0.01 * 2 ** (j / 2)
+    m1, m2, m3, m4 = 0.0, 0.0, 0.0, 0.0
+    # 计算当前信号的理论方差，用于归一化
+    # 因为 b = randn * (sigma^2)，其方差是 (sigma^2)^2
+    signal_variance = (sigma ** 2) ** 2 
+    for i in range(num_samples):
+        b = torch.randn(1024) * (sigma ** 2)
+        # 假设这些函数已经在你的命名空间中定义
         res1 = get_quant_hif4(b, 64)
         res2 = get_quant_nvfp(b, 16)
         res3 = get_quant_nvfpm4(b, 16)
         res4 = get_quant_nvfpe5(b, 16)
+        # 累加 MSE
         m1 += (res1 - b).pow(2).mean().item()
         m2 += (res2 - b).pow(2).mean().item()
         m3 += (res3 - b).pow(2).mean().item()
         m4 += (res4 - b).pow(2).mean().item()
-    # print("Avg MSE HIF4:", mse1_sum / 100)
-    # print("Avg MSE NVFP:", mse2_sum / 100)
-    # print("Avg MSE NVFPM4:", mse3_sum / 100)
-    # print("Avg MSE NVFPE5:", mse4_sum / 100)
-    mse_hif4.append(m1 / sigma ** 2)
-    mse_nvfp.append(m2 / sigma ** 2)
-    mse_nvfpm4.append(m3 / sigma ** 2)
-    mse_nvfpe5.append(m4 / sigma ** 2)
+    # 修正2：均值除以样本数，再除以信号方差实现归一化
+    mse_hif4.append((m1 / num_samples) / signal_variance)
+    mse_nvfp.append((m2 / num_samples) / signal_variance)
+    mse_nvfpm4.append((m3 / num_samples) / signal_variance)
+    mse_nvfpe5.append((m4 / num_samples) / signal_variance)
 
 # --- 绘图部分 ---
 plt.figure(figsize=(10, 6))
 
+# 使用线性坐标轴，因为已经归一化了，数值应该在可比范围内
 plt.plot(x_axis, mse_hif4, label='HIF4 (Block=64)', marker='o', markersize=4)
 plt.plot(x_axis, mse_nvfp, label='NVFP', marker='s', markersize=4)
 plt.plot(x_axis, mse_nvfpm4, label='NVFPM4', marker='^', markersize=4)
 plt.plot(x_axis, mse_nvfpe5, label='NVFPE5', marker='x', markersize=4)
 
-# 因为 MSE 随 sigma 平方增长非常快，建议开启对数轴
-
-plt.xlabel('j/2 (where sigma=0.01*2^(j/2))')
-plt.ylabel('Average MSE normalized by Signal Variance')
-plt.title('Quantization Error vs. Signal Variance')
+plt.xlabel('j/2 (Input Scaling Factor)')
+plt.ylabel('Normalized MSE (MSE / Variance)')
+plt.title('Normalized Quantization Error vs. Signal Range')
 plt.grid(True, which="both", ls="-", alpha=0.5)
 plt.legend()
 

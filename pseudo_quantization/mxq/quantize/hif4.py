@@ -47,6 +47,7 @@ def exp_man_value(exp_bit, man_bit):
 FP4_E2M1_GRID = torch.tensor(float_value(2, 1))
 FP6_E2M3_GRID = torch.tensor(float_value(2, 3))
 FP8_E5M3_GRID = torch.tensor(float_value(5, 3))
+FP8_E4M4_GRID = torch.tensor(float_value(4, 4))
 E6M2_GRID = torch.tensor(exp_man_value(6, 2))
 
 def quantize_to_grid(x: torch.Tensor, levels: torch.Tensor) -> torch.Tensor:
@@ -127,12 +128,14 @@ def get_quant_nvfp(tensor_value: torch.Tensor, group_size: int):
     scales = max_val / FLOAT4_E2M1_MAX
     # avoid divide a too small value
     global_scale = scales.max() / FLOAT8_E4M3_MAX
+    print("global scale:", global_scale)
     scales = (
         (scales / global_scale)
         .clamp(min=FLOAT8_E4M3_EPS)
         .to(torch.float8_e4m3fn)
         .to(tensor_value.dtype)
     ) * global_scale
+    print("scales in e4m3:", scales)
 
     tensor_quant = cast_to_fp4(tensor_value / scales) * scales
 
@@ -140,6 +143,7 @@ def get_quant_nvfp(tensor_value: torch.Tensor, group_size: int):
 
 
 FLOAT8_E5M3_MAX = 2 ** 16 * 1.75
+@torch.no_grad()
 def cast_to_E5M3(x: torch.Tensor):
     x_quant, _ = quantize_to_grid(x, FP8_E5M3_GRID)
     return x_quant
@@ -161,8 +165,48 @@ def get_quant_nvfpe5(tensor_value: torch.Tensor, group_size: int):
     scales = max_val / FLOAT4_E2M1_MAX
     # avoid divide a too small value
     global_scale = scales.max() / FLOAT8_E5M3_MAX
+    print("global scale:", global_scale)
     sign = torch.sign(scales)
     scales = cast_to_E5M3(scales.abs() / global_scale) * global_scale
+    print("scales in e5m3:", scales)
+    # scales = (
+    #     (scales / global_scale)
+    #     .clamp(min=FLOAT8_E4M3_EPS)
+    #     .to(torch.float8_e4m3fn)
+    #     .to(tensor_value.dtype)
+    # ) * global_scale
+
+    tensor_quant = cast_to_fp4(tensor_value / scales) * scales * sign
+
+    return tensor_quant.reshape(org_shape).to(org_dtype)
+
+
+FLOAT8_E4M4_MAX = 2 ** 8 * 1.875
+@torch.no_grad()
+def cast_to_E4M4(x: torch.Tensor):
+    x_quant, _ = quantize_to_grid(x, FP8_E4M4_GRID)
+    return x_quant
+
+
+@torch.no_grad()
+def get_quant_nvfpm4(tensor_value: torch.Tensor, group_size: int):
+
+    org_shape = tensor_value.shape
+    org_dtype = tensor_value.dtype
+
+    tensor_value = tensor_value.float()
+    if group_size > 0:
+        assert org_shape[-1] % group_size == 0
+        tensor_value = tensor_value.reshape(-1, group_size)
+
+    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+    scales = max_val / FLOAT4_E2M1_MAX
+    # avoid divide a too small value
+    global_scale = scales.max() / FLOAT8_E4M4_MAX
+    print("global scale:", global_scale)
+    sign = torch.sign(scales)
+    scales = cast_to_E4M4(scales.abs() / global_scale) * global_scale
+    print("scales in e4m4:", scales)
     # scales = (
     #     (scales / global_scale)
     #     .clamp(min=FLOAT8_E4M3_EPS)
@@ -429,10 +473,10 @@ mse = (res - b).pow(2).mean()
 print(res)
 print("MSE HIF4:", mse)
 
-res = get_quant_nvfpe5(b, 8)
+res = get_quant_nvfpm4(b, 8)
 mse5 = (res - b).pow(2).mean()
 print(res)
-print("MSE NVFPE5:", mse5)
+print("MSE NVFPM4:", mse5)
 
 # res = get_quant_hifem(b, 64)
 # mse_em = (res - b).pow(2).mean()

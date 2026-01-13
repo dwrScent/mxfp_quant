@@ -395,10 +395,8 @@ def get_quant_nvfpm4(tensor_value: torch.Tensor, group_size: int):
     scales = max_val / FLOAT4_E2M1_MAX
     # avoid divide a too small value
     global_scale = scales.max() / FLOAT8_E4M4_MAX
-    print("global scale:", global_scale)
     sign = torch.sign(scales)
     scales = cast_to_E4M4(scales.abs() / global_scale) * global_scale
-    print("scales in e4m4:", scales)
     # scales = (
     #     (scales / global_scale)
     #     .clamp(min=FLOAT8_E4M3_EPS)

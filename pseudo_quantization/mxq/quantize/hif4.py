@@ -4,6 +4,8 @@ from transformers.models.llama.modeling_llama import LlamaForCausalLM
 
 FLOAT4_E2M1_MAX = 6.0
 FLOAT8_E4M3_EPS = torch.finfo(torch.float8_e4m3fn).tiny
+FLOAT8_E4M3_EPS = 2 ** (-9)
+FLOAT8_E4M4_EPS = 2 ** (-10)
 FLOAT8_E4M3_MAX = 448.0
 LEVEL_2_MAX = 7.05
 
@@ -14,7 +16,7 @@ def fp16(tensor_value: torch.Tensor, group_size: int):
 
 
 def float_value(exp_bit, man_bit):
-    bias = 0
+    bias = (2 ** (exp_bit - 1)) - 1
     values = []
     min_to_zero = True
     subnormal = True
@@ -25,9 +27,9 @@ def float_value(exp_bit, man_bit):
                 min_to_zero = False
             else:
                 if subnormal:
-                    values.append((2 ** (i - bias)) * (j * 2 ** (-man_bit)))
+                    values.append((2 ** (1 - bias)) * (j * 2 ** (-man_bit)))
                 else:
-                    values.append((2 ** (i - 1 - bias)) * (1 + j * 2 ** (-man_bit)))
+                    values.append((2 ** (i - bias)) * (1 + j * 2 ** (-man_bit)))
 
         subnormal = False
 
@@ -194,7 +196,7 @@ def get_quant_nvfpm4(tensor_value: torch.Tensor, group_size: int):
     # avoid divide a too small value
     global_scale = scales.max() / FLOAT8_E4M4_MAX
     sign = torch.sign(scales)
-    scales = cast_to_E4M4(scales.abs() / global_scale) * global_scale
+    scales = cast_to_E4M4((scales.abs() / global_scale).clamp(min=FLOAT8_E4M4_EPS)) * global_scale
 
     tensor_quant = cast_to_fp4(tensor_value / scales) * scales * sign
 
@@ -465,6 +467,26 @@ mse3 = (res - b).pow(2).mean()
 print(res)
 print("MSE NVFP:", mse3)
 
+print(FLOAT8_E4M4_EPS)
+
+# 假设 global_scale 极小，导致乘回后下溢
+global_scale = 1e-30 
+val = torch.tensor([1e-40]) # 一个远小于 EPS 的数
+
+# 你的逻辑
+eps = 2**-9 # 假设的 Float8 EPS
+res = (val / global_scale).clamp(min=eps).to(torch.float8_e4m3fn).to(torch.float16) * global_scale
+
+print(f"设定最小限: {eps * global_scale}")
+print(f"实际结果: {res.item()}")
+print(f"是否更小: {res.item() < eps * global_scale}")
+
+
+print(FP8_E4M4_GRID)
+print(FP8_E5M3_GRID)
+print(FP4_E2M1_GRID)
+print(FP6_E2M3_GRID)
+
 import torch
 import matplotlib.pyplot as plt
 
@@ -482,9 +504,9 @@ for j in range(1, 34):
     m1, m2, m3, m4 = 0.0, 0.0, 0.0, 0.0
     # 计算当前信号的理论方差，用于归一化
     # 因为 b = randn * (sigma^2)，其方差是 (sigma^2)^2
-    signal_variance = (sigma ** 2) ** 2 
+    signal_variance = sigma ** 2
     for i in range(num_samples):
-        b = torch.randn(1024) * (sigma ** 2)
+        b = torch.randn(8192) * sigma 
         # 假设这些函数已经在你的命名空间中定义
         res1 = get_quant_hif4(b, 64)
         res2 = get_quant_nvfp(b, 16)
@@ -510,7 +532,7 @@ plt.plot(x_axis, mse_nvfp, label='NVFP', marker='s', markersize=4)
 plt.plot(x_axis, mse_nvfpm4, label='NVFPM4', marker='^', markersize=4)
 plt.plot(x_axis, mse_nvfpe5, label='NVFPE5', marker='x', markersize=4)
 
-plt.xlabel('j/2 (Input Scaling Factor)')
+plt.xlabel('x variance = 0.01*2^(x)')
 plt.ylabel('Normalized MSE (MSE / Variance)')
 plt.title('Normalized Quantization Error vs. Signal Range')
 plt.grid(True, which="both", ls="-", alpha=0.5)

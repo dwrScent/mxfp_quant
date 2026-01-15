@@ -242,27 +242,27 @@ def run_awq(
         #     if "Allocated" in line:
         #         print(line)
 
-        if mse_range:
-            clip_list = auto_clip_block(
-                layer,
-                w_bit=w_bit,
-                q_config=q_config,
-                input_feat=input_feat,
-            )
-            apply_clip(layer, clip_list)
-            # append prefix to make names global
-            awq_results["clip"] += append_str_prefix(
-                clip_list, get_op_name(model, layer) + "."
-            )
-
-        layer = layer.cpu()
-        # Haotian: check activation replacement
-        del input_feat
-        gc.collect()
-        torch.cuda.empty_cache()
-        # for line in torch.cuda.memory_summary().splitlines():
-        #     if "Allocated" in line:
-        #         print(line)
+        # if mse_range:
+        #     clip_list = auto_clip_block(
+        #         layer,
+        #         w_bit=w_bit,
+        #         q_config=q_config,
+        #         input_feat=input_feat,
+        #     )
+        #     apply_clip(layer, clip_list)
+        #     # append prefix to make names global
+        #     awq_results["clip"] += append_str_prefix(
+        #         clip_list, get_op_name(model, layer) + "."
+        #     )
+        #
+        # layer = layer.cpu()
+        # # Haotian: check activation replacement
+        # del input_feat
+        # gc.collect()
+        # torch.cuda.empty_cache()
+        # # for line in torch.cuda.memory_summary().splitlines():
+        # #     if "Allocated" in line:
+        # #         print(line)
 
     return awq_results
 

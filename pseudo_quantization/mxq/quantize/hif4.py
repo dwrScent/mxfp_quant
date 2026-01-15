@@ -1,6 +1,10 @@
 import torch
 from new_quant_func import get_quant_hifes
 from transformers.models.llama.modeling_llama import LlamaForCausalLM
+from transformers import (
+    AutoModelForCausalLM,
+    AutoConfig,
+)
 
 FLOAT4_E2M1_MAX = 6.0
 FLOAT8_E4M3_EPS = torch.finfo(torch.float8_e4m3fn).tiny
@@ -314,6 +318,43 @@ def get_quant_nves(tensor_value: torch.Tensor, group_size: int):
     return tensor_deq
 
 
+E4M5_MAX = 2 ** 8 * 1.9735
+E4M5_GRID = torch.tensor(float_value(4, 5))
+@torch.no_grad()
+def cast_to_E4M5(x: torch.Tensor):
+    x_quant, _ = quantize_to_grid(x, E4M5_GRID)
+    return x_quant
+
+@torch.no_grad()
+def get_quant_nvfpm5(tensor_value: torch.Tensor, group_size: int):
+
+    # sub_group_size = 4  # extra 2 bit for scale in subgroup
+    # assert group_size % sub_group_size == 0
+
+    org_shape = tensor_value.shape
+    org_dtype = tensor_value.dtype
+
+    tensor_value = tensor_value.float()
+
+    if group_size > 0:
+        assert org_shape[-1] % group_size == 0
+        tensor_value = tensor_value.reshape(-1, group_size)
+
+    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+    # avoid divide a too small value
+    max_val = max_val.clamp(min=1e-8)
+
+    max_quant_val = torch.tensor(FLOAT4_E2M1_MAX, device=tensor_value.device)
+
+    scales = tensor_value.abs().amax(dim=1, keepdim=True) / max_quant_val
+
+    # Compute the scaling factor
+    global_scale = scales.max() / E4M5_MAX
+    scales = cast_to_E4M5((scales / global_scale)) * global_scale
+    tensor_quant = cast_to_fp4(tensor_value / scales) * scales
+    return tensor_quant.reshape(org_shape).to(org_dtype)
+
+
 @torch.no_grad()
 def get_quant_nvem(tensor_value: torch.Tensor, group_size: int):
 
@@ -439,16 +480,10 @@ def get_quant_hifem(tensor_value: torch.Tensor, group_size: int):
 
 __name__ = "__main__"
 
-# model_path = "/cephfs/shared/model/llama-3-8b-hf"
-# config = AutoConfig.from_pretrained(model_path)
-# # fp16 to quantized
-# kwargs = {"device_map": "balanced", "torch_dtype": torch.float16}
-# model = AutoModelForCausalLM.from_pretrained(model_path, config=config, **kwargs)
-
 # a = torch.tensor([-0.27, 10.26, 6.41, 10.78, 9.25, 45.36, 10.72, 1.26])
-a = torch.tensor([-0.27, 10.26, 6.41, 70.08, 9.25, 45.36, 10.72, 1.26])
-a = a.repeat(2, 8)
-
+# a = torch.tensor([-0.27, 10.26, 6.41, 70.08, 9.25, 45.36, 10.72, 1.26])
+# a = a.repeat(2, 8)
+#
 b = torch.randn(128) * 100
 print(b)
 res = get_quant_hif4(b, 64)
@@ -457,87 +492,80 @@ mse = (res - b).pow(2).mean()
 print(res)
 print("MSE HIF4:", mse)
 
-res = get_quant_nvfpm4(b, 8)
+res = get_quant_nvfpm4(b, 16)
 mse5 = (res - b).pow(2).mean()
 print(res)
 print("MSE NVFPM4:", mse5)
 
-res = get_quant_nvfp(b, 8)
-mse3 = (res - b).pow(2).mean()
+res = get_quant_nvfpm5(b, 16)
+mse6 = (res - b).pow(2).mean()
 print(res)
-print("MSE NVFP:", mse3)
-
-print(FLOAT8_E4M4_EPS)
-
-# 假设 global_scale 极小，导致乘回后下溢
-global_scale = 1e-30 
-val = torch.tensor([1e-40]) # 一个远小于 EPS 的数
-
-# 你的逻辑
-eps = 2**-9 # 假设的 Float8 EPS
-res = (val / global_scale).clamp(min=eps).to(torch.float8_e4m3fn).to(torch.float16) * global_scale
-
-print(f"设定最小限: {eps * global_scale}")
-print(f"实际结果: {res.item()}")
-print(f"是否更小: {res.item() < eps * global_scale}")
-
-
-print(FP8_E4M4_GRID)
-print(FP8_E5M3_GRID)
-print(FP4_E2M1_GRID)
-print(FP6_E2M3_GRID)
-
-import torch
-import matplotlib.pyplot as plt
-
-# 存储结果用于绘图
-x_axis = []
-mse_hif4, mse_nvfp, mse_nvfpm4, mse_nvfpe5 = [], [], [], []
-
-# 采样次数
-num_samples = 100
-
-for j in range(1, 34):
-    x_val = j / 2
-    x_axis.append(x_val) # 修正1：填充横坐标
-    sigma = 0.01 * 2 ** (j / 2)
-    m1, m2, m3, m4 = 0.0, 0.0, 0.0, 0.0
-    # 计算当前信号的理论方差，用于归一化
-    # 因为 b = randn * (sigma^2)，其方差是 (sigma^2)^2
-    signal_variance = sigma ** 2
-    for i in range(num_samples):
-        b = torch.randn(8192) * sigma 
-        # 假设这些函数已经在你的命名空间中定义
-        res1 = get_quant_hif4(b, 64)
-        res2 = get_quant_nvfp(b, 16)
-        res3 = get_quant_nvfpm4(b, 16)
-        res4 = get_quant_nvfpe5(b, 16)
-        # 累加 MSE
-        m1 += (res1 - b).pow(2).mean().item()
-        m2 += (res2 - b).pow(2).mean().item()
-        m3 += (res3 - b).pow(2).mean().item()
-        m4 += (res4 - b).pow(2).mean().item()
-    # 修正2：均值除以样本数，再除以信号方差实现归一化
-    mse_hif4.append((m1 / num_samples) / signal_variance)
-    mse_nvfp.append((m2 / num_samples) / signal_variance)
-    mse_nvfpm4.append((m3 / num_samples) / signal_variance)
-    mse_nvfpe5.append((m4 / num_samples) / signal_variance)
-
-# --- 绘图部分 ---
-plt.figure(figsize=(10, 6))
-
-# 使用线性坐标轴，因为已经归一化了，数值应该在可比范围内
-plt.plot(x_axis, mse_hif4, label='HIF4 (Block=64)', marker='o', markersize=4)
-plt.plot(x_axis, mse_nvfp, label='NVFP', marker='s', markersize=4)
-plt.plot(x_axis, mse_nvfpm4, label='NVFPM4', marker='^', markersize=4)
-plt.plot(x_axis, mse_nvfpe5, label='NVFPE5', marker='x', markersize=4)
-
-plt.xlabel('x variance = 0.01*2^(x)')
-plt.ylabel('Normalized MSE (MSE / Variance)')
-plt.title('Normalized Quantization Error vs. Signal Range')
-plt.grid(True, which="both", ls="-", alpha=0.5)
-plt.legend()
-
-# 保存并显示
-plt.savefig('quant_mse_comparison.png')
-plt.show()
+print("MSE NVFPM5:", mse6)
+#
+# res = get_quant_nvfp(b, 8)
+# mse3 = (res - b).pow(2).mean()
+# print(res)
+# print("MSE NVFP:", mse3)
+#
+# print(FLOAT8_E4M4_EPS)
+#
+#
+# print(FP8_E4M4_GRID)
+# print(FP8_E5M3_GRID)
+# print(FP4_E2M1_GRID)
+# print(FP6_E2M3_GRID)
+#
+# import torch
+# import matplotlib.pyplot as plt
+#
+# # 存储结果用于绘图
+# x_axis = []
+# mse_hif4, mse_nvfp, mse_nvfpm4, mse_nvfpe5 = [], [], [], []
+#
+# # 采样次数
+# num_samples = 100
+#
+# for j in range(1, 34):
+#     x_val = j / 2
+#     x_axis.append(x_val) # 修正1：填充横坐标
+#     sigma = 0.01 * 2 ** (j / 2)
+#     m1, m2, m3, m4 = 0.0, 0.0, 0.0, 0.0
+#     # 计算当前信号的理论方差，用于归一化
+#     # 因为 b = randn * (sigma^2)，其方差是 (sigma^2)^2
+#     signal_variance = sigma ** 2
+#     for i in range(num_samples):
+#         b = torch.randn(8192) * sigma 
+#         # 假设这些函数已经在你的命名空间中定义
+#         res1 = get_quant_hif4(b, 64)
+#         res2 = get_quant_nvfp(b, 16)
+#         res3 = get_quant_nvfpm4(b, 16)
+#         res4 = get_quant_nvfpe5(b, 16)
+#         # 累加 MSE
+#         m1 += (res1 - b).pow(2).mean().item()
+#         m2 += (res2 - b).pow(2).mean().item()
+#         m3 += (res3 - b).pow(2).mean().item()
+#         m4 += (res4 - b).pow(2).mean().item()
+#     # 修正2：均值除以样本数，再除以信号方差实现归一化
+#     mse_hif4.append((m1 / num_samples) / signal_variance)
+#     mse_nvfp.append((m2 / num_samples) / signal_variance)
+#     mse_nvfpm4.append((m3 / num_samples) / signal_variance)
+#     mse_nvfpe5.append((m4 / num_samples) / signal_variance)
+#
+# # --- 绘图部分 ---
+# plt.figure(figsize=(10, 6))
+#
+# # 使用线性坐标轴，因为已经归一化了，数值应该在可比范围内
+# plt.plot(x_axis, mse_hif4, label='HIF4 (Block=64)', marker='o', markersize=4)
+# plt.plot(x_axis, mse_nvfp, label='NVFP', marker='s', markersize=4)
+# plt.plot(x_axis, mse_nvfpm4, label='NVFPM4', marker='^', markersize=4)
+# plt.plot(x_axis, mse_nvfpe5, label='NVFPE5', marker='x', markersize=4)
+#
+# plt.xlabel('x variance = 0.01*2^(x)')
+# plt.ylabel('Normalized MSE (MSE / Variance)')
+# plt.title('Normalized Quantization Error vs. Signal Range')
+# plt.grid(True, which="both", ls="-", alpha=0.5)
+# plt.legend()
+#
+# # 保存并显示
+# plt.savefig('quant_mse_comparison.png')
+# plt.show()

@@ -2,9 +2,9 @@
 
 TASKS=${1:-"wikitext"}
 WBIT=4
-WMODE="nvfpe5"
-ABIT=4
-AMODE="nvfpe5"
+WMODE="nvfp"
+ABIT=16
+AMODE="nvfpm5"
 GROUP_SIZE=16
 
 # MODEL=meta-llama/Meta-Llama-3-8B
@@ -17,4 +17,4 @@ python -m mxq.entry \
     --w_mode "$WMODE" \
     --a_bit "$ABIT" \
     --a_mode "$AMODE" \
-    --group_size "$GROUP_SIZE"
+    --group_size "$GROUP_SIZE" --awq

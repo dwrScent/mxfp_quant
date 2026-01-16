@@ -356,7 +356,8 @@ def get_quant_nvess(tensor_value: torch.Tensor, group_size: int):
     exp = torch.floor(torch.log2(scales))
     # exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
     bias_mse = {}
-    range_ = range(-1, 2)
+    # range_ = range(-1, 2)
+    range_ = {0}
     org_scales = scales
     for bias in range_:
         # scales = torch.pow(2, exp + bias)
@@ -365,8 +366,11 @@ def get_quant_nvess(tensor_value: torch.Tensor, group_size: int):
         sub_groups_per_group = group_size // sub_group_size
         scales = scales.expand(-1, sub_groups_per_group).reshape(-1, 1)
         ratios = torch.tensor(
-            [1.0, 1.25, 1.5, 1.75], dtype=tensor_value.dtype, device=tensor_value.device
+            [1.0, 1.5], dtype=tensor_value.dtype, device=tensor_value.device
         )
+        # ratios = torch.tensor(
+        #     [1.0, 1.5], dtype=tensor_value.dtype, device=tensor_value.device
+        # )
         x_expanded = tensor_value.unsqueeze(2)
         scales_expanded = scales.unsqueeze(2)
 
@@ -600,7 +604,8 @@ import matplotlib.pyplot as plt
 
 # 存储结果用于绘图
 x_axis = []
-mse_hif4, mse_nvfp, mse_nvfpm4, mse_nvfpe5 = [], [], [], []
+
+mse1, mse2, mse3, mse4 = [], [], [], []
 
 # 采样次数
 num_samples = 100
@@ -626,19 +631,19 @@ for j in range(1, 34):
         m3 += (res3 - b).pow(2).mean().item()
         m4 += (res4 - b).pow(2).mean().item()
     # 修正2：均值除以样本数，再除以信号方差实现归一化
-    mse_hif4.append((m1 / num_samples) / signal_variance)
-    mse_nvfp.append((m2 / num_samples) / signal_variance)
-    mse_nvfpm4.append((m3 / num_samples) / signal_variance)
-    mse_nvfpe5.append((m4 / num_samples) / signal_variance)
+    mse1.append((m1 / num_samples) / signal_variance)
+    mse2.append((m2 / num_samples) / signal_variance)
+    mse3.append((m3 / num_samples) / signal_variance)
+    mse4.append((m4 / num_samples) / signal_variance)
 
 # --- 绘图部分 ---
 plt.figure(figsize=(20, 12))
 
 # 使用线性坐标轴，因为已经归一化了，数值应该在可比范围内
-plt.plot(x_axis, mse_hif4, label='HIF4 (Block=64)', marker='o', markersize=4)
-plt.plot(x_axis, mse_nvfp, label='NVFP', marker='s', markersize=4)
-plt.plot(x_axis, mse_nvfpm4, label='NVES', marker='^', markersize=4)
-plt.plot(x_axis, mse_nvfpe5, label='NVESS', marker='x', markersize=4)
+plt.plot(x_axis, mse1, label='HIF4 (Block=64)', marker='o', markersize=4)
+plt.plot(x_axis, mse2, label='NVFP', marker='s', markersize=4)
+plt.plot(x_axis, mse3, label='NVES', marker='^', markersize=4)
+plt.plot(x_axis, mse4, label='NVESS', marker='x', markersize=4)
 
 plt.xlabel('x variance = 0.01*2^(x)')
 plt.ylabel('Normalized MSE (MSE / Variance)')

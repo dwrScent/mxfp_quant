@@ -146,6 +146,36 @@ def get_quant_nvfp(tensor_value: torch.Tensor, group_size: int):
     return tensor_quant.reshape(org_shape).to(org_dtype)
 
 
+@torch.no_grad()
+def get_quant_nvfpes(tensor_value: torch.Tensor, group_size: int):
+    # extra 1bit scale but no search
+
+    org_shape = tensor_value.shape
+    org_dtype = tensor_value.dtype
+
+    tensor_value = tensor_value.float()
+    if group_size > 0:
+        assert org_shape[-1] % group_size == 0
+        tensor_value = tensor_value.reshape(-1, group_size)
+
+    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+    scales = max_val / FLOAT4_E2M1_MAX
+    # avoid divide a too small value
+    global_scale = scales.max() / FLOAT8_E4M3_MAX / 1.5
+    scales = scales / global_scale
+    extra_scale = scales > FLOAT8_E4M3_MAX
+    scales = scales / (1.5 ** extra_scale.to(tensor_value.dtype))
+    print(scales)
+    scales = (
+        (scales / global_scale)
+        .clamp(min=FLOAT8_E4M3_EPS)
+        .to(torch.float8_e4m3fn)
+        .to(tensor_value.dtype)
+    ) * global_scale * (1.5 ** extra_scale.to(tensor_value.dtype))
+
+    tensor_quant = cast_to_fp4(tensor_value / scales) * scales
+
+    return tensor_quant.reshape(org_shape).to(org_dtype)
 FLOAT8_E5M3_MAX = 2 ** 16 * 1.75
 @torch.no_grad()
 def cast_to_E5M3(x: torch.Tensor):
@@ -322,7 +352,153 @@ def get_quant_nves(tensor_value: torch.Tensor, group_size: int):
 
 
 @torch.no_grad()
-def get_quant_nvess(tensor_value: torch.Tensor, group_size: int):
+def get_quant_nvesm2(tensor_value: torch.Tensor, group_size: int):
+
+    sub_group_size = 8  # extra 2 bit for scale in subgroup
+    assert group_size % sub_group_size == 0
+
+    org_shape = tensor_value.shape
+    org_dtype = tensor_value.dtype
+
+    tensor_value = tensor_value.float()
+
+    if group_size > 0:
+        assert org_shape[-1] % group_size == 0
+        tensor_value = tensor_value.reshape(-1, group_size)
+
+    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+    # avoid divide a too small value
+    max_val = max_val.clamp(min=1e-8)
+
+    max_quant_val = torch.tensor(FLOAT4_E2M1_MAX, device=tensor_value.device)
+
+    scales = tensor_value.abs().amax(dim=1, keepdim=True) / max_quant_val
+
+    tensor_value = tensor_value.reshape(-1, sub_group_size)
+    # Compute the scaling factor
+    global_scale = scales.max() / FLOAT8_E4M3_MAX
+    scales = (
+        (scales / global_scale)
+        .clamp(min=FLOAT8_E4M3_EPS)
+        .to(torch.float8_e4m3fn)
+        .to(tensor_value.dtype)
+    ) * global_scale
+    exp = torch.floor(torch.log2(scales))
+    # exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
+    bias_mse = {}
+    # range_ = range(-1, 2)
+    range_ = {0}
+    org_scales = scales
+    for bias in range_:
+        # scales = torch.pow(2, exp + bias)
+
+        scales = org_scales * torch.pow(2, torch.tensor(bias, device=tensor_value.device, dtype=tensor_value.dtype))
+        sub_groups_per_group = group_size // sub_group_size
+        scales = scales.expand(-1, sub_groups_per_group).reshape(-1, 1)
+        ratios = torch.tensor(
+            [1.0, 1.25, 1.5, 1.75], dtype=tensor_value.dtype, device=tensor_value.device
+        )
+        # ratios = torch.tensor(
+        #     [1.0, 1.5], dtype=tensor_value.dtype, device=tensor_value.device
+        # )
+        x_expanded = tensor_value.unsqueeze(2)
+        scales_expanded = scales.unsqueeze(2)
+
+        cand_scales = scales_expanded * ratios.view(1, 1, -1)
+        cand_qval = cast_to_fp4(x_expanded / cand_scales) * cand_scales
+        mse_per_ratio = (cand_qval - x_expanded).pow(2).mean(dim=1)
+        best_ratio_idx = mse_per_ratio.argmin(dim=1)
+        row_idx = torch.arange(tensor_value.size(0), device=tensor_value.device)
+        best_dqval = cand_qval[row_idx, :, best_ratio_idx]
+        quant_mse_per_subgrp = mse_per_ratio[row_idx, best_ratio_idx]
+        tensor_deq = best_dqval.reshape(-1, group_size)
+        quant_mse_sum = quant_mse_per_subgrp.view(-1, sub_groups_per_group).mean(
+            dim=1, keepdim=True
+        )
+        bias_mse[bias] = (tensor_deq, quant_mse_sum)
+    all_mse = torch.cat([bias_mse[b][1] for b in range_], dim=1)
+    best_bias_idx = all_mse.argmin(dim=1)
+    all_deq = torch.stack([bias_mse[b][0] for b in range_], dim=0)
+    all_deq = all_deq.view(len(range_), -1, group_size)
+    idx_expanded = best_bias_idx.view(1, -1, 1).expand(1, -1, group_size)
+    final_deq = torch.gather(all_deq, dim=0, index=idx_expanded).squeeze(0)
+    tensor_deq = final_deq.reshape(org_shape).to(org_dtype)
+    return tensor_deq
+@torch.no_grad()
+def get_quant_nvesem(tensor_value: torch.Tensor, group_size: int):
+
+    sub_group_size = 8  # extra 2 bit for scale in subgroup
+    assert group_size % sub_group_size == 0
+
+    org_shape = tensor_value.shape
+    org_dtype = tensor_value.dtype
+
+    tensor_value = tensor_value.float()
+
+    if group_size > 0:
+        assert org_shape[-1] % group_size == 0
+        tensor_value = tensor_value.reshape(-1, group_size)
+
+    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+    # avoid divide a too small value
+    max_val = max_val.clamp(min=1e-8)
+
+    max_quant_val = torch.tensor(FLOAT4_E2M1_MAX, device=tensor_value.device)
+
+    scales = tensor_value.abs().amax(dim=1, keepdim=True) / max_quant_val
+
+    tensor_value = tensor_value.reshape(-1, sub_group_size)
+    # Compute the scaling factor
+    global_scale = scales.max() / FLOAT8_E4M3_MAX
+    scales = (
+        (scales / global_scale)
+        .clamp(min=FLOAT8_E4M3_EPS)
+        .to(torch.float8_e4m3fn)
+        .to(tensor_value.dtype)
+    ) * global_scale
+    exp = torch.floor(torch.log2(scales))
+    # exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
+    bias_mse = {}
+    range_ = range(-1, 2)
+    # range_ = {0}
+    org_scales = scales
+    for bias in range_:
+        # scales = torch.pow(2, exp + bias)
+
+        scales = org_scales * torch.pow(2, torch.tensor(bias, device=tensor_value.device, dtype=tensor_value.dtype))
+        sub_groups_per_group = group_size // sub_group_size
+        scales = scales.expand(-1, sub_groups_per_group).reshape(-1, 1)
+        ratios = torch.tensor(
+            [1.0, 1.5], dtype=tensor_value.dtype, device=tensor_value.device
+        )
+        # ratios = torch.tensor(
+        #     [1.0, 1.5], dtype=tensor_value.dtype, device=tensor_value.device
+        # )
+        x_expanded = tensor_value.unsqueeze(2)
+        scales_expanded = scales.unsqueeze(2)
+
+        cand_scales = scales_expanded * ratios.view(1, 1, -1)
+        cand_qval = cast_to_fp4(x_expanded / cand_scales) * cand_scales
+        mse_per_ratio = (cand_qval - x_expanded).pow(2).mean(dim=1)
+        best_ratio_idx = mse_per_ratio.argmin(dim=1)
+        row_idx = torch.arange(tensor_value.size(0), device=tensor_value.device)
+        best_dqval = cand_qval[row_idx, :, best_ratio_idx]
+        quant_mse_per_subgrp = mse_per_ratio[row_idx, best_ratio_idx]
+        tensor_deq = best_dqval.reshape(-1, group_size)
+        quant_mse_sum = quant_mse_per_subgrp.view(-1, sub_groups_per_group).mean(
+            dim=1, keepdim=True
+        )
+        bias_mse[bias] = (tensor_deq, quant_mse_sum)
+    all_mse = torch.cat([bias_mse[b][1] for b in range_], dim=1)
+    best_bias_idx = all_mse.argmin(dim=1)
+    all_deq = torch.stack([bias_mse[b][0] for b in range_], dim=0)
+    all_deq = all_deq.view(len(range_), -1, group_size)
+    idx_expanded = best_bias_idx.view(1, -1, 1).expand(1, -1, group_size)
+    final_deq = torch.gather(all_deq, dim=0, index=idx_expanded).squeeze(0)
+    tensor_deq = final_deq.reshape(org_shape).to(org_dtype)
+    return tensor_deq
+@torch.no_grad()
+def get_quant_nvesm(tensor_value: torch.Tensor, group_size: int):
 
     sub_group_size = 8  # extra 2 bit for scale in subgroup
     assert group_size % sub_group_size == 0
@@ -590,11 +766,11 @@ mse4 = (res - b).pow(2).mean()
 print(res)
 print("MSE NVES:", mse4)
 
-res = get_quant_nvess(b, 16)
-mse5 = (res - b).pow(2).mean()
-print(res)
-print("MSE NVESS:", mse5)
-
+# res = get_quant_nvess(b, 16)
+# mse5 = (res - b).pow(2).mean()
+# print(res)
+# print("MSE NVESS:", mse5)
+#
 
 
 
@@ -606,6 +782,7 @@ import matplotlib.pyplot as plt
 x_axis = []
 
 mse1, mse2, mse3, mse4 = [], [], [], []
+mse5, mse6, mse7, mse8 = [], [], [], []
 
 # 采样次数
 num_samples = 100
@@ -615,6 +792,7 @@ for j in range(1, 34):
     x_axis.append(x_val) # 修正1：填充横坐标
     sigma = 0.01 * 2 ** (j / 2)
     m1, m2, m3, m4 = 0.0, 0.0, 0.0, 0.0
+    m5, m6, m7, m8 = 0.0, 0.0, 0.0, 0.0
     # 计算当前信号的理论方差，用于归一化
     # 因为 b = randn * (sigma^2)，其方差是 (sigma^2)^2
     signal_variance = sigma ** 2
@@ -624,26 +802,41 @@ for j in range(1, 34):
         res1 = get_quant_hif4(b, 64)
         res2 = get_quant_nvfp(b, 16)
         res3 = get_quant_nves(b, 16)
-        res4 = get_quant_nvess(b, 16)
+        res4 = get_quant_nvesm(b, 16)
+        res5 = get_quant_nvfpes(b, 16)
+        res6 = get_quant_nvesm2(b, 16)
+        res7 = get_quant_nvem(b, 16)
+
         # 累加 MSE
         m1 += (res1 - b).pow(2).mean().item()
         m2 += (res2 - b).pow(2).mean().item()
         m3 += (res3 - b).pow(2).mean().item()
         m4 += (res4 - b).pow(2).mean().item()
+        m5 += (res5 - b).pow(2).mean().item()
+        m6 += (res6 - b).pow(2).mean().item()
+        m7 += (res7 - b).pow(2).mean().item()
+
     # 修正2：均值除以样本数，再除以信号方差实现归一化
     mse1.append((m1 / num_samples) / signal_variance)
     mse2.append((m2 / num_samples) / signal_variance)
     mse3.append((m3 / num_samples) / signal_variance)
     mse4.append((m4 / num_samples) / signal_variance)
+    mse5.append((m5 / num_samples) / signal_variance)
+    mse6.append((m6 / num_samples) / signal_variance)
+    mse7.append((m7 / num_samples) / signal_variance)
 
 # --- 绘图部分 ---
-plt.figure(figsize=(20, 12))
+plt.figure(figsize=(12, 8))
 
 # 使用线性坐标轴，因为已经归一化了，数值应该在可比范围内
 plt.plot(x_axis, mse1, label='HIF4 (Block=64)', marker='o', markersize=4)
-plt.plot(x_axis, mse2, label='NVFP', marker='s', markersize=4)
-plt.plot(x_axis, mse3, label='NVES', marker='^', markersize=4)
-plt.plot(x_axis, mse4, label='NVESS', marker='x', markersize=4)
+# plt.plot(x_axis, mse2, label='NVFP', marker='s', markersize=4)
+# plt.plot(x_axis, mse3, label='NVES', marker='^', markersize=4)
+plt.plot(x_axis, mse4, label='NVESM', marker='x', markersize=4)
+plt.plot(x_axis, mse5, label='NVFPES', marker='D', markersize=6)
+# plt.plot(x_axis, mse6, label='NVESM2', marker='v', markersize=4)
+plt.plot(x_axis, mse7, label='NVEM', marker='*', markersize=4)
+
 
 plt.xlabel('x variance = 0.01*2^(x)')
 plt.ylabel('Normalized MSE (MSE / Variance)')

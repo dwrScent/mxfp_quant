@@ -209,7 +209,7 @@ def get_quant_nvfpm4(tensor_value: torch.Tensor, group_size: int):
 
 def get_quant_mxem(tensor_value: torch.Tensor, group_size: int):
 
-    sub_group_size = 4  # extra 2 bit for mantissa in subgroup
+    sub_group_size = 8  # extra 2 bit for mantissa in subgroup
     assert group_size % sub_group_size == 0
 
     org_shape = tensor_value.shape
@@ -250,7 +250,81 @@ def get_quant_mxem(tensor_value: torch.Tensor, group_size: int):
 @torch.no_grad()
 def get_quant_nves(tensor_value: torch.Tensor, group_size: int):
 
-    sub_group_size = 4  # extra 2 bit for scale in subgroup
+    sub_group_size = 8  # extra 2 bit for scale in subgroup
+    assert group_size % sub_group_size == 0
+
+    org_shape = tensor_value.shape
+    org_dtype = tensor_value.dtype
+
+    tensor_value = tensor_value.float()
+
+    if group_size > 0:
+        assert org_shape[-1] % group_size == 0
+        tensor_value = tensor_value.reshape(-1, group_size)
+
+    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+    # avoid divide a too small value
+    max_val = max_val.clamp(min=1e-8)
+
+    max_quant_val = torch.tensor(FLOAT4_E2M1_MAX, device=tensor_value.device)
+
+    scales = tensor_value.abs().amax(dim=1, keepdim=True) / max_quant_val
+
+    tensor_value = tensor_value.reshape(-1, sub_group_size)
+    # Compute the scaling factor
+    global_scale = scales.max() / FLOAT8_E4M3_MAX
+    scales = (
+        (scales / global_scale)
+        .clamp(min=FLOAT8_E4M3_EPS)
+        .to(torch.float8_e4m3fn)
+        .to(tensor_value.dtype)
+    )
+    # print("org_scales:", scales)
+    exp = torch.floor(torch.log2(scales))
+    man_value = scales / torch.pow(2, exp)
+    bias_mse = {}
+    range_ = range(-1, 2)
+    for bias in range_:
+        # scales = torch.pow(2, exp + bias)
+
+        scales = torch.pow(2, exp) * torch.pow(2, torch.tensor(bias, device=tensor_value.device, dtype=tensor_value.dtype))
+        sub_groups_per_group = group_size // sub_group_size
+        # N_subgroups, 1
+        scales = scales.expand(-1, sub_groups_per_group).reshape(-1, 1)
+        ratios = torch.tensor(
+            [0, 0.03125, 0.0625, 0.09375], dtype=tensor_value.dtype, device=tensor_value.device
+        )
+        x_expanded = tensor_value.unsqueeze(2)
+        scales_expanded = scales.unsqueeze(2)
+        man_value_expanded = man_value.expand(-1, sub_groups_per_group).reshape(-1, 1).unsqueeze(2)
+
+        cand_scales = scales_expanded * ratios.view(1, 1, -1) + scales_expanded * man_value_expanded
+        # print(cand_scales, scales_expanded * man_value_expanded)
+        cand_qval = cast_to_fp4(x_expanded / cand_scales / global_scale) * cand_scales * global_scale
+        mse_per_ratio = (cand_qval - x_expanded).pow(2).mean(dim=1)
+        best_ratio_idx = mse_per_ratio.argmin(dim=1)
+        row_idx = torch.arange(tensor_value.size(0), device=tensor_value.device)
+        best_dqval = cand_qval[row_idx, :, best_ratio_idx]
+        quant_mse_per_subgrp = mse_per_ratio[row_idx, best_ratio_idx]
+        tensor_deq = best_dqval.reshape(-1, group_size)
+        quant_mse_sum = quant_mse_per_subgrp.view(-1, sub_groups_per_group).mean(
+            dim=1, keepdim=True
+        )
+        bias_mse[bias] = (tensor_deq, quant_mse_sum)
+    all_mse = torch.cat([bias_mse[b][1] for b in range_], dim=1)
+    best_bias_idx = all_mse.argmin(dim=1)
+    all_deq = torch.stack([bias_mse[b][0] for b in range_], dim=0)
+    all_deq = all_deq.view(len(range_), -1, group_size)
+    idx_expanded = best_bias_idx.view(1, -1, 1).expand(1, -1, group_size)
+    final_deq = torch.gather(all_deq, dim=0, index=idx_expanded).squeeze(0)
+    tensor_deq = final_deq.reshape(org_shape).to(org_dtype)
+    return tensor_deq
+
+
+@torch.no_grad()
+def get_quant_nvess(tensor_value: torch.Tensor, group_size: int):
+
+    sub_group_size = 8  # extra 2 bit for scale in subgroup
     assert group_size % sub_group_size == 0
 
     org_shape = tensor_value.shape
@@ -282,7 +356,7 @@ def get_quant_nves(tensor_value: torch.Tensor, group_size: int):
     exp = torch.floor(torch.log2(scales))
     # exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
     bias_mse = {}
-    range_ = range(-2, 2)
+    range_ = range(-1, 2)
     org_scales = scales
     for bias in range_:
         # scales = torch.pow(2, exp + bias)
@@ -492,80 +566,86 @@ mse = (res - b).pow(2).mean()
 print(res)
 print("MSE HIF4:", mse)
 
-res = get_quant_nvfpm4(b, 16)
+# res = get_quant_nvfpm4(b, 16)
+# mse5 = (res - b).pow(2).mean()
+# print(res)
+# print("MSE NVFPM4:", mse5)
+#
+# res = get_quant_nvfpm5(b, 16)
+# mse6 = (res - b).pow(2).mean()
+# print(res)
+# print("MSE NVFPM5:", mse6)
+
+res = get_quant_nvfp(b, 16)
+mse3 = (res - b).pow(2).mean()
+print(res)
+print("MSE NVFP:", mse3)
+
+res = get_quant_nves(b, 16)
+mse4 = (res - b).pow(2).mean()
+print(res)
+print("MSE NVES:", mse4)
+
+res = get_quant_nvess(b, 16)
 mse5 = (res - b).pow(2).mean()
 print(res)
-print("MSE NVFPM4:", mse5)
+print("MSE NVESS:", mse5)
 
-res = get_quant_nvfpm5(b, 16)
-mse6 = (res - b).pow(2).mean()
-print(res)
-print("MSE NVFPM5:", mse6)
-#
-# res = get_quant_nvfp(b, 8)
-# mse3 = (res - b).pow(2).mean()
-# print(res)
-# print("MSE NVFP:", mse3)
-#
-# print(FLOAT8_E4M4_EPS)
-#
-#
-# print(FP8_E4M4_GRID)
-# print(FP8_E5M3_GRID)
-# print(FP4_E2M1_GRID)
-# print(FP6_E2M3_GRID)
-#
-# import torch
-# import matplotlib.pyplot as plt
-#
-# # 存储结果用于绘图
-# x_axis = []
-# mse_hif4, mse_nvfp, mse_nvfpm4, mse_nvfpe5 = [], [], [], []
-#
-# # 采样次数
-# num_samples = 100
-#
-# for j in range(1, 34):
-#     x_val = j / 2
-#     x_axis.append(x_val) # 修正1：填充横坐标
-#     sigma = 0.01 * 2 ** (j / 2)
-#     m1, m2, m3, m4 = 0.0, 0.0, 0.0, 0.0
-#     # 计算当前信号的理论方差，用于归一化
-#     # 因为 b = randn * (sigma^2)，其方差是 (sigma^2)^2
-#     signal_variance = sigma ** 2
-#     for i in range(num_samples):
-#         b = torch.randn(8192) * sigma 
-#         # 假设这些函数已经在你的命名空间中定义
-#         res1 = get_quant_hif4(b, 64)
-#         res2 = get_quant_nvfp(b, 16)
-#         res3 = get_quant_nvfpm4(b, 16)
-#         res4 = get_quant_nvfpe5(b, 16)
-#         # 累加 MSE
-#         m1 += (res1 - b).pow(2).mean().item()
-#         m2 += (res2 - b).pow(2).mean().item()
-#         m3 += (res3 - b).pow(2).mean().item()
-#         m4 += (res4 - b).pow(2).mean().item()
-#     # 修正2：均值除以样本数，再除以信号方差实现归一化
-#     mse_hif4.append((m1 / num_samples) / signal_variance)
-#     mse_nvfp.append((m2 / num_samples) / signal_variance)
-#     mse_nvfpm4.append((m3 / num_samples) / signal_variance)
-#     mse_nvfpe5.append((m4 / num_samples) / signal_variance)
-#
-# # --- 绘图部分 ---
-# plt.figure(figsize=(10, 6))
-#
-# # 使用线性坐标轴，因为已经归一化了，数值应该在可比范围内
-# plt.plot(x_axis, mse_hif4, label='HIF4 (Block=64)', marker='o', markersize=4)
-# plt.plot(x_axis, mse_nvfp, label='NVFP', marker='s', markersize=4)
-# plt.plot(x_axis, mse_nvfpm4, label='NVFPM4', marker='^', markersize=4)
-# plt.plot(x_axis, mse_nvfpe5, label='NVFPE5', marker='x', markersize=4)
-#
-# plt.xlabel('x variance = 0.01*2^(x)')
-# plt.ylabel('Normalized MSE (MSE / Variance)')
-# plt.title('Normalized Quantization Error vs. Signal Range')
-# plt.grid(True, which="both", ls="-", alpha=0.5)
-# plt.legend()
-#
-# # 保存并显示
-# plt.savefig('quant_mse_comparison.png')
-# plt.show()
+
+
+
+
+import torch
+import matplotlib.pyplot as plt
+
+# 存储结果用于绘图
+x_axis = []
+mse_hif4, mse_nvfp, mse_nvfpm4, mse_nvfpe5 = [], [], [], []
+
+# 采样次数
+num_samples = 100
+
+for j in range(1, 34):
+    x_val = j / 2
+    x_axis.append(x_val) # 修正1：填充横坐标
+    sigma = 0.01 * 2 ** (j / 2)
+    m1, m2, m3, m4 = 0.0, 0.0, 0.0, 0.0
+    # 计算当前信号的理论方差，用于归一化
+    # 因为 b = randn * (sigma^2)，其方差是 (sigma^2)^2
+    signal_variance = sigma ** 2
+    for i in range(num_samples):
+        b = torch.randn(8192) * sigma 
+        # 假设这些函数已经在你的命名空间中定义
+        res1 = get_quant_hif4(b, 64)
+        res2 = get_quant_nvfp(b, 16)
+        res3 = get_quant_nves(b, 16)
+        res4 = get_quant_nvess(b, 16)
+        # 累加 MSE
+        m1 += (res1 - b).pow(2).mean().item()
+        m2 += (res2 - b).pow(2).mean().item()
+        m3 += (res3 - b).pow(2).mean().item()
+        m4 += (res4 - b).pow(2).mean().item()
+    # 修正2：均值除以样本数，再除以信号方差实现归一化
+    mse_hif4.append((m1 / num_samples) / signal_variance)
+    mse_nvfp.append((m2 / num_samples) / signal_variance)
+    mse_nvfpm4.append((m3 / num_samples) / signal_variance)
+    mse_nvfpe5.append((m4 / num_samples) / signal_variance)
+
+# --- 绘图部分 ---
+plt.figure(figsize=(20, 12))
+
+# 使用线性坐标轴，因为已经归一化了，数值应该在可比范围内
+plt.plot(x_axis, mse_hif4, label='HIF4 (Block=64)', marker='o', markersize=4)
+plt.plot(x_axis, mse_nvfp, label='NVFP', marker='s', markersize=4)
+plt.plot(x_axis, mse_nvfpm4, label='NVES', marker='^', markersize=4)
+plt.plot(x_axis, mse_nvfpe5, label='NVESS', marker='x', markersize=4)
+
+plt.xlabel('x variance = 0.01*2^(x)')
+plt.ylabel('Normalized MSE (MSE / Variance)')
+plt.title('Normalized Quantization Error vs. Signal Range')
+plt.grid(True, which="both", ls="-", alpha=0.5)
+plt.legend()
+
+# 保存并显示
+plt.savefig('quant_mse_comparison.png')
+plt.show()

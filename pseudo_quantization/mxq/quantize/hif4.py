@@ -165,9 +165,8 @@ def get_quant_nvfpes(tensor_value: torch.Tensor, group_size: int):
     scales = scales / global_scale
     extra_scale = scales > FLOAT8_E4M3_MAX
     scales = scales / (1.5 ** extra_scale.to(tensor_value.dtype))
-    print(scales)
     scales = (
-        (scales / global_scale)
+        (scales)
         .clamp(min=FLOAT8_E4M3_EPS)
         .to(torch.float8_e4m3fn)
         .to(tensor_value.dtype)
@@ -766,6 +765,11 @@ mse4 = (res - b).pow(2).mean()
 print(res)
 print("MSE NVES:", mse4)
 
+res = get_quant_nvfpes(b, 16)
+mse5 = (res - b).pow(2).mean()
+print(res)
+print("MSE NVFPES:", mse5)
+
 # res = get_quant_nvess(b, 16)
 # mse5 = (res - b).pow(2).mean()
 # print(res)
@@ -830,11 +834,11 @@ plt.figure(figsize=(12, 8))
 
 # 使用线性坐标轴，因为已经归一化了，数值应该在可比范围内
 plt.plot(x_axis, mse1, label='HIF4 (Block=64)', marker='o', markersize=4)
-# plt.plot(x_axis, mse2, label='NVFP', marker='s', markersize=4)
-# plt.plot(x_axis, mse3, label='NVES', marker='^', markersize=4)
+plt.plot(x_axis, mse2, label='NVFP', marker='s', markersize=4)
+plt.plot(x_axis, mse3, label='NVES', marker='^', markersize=4)
 plt.plot(x_axis, mse4, label='NVESM', marker='x', markersize=4)
 plt.plot(x_axis, mse5, label='NVFPES', marker='D', markersize=6)
-# plt.plot(x_axis, mse6, label='NVESM2', marker='v', markersize=4)
+plt.plot(x_axis, mse6, label='NVESM2', marker='v', markersize=4)
 plt.plot(x_axis, mse7, label='NVEM', marker='*', markersize=4)
 
 

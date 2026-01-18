@@ -191,9 +191,105 @@ def draw_3d_activation_surface():
     # plt.show()
     # plt.savefig("dump/" + name.replace(".pt", "_fixed.png"))
 
+
+FLOAT4_E2M1_MAX = 6.0
+FLOAT8_E4M3_EPS = torch.finfo(torch.float8_e4m3fn).tiny
+# FLOAT8_E4M3_EPS = 2 ** (-9)
+FLOAT8_E4M4_EPS = 2 ** (-10)
+FLOAT8_E4M3_MAX = 448.0
+LEVEL_2_MAX = 7
+
+#
+# @torch.no_grad()
+# def fp16(tensor_value: torch.Tensor, group_size: int):
+#     return tensor_value
+
+
+def float_value(exp_bit, man_bit):
+    bias = (2 ** (exp_bit - 1)) - 1
+    values = []
+    min_to_zero = True
+    subnormal = True
+    for i in range(2**exp_bit):
+        for j in range(2**man_bit):
+            if min_to_zero:
+                values.append(0.0)
+                min_to_zero = False
+            else:
+                if subnormal:
+                    values.append((2 ** (1 - bias)) * (j * 2 ** (-man_bit)))
+                else:
+                    values.append((2 ** (i - bias)) * (1 + j * 2 ** (-man_bit)))
+
+        subnormal = False
+
+    return values
+
+
+FP4_E2M1_GRID = torch.tensor(float_value(2, 1), device="cuda")
+FP6_E2M3_GRID = torch.tensor(float_value(2, 3), device="cuda")
+FP8_E5M3_GRID = torch.tensor(float_value(5, 3), device="cuda")
+FP8_E4M4_GRID = torch.tensor(float_value(4, 4), device="cuda")
+
+
+def quantize_to_grid(x: torch.Tensor, levels: torch.Tensor) -> torch.Tensor:
+    global grid_cnt[]
+    levels = levels.to(x.device)
+    boundaries = (levels[:-1] + levels[1:]) / 2.0
+    odd_boundaries = boundaries[1::2]
+    mask = torch.isin(x, odd_boundaries)
+    x = x + 0.0000005 * mask  # round to even
+    indices = torch.bucketize(x, boundaries)
+    indices.clamp_(0, len(levels) - 1)
+
+    quantized = levels[indices]
+    for value in quantized:
+        grid_cnt[value.item()] += 1
+    return quantized, indices
+
+
+def cast_to_fp4(x: torch.Tensor):
+    sign = torch.sign(x)
+    x_abs = torch.abs(x)
+    x_quant, _ = quantize_to_grid(x_abs, FP4_E2M1_GRID)
+    return x_quant * sign
+
+
+@torch.no_grad()
+def get_quant_nvfp(tensor_value: torch.Tensor, group_size: int):
+    global grid_cnt[]
+
+    org_shape = tensor_value.shape
+    org_dtype = tensor_value.dtype
+
+    tensor_value = tensor_value.float()
+    if group_size > 0:
+        assert org_shape[-1] % group_size == 0
+        tensor_value = tensor_value.reshape(-1, group_size)
+
+    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+    scales = max_val / FLOAT4_E2M1_MAX
+    # avoid divide a too small value
+    global_scale = scales.max() / FLOAT8_E4M3_MAX
+    scales = (
+        (scales / global_scale)
+        .clamp(min=FLOAT8_E4M3_EPS)
+        .to(torch.float8_e4m3fn)
+        .to(tensor_value.dtype)
+    ) * global_scale
+
+    tensor_quant = cast_to_fp4(tensor_value / scales) * scales
+
+    return tensor_quant.reshape(org_shape).to(org_dtype)
+
+
 if __name__ == "__main__":
 
     x = torch.load("dump/model_layers_8_mlp_up_proj.pt")  # [N, T, Cin]
     x = x.reshape(-1, x.shape[-1])
 
-
+    grid_cnt = [0] * len(FP4_E2M1_GRID)
+    x_quant = get_quant_nvfp(x, group_size=16)
+    print("Quantization Level Counts:")
+    for value, count in zip(FP4_E2M1_GRID.tolist(), grid_cnt):
+        print(f"Value: {value:.6f}, Count: {count}")

@@ -222,7 +222,7 @@ def run_awq(
 
         import os
 
-        save_dir = "awq_activation_dump"
+        save_dir = "dump"
         os.makedirs(save_dir, exist_ok=True)
 
         # 在 per-layer 循环里

@@ -244,7 +244,7 @@ def quantize_to_grid(x: torch.Tensor, levels: torch.Tensor) -> torch.Tensor:
 
     quantized = levels[indices]
     for value in quantized:
-        grid_cnt[value.item()] += 1
+        grid_cnt[round(value, 2)] += 1
     return quantized, indices
 
 
@@ -288,8 +288,9 @@ if __name__ == "__main__":
     x = torch.load("dump/model_layers_8_mlp_up_proj.pt")  # [N, T, Cin]
     x = x.reshape(-1, x.shape[-1])
 
-    grid_cnt = [0] * len(FP4_E2M1_GRID)
+    from collections import defaultdict
+    grid_cnt = defaultdict(int)
     x_quant = get_quant_nvfp(x, group_size=16)
     print("Quantization Level Counts:")
-    for value, count in zip(FP4_E2M1_GRID.tolist(), grid_cnt):
-        print(f"Value: {value:.6f}, Count: {count}")
+    for level in sorted(grid_cnt.keys()):
+        print(f"Value: {level:.2f}, Count: {grid_cnt[level]}")

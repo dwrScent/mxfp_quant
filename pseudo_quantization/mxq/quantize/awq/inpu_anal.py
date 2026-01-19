@@ -234,6 +234,7 @@ FP8_E4M4_GRID = torch.tensor(float_value(4, 4), device="cuda")
 
 def quantize_to_grid(x: torch.Tensor, levels: torch.Tensor) -> torch.Tensor:
     global grid_cnt
+    global org_grid_cnt
     levels = levels.to(x.device)
     boundaries = (levels[:-1] + levels[1:]) / 2.0
     odd_boundaries = boundaries[1::2]
@@ -242,11 +243,13 @@ def quantize_to_grid(x: torch.Tensor, levels: torch.Tensor) -> torch.Tensor:
     indices = torch.bucketize(x, boundaries)
     indices.clamp_(0, len(levels) - 1)
 
+    # record quantized value counts
     quantized = levels[indices]
     val_elements, counts = torch.unique(quantized, sorted=True, return_counts=True)
     grid_cnt_local = dict(zip(val_elements.cpu().numpy(), counts.cpu().numpy()))
     for level, count in grid_cnt_local.items():
         grid_cnt[level] += count
+
     return quantized, indices
 
 
@@ -392,21 +395,25 @@ def get_quant_nvint4(tensor_value: torch.Tensor, group_size: int):
 if __name__ == "__main__":
 
     # x = torch.load("dump/model_layers_8_mlp_up_proj.pt")  # [N, T, Cin]
-    x = torch.load("dump/model_layers_0_self_attn_q_proj.pt")  # [N, T, Cin]
+    name = "model_layers_0_self_attn_q_proj.pt"
+    # name = "model_layers_0_mlp_up_proj.pt"
+    x = torch.load("dump/" + name)  # [N, T, Cin]
     x = x.reshape(-1, x.shape[-1])
 
     from collections import defaultdict
     grid_cnt = defaultdict(int)
-    x_quant = get_quant_nvint4(x, group_size=16)
+    org_grid_cnt = defaultdict(int)
+    # x_quant = get_quant_nvint4(x, group_size=16)
     # x_quant = get_quant_nvess(x, group_size=16)
-    print("Quantization Level Counts:")
-    for level in sorted(grid_cnt.keys()):
-        print(f"Value: {level:.2f}, Count: {grid_cnt[level]}")
+    # print("Original Value Counts:")
+    # for level in sorted(org_grid_cnt.keys()):
+    #     print(f"Value: {level:.2f}, Count: {org_grid_cnt[level]}")
+
 
     import numpy as np
     group_size = 16
     x = x.reshape(-1, group_size)
-    bins = 7
+    bins = 50
     max_ = 6.0
     tensor_value = x.float()
     max_val = tensor_value.abs().amax(dim=1, keepdim=True)
@@ -423,6 +430,7 @@ if __name__ == "__main__":
     print(x[:5, :])
     bin_edges = np.linspace(0, max_, bins + 1)
     total_hist = None
+    x = x[::16, :]
     for i in range(x.shape[0]):
         row = x[i, :].abs().cpu().numpy()
         # row = torch.round(torch.clamp(row, min=-7.0, max=7.0)).cpu().numpy()
@@ -433,8 +441,28 @@ if __name__ == "__main__":
         else:
             total_hist += hist
 
+        row = torch.tensor(row, device=x.device)
+        max_val = row.max()
+        scale = max_val / max_
+        x_quant = cast_to_fp4(row / scale)
+        grid_cnt_local = defaultdict(int)
+        for val in x_quant.cpu().numpy():
+            grid_cnt_local[val] += 1
+        for level, count in grid_cnt_local.items():
+            grid_cnt[level] += count
+
+    print("Quantization Level Counts:")
+    for level in sorted(grid_cnt.keys()):
+        print(f"Value: {level:.2f}, Count: {grid_cnt[level]}")
+
+    print("Total Histogram:")
+    print(total_hist)
+
     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+    print(bin_centers)
     plt.figure(figsize=(10, 6))
     plt.plot(bin_centers, total_hist, color='royalblue', linewidth=2)
     plt.fill_between(bin_centers, total_hist, alpha=0.2, color='royalblue')
-    plt.savefig("dump/activation_histogram.png", dpi=150)
+    plt.savefig("dump/" + "Histogram_for_" + name.replace(".pt", ".png"), dpi=150)
+
+    plt.title("Activation Value Distribution for " + name)

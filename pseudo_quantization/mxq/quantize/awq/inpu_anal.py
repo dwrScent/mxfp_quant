@@ -362,10 +362,31 @@ if __name__ == "__main__":
     x = torch.load("dump/model_layers_0_self_attn_q_proj.pt")  # [N, T, Cin]
     x = x.reshape(-1, x.shape[-1])
 
-    from collections import defaultdict
-    grid_cnt = defaultdict(int)
-    x_quant = get_quant_nvfp(x, group_size=16)
-    # x_quant = get_quant_nvess(x, group_size=16)
-    print("Quantization Level Counts:")
-    for level in sorted(grid_cnt.keys()):
-        print(f"Value: {level:.2f}, Count: {grid_cnt[level]}")
+    # from collections import defaultdict
+    # grid_cnt = defaultdict(int)
+    # x_quant = get_quant_nvfp(x, group_size=16)
+    # # x_quant = get_quant_nvess(x, group_size=16)
+    # print("Quantization Level Counts:")
+    # for level in sorted(grid_cnt.keys()):
+    #     print(f"Value: {level:.2f}, Count: {grid_cnt[level]}")
+
+    import numpy as np
+    group_size = 16
+    x = x.reshape(-1, group_size)
+    bins = 100
+    max_ = 6.0
+    bin_edges = np.linspace(0, max_, bins + 1)
+    total_hist = None
+    for i in range(x.shape[0]):
+        row = x[i, :].abs().cpu().numpy()
+        hist, _ = np.histogram(row, bins=bin_edges)
+        if i == 0:
+            total_hist = hist
+        else:
+            total_hist += hist
+
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+    plt.figure(figsize=(10, 6))
+    plt.plot(bin_centers, total_hist, color='royalblue', linewidth=2)
+    plt.fill_between(bin_centers, total_hist, alpha=0.2, color='royalblue')
+    plt.savefig("dump/activation_histogram.png", dpi=150)

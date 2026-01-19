@@ -32,11 +32,11 @@ parser.add_argument("--num_fewshot", type=int, default=0)
 # quantization config
 parser.add_argument("--w_bit", type=int, default=16)
 parser.add_argument(
-        "--w_mode", type=str, choices=["mxfp", "nvfp", "mxem", "mxes", "nvem", "nves", "nvess", "hif4", "hifem", "hifes", "nvfpe5", "nvfpm4", "nvfpm5"], default=None
+        "--w_mode", type=str, choices=["mxfp", "nvfp", "mxem", "mxes", "nvem", "nves", "nvess", "hif4", "hifem", "hifes", "nvfpe5", "nvfpm4", "nvfpm5", "nvint4"], default=None
 )
 parser.add_argument("--a_bit", type=int, default=16)
 parser.add_argument(
-    "--a_mode", type=str, choices=["mxfp", "nvfp", "mxem", "mxes", "nvem", "nves", "nvess", "hif4", "hifem", "hifes", "nvfpe5", "nvfpm4", "nvfpm5"], default=None
+    "--a_mode", type=str, choices=["mxfp", "nvfp", "mxem", "mxes", "nvem", "nves", "nvess", "hif4", "hifem", "hifes", "nvfpe5", "nvfpm4", "nvfpm5", "nvint4"], default=None
 )
 parser.add_argument("--group_size", type=int, default=-1)
 parser.add_argument("--awq", action="store_true", help="Whether to use AWQ")

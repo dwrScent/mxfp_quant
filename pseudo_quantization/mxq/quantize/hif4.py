@@ -731,6 +731,33 @@ def get_quant_hifem(tensor_value: torch.Tensor, group_size: int):
     return tensor_quant.reshape(org_shape).to(org_dtype)
 
 
+def get_quant_nvint4(tensor_value: torch.Tensor, group_size: int):
+    
+    org_shape = tensor_value.shape
+    org_dtype = tensor_value.dtype
+
+    tensor_value = tensor_value.float()
+
+    if group_size > 0:
+        assert org_shape[-1] % group_size == 0
+        tensor_value = tensor_value.reshape(-1, group_size)
+
+    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+    scales = max_val / 7
+    # avoid divide a too small value
+    global_scale = scales.max() / FLOAT8_E4M3_MAX
+    scales = (
+        (scales / global_scale)
+        .clamp(min=1e-8)
+        .to(torch.float8_e4m3fn)
+        .to(tensor_value.dtype)
+    ) * global_scale
+
+    tensor_quant = torch.clamp(torch.round(tensor_value / scales), min=-7, max=7) * scales
+
+    return tensor_quant.reshape(org_shape).to(org_dtype)
+
+
 __name__ = "__main__"
 
 # a = torch.tensor([-0.27, 10.26, 6.41, 10.78, 9.25, 45.36, 10.72, 1.26])
@@ -770,7 +797,10 @@ mse5 = (res - b).pow(2).mean()
 print(res)
 print("MSE NVFPES:", mse5)
 
-print(FP4_E2M1_GRID)
+res = get_quant_nvint4(b, 16)
+mse6 = (res - b).pow(2).mean()
+print(res)
+print("MSE NVINT4:", mse6)
 
 # res = get_quant_nvess(b, 16)
 # mse5 = (res - b).pow(2).mean()
@@ -781,75 +811,75 @@ print(FP4_E2M1_GRID)
 
 
 
-# import torch
-# import matplotlib.pyplot as plt
-#
-# # 存储结果用于绘图
-# x_axis = []
-#
-# mse1, mse2, mse3, mse4 = [], [], [], []
-# mse5, mse6, mse7, mse8 = [], [], [], []
-#
-# # 采样次数
-# num_samples = 100
-#
-# for j in range(1, 34):
-#     x_val = j / 2
-#     x_axis.append(x_val) # 修正1：填充横坐标
-#     sigma = 0.01 * 2 ** (j / 2)
-#     m1, m2, m3, m4 = 0.0, 0.0, 0.0, 0.0
-#     m5, m6, m7, m8 = 0.0, 0.0, 0.0, 0.0
-#     # 计算当前信号的理论方差，用于归一化
-#     # 因为 b = randn * (sigma^2)，其方差是 (sigma^2)^2
-#     signal_variance = sigma ** 2
-#     for i in range(num_samples):
-#         b = torch.randn(8192) * sigma 
-#         # 假设这些函数已经在你的命名空间中定义
-#         res1 = get_quant_hif4(b, 64)
-#         res2 = get_quant_nvfp(b, 16)
-#         res3 = get_quant_nves(b, 16)
-#         res4 = get_quant_nvesm(b, 16)
-#         res5 = get_quant_nvfpes(b, 16)
-#         res6 = get_quant_nvesm2(b, 16)
-#         res7 = get_quant_nvem(b, 16)
-#
-#         # 累加 MSE
-#         m1 += (res1 - b).pow(2).mean().item()
-#         m2 += (res2 - b).pow(2).mean().item()
-#         m3 += (res3 - b).pow(2).mean().item()
-#         m4 += (res4 - b).pow(2).mean().item()
-#         m5 += (res5 - b).pow(2).mean().item()
-#         m6 += (res6 - b).pow(2).mean().item()
-#         m7 += (res7 - b).pow(2).mean().item()
-#
-#     # 修正2：均值除以样本数，再除以信号方差实现归一化
-#     mse1.append((m1 / num_samples) / signal_variance)
-#     mse2.append((m2 / num_samples) / signal_variance)
-#     mse3.append((m3 / num_samples) / signal_variance)
-#     mse4.append((m4 / num_samples) / signal_variance)
-#     mse5.append((m5 / num_samples) / signal_variance)
-#     mse6.append((m6 / num_samples) / signal_variance)
-#     mse7.append((m7 / num_samples) / signal_variance)
-#
-# # --- 绘图部分 ---
-# plt.figure(figsize=(12, 8))
-#
-# # 使用线性坐标轴，因为已经归一化了，数值应该在可比范围内
-# plt.plot(x_axis, mse1, label='HIF4 (Block=64)', marker='o', markersize=4)
-# plt.plot(x_axis, mse2, label='NVFP', marker='s', markersize=4)
-# plt.plot(x_axis, mse3, label='NVES', marker='^', markersize=4)
-# plt.plot(x_axis, mse4, label='NVESM', marker='x', markersize=4)
-# plt.plot(x_axis, mse5, label='NVFPES', marker='D', markersize=6)
+import torch
+import matplotlib.pyplot as plt
+
+# 存储结果用于绘图
+x_axis = []
+
+mse1, mse2, mse3, mse4 = [], [], [], []
+mse5, mse6, mse7, mse8 = [], [], [], []
+
+# 采样次数
+num_samples = 100
+
+for j in range(1, 34):
+    x_val = j / 2
+    x_axis.append(x_val) # 修正1：填充横坐标
+    sigma = 0.01 * 2 ** (j / 2)
+    m1, m2, m3, m4 = 0.0, 0.0, 0.0, 0.0
+    m5, m6, m7, m8 = 0.0, 0.0, 0.0, 0.0
+    # 计算当前信号的理论方差，用于归一化
+    # 因为 b = randn * (sigma^2)，其方差是 (sigma^2)^2
+    signal_variance = sigma ** 2
+    for i in range(num_samples):
+        b = torch.randn(8192) * sigma 
+        # 假设这些函数已经在你的命名空间中定义
+        res1 = get_quant_hif4(b, 64)
+        res2 = get_quant_nvfp(b, 16)
+        res3 = get_quant_nves(b, 16)
+        res4 = get_quant_nvem(b, 16)
+        res5 = get_quant_nvint4(b, 16)
+        # res6 = get_quant_nvesm2(b, 16)
+        # res7 = get_quant_nvem(b, 16)
+
+        # 累加 MSE
+        m1 += (res1 - b).pow(2).mean().item()
+        m2 += (res2 - b).pow(2).mean().item()
+        m3 += (res3 - b).pow(2).mean().item()
+        m4 += (res4 - b).pow(2).mean().item()
+        m5 += (res5 - b).pow(2).mean().item()
+        # m6 += (res6 - b).pow(2).mean().item()
+        # m7 += (res7 - b).pow(2).mean().item()
+
+    # 修正2：均值除以样本数，再除以信号方差实现归一化
+    mse1.append((m1 / num_samples) / signal_variance)
+    mse2.append((m2 / num_samples) / signal_variance)
+    mse3.append((m3 / num_samples) / signal_variance)
+    mse4.append((m4 / num_samples) / signal_variance)
+    mse5.append((m5 / num_samples) / signal_variance)
+    # mse6.append((m6 / num_samples) / signal_variance)
+    # mse7.append((m7 / num_samples) / signal_variance)
+
+# --- 绘图部分 ---
+plt.figure(figsize=(12, 8))
+
+# 使用线性坐标轴，因为已经归一化了，数值应该在可比范围内
+plt.plot(x_axis, mse1, label='HIF4 (Block=64)', marker='o', markersize=4)
+plt.plot(x_axis, mse2, label='NVFP', marker='s', markersize=4)
+plt.plot(x_axis, mse3, label='NVES', marker='^', markersize=4)
+plt.plot(x_axis, mse4, label='NVEM', marker='x', markersize=4)
+plt.plot(x_axis, mse5, label='NVINT4', marker='D', markersize=6)
 # plt.plot(x_axis, mse6, label='NVESM2', marker='v', markersize=4)
 # plt.plot(x_axis, mse7, label='NVEM', marker='*', markersize=4)
-#
-#
-# plt.xlabel('x variance = 0.01*2^(x)')
-# plt.ylabel('Normalized MSE (MSE / Variance)')
-# plt.title('Normalized Quantization Error vs. Signal Range')
-# plt.grid(True, which="both", ls="-", alpha=0.5)
-# plt.legend()
-#
-# # 保存并显示
-# plt.savefig('quant_mse_comparison.png')
-# plt.show()
+
+
+plt.xlabel('x variance = 0.01*2^(x)')
+plt.ylabel('Normalized MSE (MSE / Variance)')
+plt.title('Normalized Quantization Error vs. Signal Range')
+plt.grid(True, which="both", ls="-", alpha=0.5)
+plt.legend()
+
+# 保存并显示
+plt.savefig('quant_mse_comparison.png')
+plt.show()

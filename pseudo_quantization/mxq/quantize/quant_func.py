@@ -606,6 +606,33 @@ def get_quant_nvfpm5(tensor_value: torch.Tensor, group_size: int):
     return tensor_quant.reshape(org_shape).to(org_dtype)
 
 
+def get_quant_nvint4(tensor_value: torch.Tensor, group_size: int):
+    
+    org_shape = tensor_value.shape
+    org_dtype = tensor_value.dtype
+
+    tensor_value = tensor_value.float()
+
+    if group_size > 0:
+        assert org_shape[-1] % group_size == 0
+        tensor_value = tensor_value.reshape(-1, group_size)
+
+    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+    scales = max_val / 7
+    # avoid divide a too small value
+    global_scale = scales.max() / FLOAT8_E4M3_MAX
+    scales = (
+        (scales / global_scale)
+        .clamp(min=1e-8)
+        .to(torch.float8_e4m3fn)
+        .to(tensor_value.dtype)
+    ) * global_scale
+
+    tensor_quant = torch.clamp(torch.round(tensor_value / scales), min=-7, max=7) * scales
+
+    return tensor_quant.reshape(org_shape).to(org_dtype)
+
+
 QUANT_METHOD_MAP = {
     "mxfp": get_quant_mxfp,
     "nvfp": get_quant_nvfp,
@@ -620,6 +647,7 @@ QUANT_METHOD_MAP = {
     "nvfpe5": get_quant_nvfpe5,
     "nvfpm4": get_quant_nvfpm4,
     "nvfpm5": get_quant_nvfpm5,
+    "nvint4": get_quant_nvint4,
 }
 
 

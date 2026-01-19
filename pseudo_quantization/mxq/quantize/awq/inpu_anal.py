@@ -356,30 +356,78 @@ def get_quant_nvfp(tensor_value: torch.Tensor, group_size: int):
     return tensor_quant.reshape(org_shape).to(org_dtype)
 
 
+def get_quant_nvint4(tensor_value: torch.Tensor, group_size: int):
+    
+    org_shape = tensor_value.shape
+    org_dtype = tensor_value.dtype
+
+    tensor_value = tensor_value.float()
+
+    if group_size > 0:
+        assert org_shape[-1] % group_size == 0
+        tensor_value = tensor_value.reshape(-1, group_size)
+
+    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+    scales = max_val / 7.0
+    # avoid divide a too small value
+    global_scale = scales.max() / FLOAT8_E4M3_MAX
+    scales = (
+        (scales / global_scale)
+        .clamp(min=FLOAT8_E4M3_EPS)
+        .to(torch.float8_e4m3fn)
+        .to(tensor_value.dtype)
+    ) * global_scale
+
+    tensor_quant = torch.clamp(torch.round(tensor_value / scales), min=-7.0, max=7.0)
+    global grid_cnt
+    val_elements, counts = torch.unique(tensor_quant, sorted=True, return_counts=True)
+    grid_cnt_local = dict(zip(val_elements.cpu().numpy(), counts.cpu().numpy()))
+    for level, count in grid_cnt_local.items():
+        grid_cnt[level] += count
+
+    tensor_quant = tensor_quant * scales
+    return tensor_quant.reshape(org_shape).to(org_dtype)
+
+
 if __name__ == "__main__":
 
     # x = torch.load("dump/model_layers_8_mlp_up_proj.pt")  # [N, T, Cin]
     x = torch.load("dump/model_layers_0_self_attn_q_proj.pt")  # [N, T, Cin]
     x = x.reshape(-1, x.shape[-1])
 
-    # from collections import defaultdict
-    # grid_cnt = defaultdict(int)
-    # x_quant = get_quant_nvfp(x, group_size=16)
-    # # x_quant = get_quant_nvess(x, group_size=16)
-    # print("Quantization Level Counts:")
-    # for level in sorted(grid_cnt.keys()):
-    #     print(f"Value: {level:.2f}, Count: {grid_cnt[level]}")
+    from collections import defaultdict
+    grid_cnt = defaultdict(int)
+    x_quant = get_quant_nvint4(x, group_size=16)
+    # x_quant = get_quant_nvess(x, group_size=16)
+    print("Quantization Level Counts:")
+    for level in sorted(grid_cnt.keys()):
+        print(f"Value: {level:.2f}, Count: {grid_cnt[level]}")
 
     import numpy as np
     group_size = 16
     x = x.reshape(-1, group_size)
-    bins = 100
+    bins = 7
     max_ = 6.0
+    tensor_value = x.float()
+    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+    scales = max_val / max_
+    # avoid divide a too small value
+    global_scale = scales.max() / FLOAT8_E4M3_MAX
+    scales = (
+        (scales / global_scale)
+        .clamp(min=FLOAT8_E4M3_EPS)
+        .to(torch.float8_e4m3fn)
+        .to(tensor_value.dtype)
+    ) * global_scale
+    x = x / scales
+    print(x[:5, :])
     bin_edges = np.linspace(0, max_, bins + 1)
     total_hist = None
     for i in range(x.shape[0]):
         row = x[i, :].abs().cpu().numpy()
+        # row = torch.round(torch.clamp(row, min=-7.0, max=7.0)).cpu().numpy()
         hist, _ = np.histogram(row, bins=bin_edges)
+        # print(hist)
         if i == 0:
             total_hist = hist
         else:

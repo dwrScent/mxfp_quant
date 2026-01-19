@@ -618,17 +618,17 @@ def get_quant_nvint4(tensor_value: torch.Tensor, group_size: int):
         tensor_value = tensor_value.reshape(-1, group_size)
 
     max_val = tensor_value.abs().amax(dim=1, keepdim=True)
-    scales = max_val / 7
+    scales = max_val / 7.0
     # avoid divide a too small value
     global_scale = scales.max() / FLOAT8_E4M3_MAX
     scales = (
         (scales / global_scale)
-        .clamp(min=1e-8)
+        .clamp(min=FLOAT8_E4M3_EPS)
         .to(torch.float8_e4m3fn)
         .to(tensor_value.dtype)
     ) * global_scale
 
-    tensor_quant = torch.clamp(torch.round(tensor_value / scales), min=-7, max=7) * scales
+    tensor_quant = torch.clamp(torch.round(tensor_value / scales), min=-7.0, max=7.0) * scales
 
     return tensor_quant.reshape(org_shape).to(org_dtype)
 

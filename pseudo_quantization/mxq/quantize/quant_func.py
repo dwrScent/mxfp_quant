@@ -1,6 +1,6 @@
 import torch
 import torch.nn.functional as F
-from .new_quant_func import get_quant_hifes, get_quant_hifem, get_quant_hif4
+from .hif4_quant_func import get_quant_hifes, get_quant_hifem, get_quant_hif4
 from torch import nn
 
 FLOAT4_E2M1_MAX = 6.0

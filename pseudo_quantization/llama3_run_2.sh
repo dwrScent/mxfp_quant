@@ -1,10 +1,11 @@
 #!/bin/bash
 
-TASKS=${1:-"wikitext"}
+# TASKS=${1:-"ptb"}
+TASKS=${1:-"arc_easy,arc_challenge"}
 WBIT=4
-WMODE="nvfp"
+WMODE="nvesem2"
 ABIT=4
-AMODE="nvfp"
+AMODE="nvesem2"
 GROUP_SIZE=16
 AWQ=False
 

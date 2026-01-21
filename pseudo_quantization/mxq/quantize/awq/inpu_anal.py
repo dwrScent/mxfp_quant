@@ -242,13 +242,13 @@ def quantize_to_grid(x: torch.Tensor, levels: torch.Tensor) -> torch.Tensor:
     x = x + 0.0000005 * mask  # round to even
     indices = torch.bucketize(x, boundaries)
     indices.clamp_(0, len(levels) - 1)
-
-    # record quantized value counts
     quantized = levels[indices]
-    val_elements, counts = torch.unique(quantized, sorted=True, return_counts=True)
-    grid_cnt_local = dict(zip(val_elements.cpu().numpy(), counts.cpu().numpy()))
-    for level, count in grid_cnt_local.items():
-        grid_cnt[level] += count
+
+    # # record quantized value counts
+    # val_elements, counts = torch.unique(quantized, sorted=True, return_counts=True)
+    # grid_cnt_local = dict(zip(val_elements.cpu().numpy(), counts.cpu().numpy()))
+    # for level, count in grid_cnt_local.items():
+    #     grid_cnt[level] += count
 
     return quantized, indices
 
@@ -397,23 +397,19 @@ if __name__ == "__main__":
     # x = torch.load("dump/model_layers_8_mlp_up_proj.pt")  # [N, T, Cin]
     name = "model_layers_0_self_attn_q_proj.pt"
     # name = "model_layers_0_mlp_up_proj.pt"
+    # name = "model_layers_8_mlp_gate_proj.pt"
+    # name = "model_layers_16_self_attn_o_proj.pt"
     x = torch.load("dump/" + name)  # [N, T, Cin]
     x = x.reshape(-1, x.shape[-1])
 
     from collections import defaultdict
     grid_cnt = defaultdict(int)
     org_grid_cnt = defaultdict(int)
-    # x_quant = get_quant_nvint4(x, group_size=16)
-    # x_quant = get_quant_nvess(x, group_size=16)
-    # print("Original Value Counts:")
-    # for level in sorted(org_grid_cnt.keys()):
-    #     print(f"Value: {level:.2f}, Count: {org_grid_cnt[level]}")
 
 
     import numpy as np
     group_size = 16
     x = x.reshape(-1, group_size)
-    bins = 50
     max_ = 6.0
     tensor_value = x.float()
     max_val = tensor_value.abs().amax(dim=1, keepdim=True)
@@ -428,41 +424,47 @@ if __name__ == "__main__":
     ) * global_scale
     x = x / scales
     print(x[:5, :])
-    bin_edges = np.linspace(0, max_, bins + 1)
     total_hist = None
-    x = x[::16, :]
-    for i in range(x.shape[0]):
-        row = x[i, :].abs().cpu().numpy()
-        # row = torch.round(torch.clamp(row, min=-7.0, max=7.0)).cpu().numpy()
-        hist, _ = np.histogram(row, bins=bin_edges)
-        # print(hist)
-        if i == 0:
-            total_hist = hist
-        else:
-            total_hist += hist
+    # x = x[::8, :]
+    import torch
 
-        row = torch.tensor(row, device=x.device)
-        max_val = row.max()
-        scale = max_val / max_
-        x_quant = cast_to_fp4(row / scale)
-        grid_cnt_local = defaultdict(int)
-        for val in x_quant.cpu().numpy():
-            grid_cnt_local[val] += 1
-        for level, count in grid_cnt_local.items():
-            grid_cnt[level] += count
+    # 假设 x 已经在 GPU 上
+    # bin_edges 假设是等间距的，例如从 0 到 6 分 100 份
+    num_bins = 100
+    min_val, max_val_bin = 0.0, 7.0 # 根据你的需求设置边界
 
+    # --- 1. 并行化 Histogram 统计 ---
+    # 不再逐行循环，直接对整个张量或大 Batch 进行统计
+    # 如果显存允许，直接：
+    total_hist = torch.histc(x.abs(), bins=num_bins, min=min_val, max=max_val_bin)
+
+    # --- 2. 向量化归一化与量化 ---
+    # 每一行的 max (保持维度以进行广播)
+    # row_max = x.abs().max(dim=1, keepdim=True)[0]
+    # scales = row_max / max_
+    # 整个矩阵并行量化
+    x_quant = cast_to_fp4(x.abs())
+
+    # --- 3. 高效统计 Grid Counts ---
+    # 假设 cast_to_fp4 返回的是离散的量化值（如 FP4 的 16 种索引或电平）
+    unique_levels, counts = torch.unique(x_quant, return_counts=True)
+
+    # 将结果转回字典（仅执行一次，速度极快）
+    final_grid_cnt = dict(zip(unique_levels.tolist(), counts.tolist()))
+    for level, count in final_grid_cnt.items():
+        grid_cnt[level] += count
+    # --- 4. 输出结果 ---
     print("Quantization Level Counts:")
     for level in sorted(grid_cnt.keys()):
         print(f"Value: {level:.2f}, Count: {grid_cnt[level]}")
-
     print("Total Histogram:")
-    print(total_hist)
-
+    print(total_hist.cpu().numpy())
+    bin_edges = np.linspace(min_val, max_val_bin, num_bins + 1)
     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
     print(bin_centers)
     plt.figure(figsize=(10, 6))
-    plt.plot(bin_centers, total_hist, color='royalblue', linewidth=2)
-    plt.fill_between(bin_centers, total_hist, alpha=0.2, color='royalblue')
+    plt.plot(bin_centers, total_hist.cpu().numpy(), color='royalblue', linewidth=2)
+    plt.fill_between(bin_centers, total_hist.cpu().numpy(), alpha=0.2, color='royalblue')
+    plt.title("Activation Value Distribution for " + name)
     plt.savefig("dump/" + "Histogram_for_" + name.replace(".pt", ".png"), dpi=150)
 
-    plt.title("Activation Value Distribution for " + name)

@@ -1,10 +1,12 @@
 #!/bin/bash
 
-TASKS=${1:-"wikitext"}
+# TASKS=${1:-"wikitext"}
+TASKS=${1:-"ptb"}
+# TASKS=${1:-"hellaswag,piqa,winogrande"}
 WBIT=4
-WMODE="nvint4"
+WMODE="nvesm2"
 ABIT=4
-AMODE="nvint4"
+AMODE="nvesm2"
 GROUP_SIZE=16
 
 # MODEL=meta-llama/Meta-Llama-3-8B

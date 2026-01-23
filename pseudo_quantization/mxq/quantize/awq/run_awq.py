@@ -225,7 +225,7 @@ def run_awq(
         save_dir = "dump"
         os.makedirs(save_dir, exist_ok=True)
 
-        # 在 per-layer 循环里
+        # 在 per-layer 循环里存储 input features
         for name, feat in input_feat.items():
             full_name = f"{get_op_name(model, layer)}.{name}"
             torch.save(

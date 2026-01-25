@@ -1,5 +1,5 @@
 from lm_eval import evaluator
-from lm_eval.models.huggingface import HFLM
+# from lm_eval.models.huggingface import HFLM
 from lm_eval.utils import make_table
 
 from transformers import (
@@ -10,8 +10,8 @@ import torch
 import argparse
 from mxq.quantize.quant_func import QuantConfig
 from mxq.quantize.quantizer import make_quant_linear
-# from mxq.quantize.awq.prequant import run_awq
-# from mxq.quantize.awq.prequant import apply_awq
+from mxq.quantize.awq.prequant import run_awq
+from mxq.quantize.awq.prequant import apply_awq
 
 import datetime
 import tqdm
@@ -61,42 +61,45 @@ def build_model_and_enc(model_path):
         device_map=None          # ★ 禁止 balanced
     )
 
-    # if args.awq:
-    #     from transformers import AutoTokenizer
-    #
-    #     tokenizer = AutoTokenizer.from_pretrained(
-    #         args.model_path, use_fast=False
-    #     )
-    #     # # if tokenizer.pad_token is None:
-    #     # #     tokenizer.add_special_tokens({"pad_token": "[PAD]"})
-    #     # model.resize_token_embeddings(len(tokenizer))
-    #
-    #     q_config = {
-    #         "zero_point": True,  # by default True
-    #         "q_group_size": args.group_size,  # whether to use group quantization
-    #         "quant_mode": args.w_mode,  # quantization mode
-    #     }
-    #     model.eval().cuda()
-    #
-    #     print_time("Start AWQ quantization")
-    #     awq_results = run_awq(
-    #         model,
-    #         tokenizer,
-    #         w_bit=args.w_bit,
-    #         q_config=q_config,
-    #         n_samples=128,
-    #         seqlen=512,
-    #         auto_scale=True,
-    #         mse_range=True,
-    #         calib_data="pileval",
-    #     )
-    #     print_time("Finish AWQ quantization")
-    #
-    #     apply_awq(model, awq_results)
-    #
+    if args.awq:
+        from transformers import AutoTokenizer
+
+        tokenizer = AutoTokenizer.from_pretrained(
+            args.model_path, use_fast=False
+        )
+        # # if tokenizer.pad_token is None:
+        # #     tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+        # model.resize_token_embeddings(len(tokenizer))
+
+        q_config = {
+            "zero_point": True,  # by default True
+            "q_group_size": args.group_size,  # whether to use group quantization
+            "quant_mode": args.w_mode,  # quantization mode
+        }
+        model.eval().cuda()
+
+        print_time("Start AWQ quantization")
+        awq_results = run_awq(
+            model,
+            tokenizer,
+            w_bit=args.w_bit,
+            q_config=q_config,
+            n_samples=128,
+            seqlen=512,
+            auto_scale=True,
+            mse_range=True,
+            calib_data="pileval",
+        )
+        print_time("Finish AWQ quantization")
+
+
     model = model.to("cuda")
 
     pseudo_quantize_model(model)
+    if args.awq:
+        print_time("Start applying AWQ weights")
+        apply_awq(model, awq_results)
+
     return model
 
 
@@ -157,19 +160,19 @@ def main():
 
         else:
             # do other evaluations
-            # print("no implementation yet")
-            lm_eval_model = HFLM(pretrained=model, batch_size=args.batch_size)
-            print_time("Start a task")
-            task_names = args.tasks.split(",")
-
-            results = evaluator.simple_evaluate(
-                model=lm_eval_model,
-                tasks=task_names,
-                batch_size=args.batch_size,
-                num_fewshot=args.num_fewshot,
-            )
-            print_time("Task finish!")
-            print(make_table(results))
+            print("no implementation yet")
+            # lm_eval_model = HFLM(pretrained=model, batch_size=args.batch_size)
+            # print_time("Start a task")
+            # task_names = args.tasks.split(",")
+            #
+            # results = evaluator.simple_evaluate(
+            #     model=lm_eval_model,
+            #     tasks=task_names,
+            #     batch_size=args.batch_size,
+            #     num_fewshot=args.num_fewshot,
+            # )
+            # print_time("Task finish!")
+            # print(make_table(results))
 
 
 if __name__ == "__main__":

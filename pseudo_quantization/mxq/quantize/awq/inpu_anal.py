@@ -392,23 +392,69 @@ def get_quant_nvint4(tensor_value: torch.Tensor, group_size: int):
     return tensor_quant.reshape(org_shape).to(org_dtype)
 
 
-if __name__ == "__main__":
-
-    # x = torch.load("dump/model_layers_8_mlp_up_proj.pt")  # [N, T, Cin]
-    name = "model_layers_0_self_attn_q_proj.pt"
-    # name = "model_layers_0_mlp_up_proj.pt"
-    # name = "model_layers_8_mlp_gate_proj.pt"
-    # name = "model_layers_16_self_attn_o_proj.pt"
-    x = torch.load("dump/" + name)  # [N, T, Cin]
-    x = x.reshape(-1, x.shape[-1])
-
-    # from collections import defaultdict
-    # grid_cnt = defaultdict(int)
-    # org_grid_cnt = defaultdict(int)
+def entropy(x: torch.Tensor, num_bins: int = 256):
+    hist = torch.histc(x, bins=num_bins, min=x.min().item(), max=x.max().item())
+    prob = hist / hist.sum()
+    prob = prob[prob > 0]
+    ent = -torch.sum(prob * torch.log2(prob))
+    return ent
 
 
+def grp_entropy(x: torch.Tensor, group_size, num_bins=256):
+    x = x.reshape(-1, group_size)
+    ent_list = []
+    for i in range(x.shape[0]):
+        ent = entropy(x[i], num_bins=num_bins)
+        ent_list.append(ent.item())
+    return np.mean(ent_list)
+
+
+def grp_entropy_vec(x: torch.Tensor, group_size: int, num_bins: int = 256):
+    import torch
+    """
+    x: [N] or [..., C]
+    """
+    x = x.reshape(-1, group_size)          # [G, group_size]
+    G, K = x.shape
+
+    # --- 1. 统一 bin 边界（非常重要） ---
+    xmin = x.min()
+    xmax = x.max()
+
+    # [num_bins + 1]
+    bin_edges = torch.linspace(
+        xmin, xmax, num_bins + 1, device=x.device
+    )
+
+    # --- 2. bucketize：每个元素 -> bin index ---
+    # [G, K], in [0, num_bins-1]
+    bin_idx = torch.bucketize(x, bin_edges) - 1
+    bin_idx = bin_idx.clamp(min=0, max=num_bins - 1)
+
+    # --- 3. 统计 group-wise histogram ---
+    # 构造 group index
+    group_idx = torch.arange(G, device=x.device).unsqueeze(1).expand(G, K)
+
+    # 展平后用 bincount
+    flat_idx = group_idx.reshape(-1) * num_bins + bin_idx.reshape(-1)
+
+    hist = torch.bincount(
+        flat_idx,
+        minlength=G * num_bins
+    ).reshape(G, num_bins).float()
+
+    # --- 4. 概率 & entropy ---
+    prob = hist / hist.sum(dim=1, keepdim=True)
+    prob = prob.clamp(min=1e-12)  # 防 log(0)
+
+    ent = -(prob * torch.log2(prob)).sum(dim=1)
+
+    return ent.mean()
+
+
+def nvfp_anal(x: torch.Tensor, group_size=16):
+    import torch
     import numpy as np
-    group_size = 16
     x = x.reshape(-1, group_size)
     max_ = 6.0
     tensor_value = x.float()
@@ -423,10 +469,9 @@ if __name__ == "__main__":
         .to(tensor_value.dtype)
     ) * global_scale
     x = x / scales
-    print(x[:5, :])
+
     total_hist = None
     # x = x[::8, :]
-    import torch
 
     # bin_edges 假设是等间距的，例如从 0 到 6 分 100 份
     num_bins = 100
@@ -437,22 +482,28 @@ if __name__ == "__main__":
     # 如果显存允许，直接：
     total_hist = torch.histc(x.abs(), bins=num_bins, min=min_val, max=max_val_bin)
 
+    # ent_grp = grp_entropy(x, group_size, num_bins=256)
+    ent_grp = grp_entropy_vec(x, group_size, num_bins=256)
+    print(f"Entropy before cast to fp4: {ent_grp:.4f}")
     # --- 2. 向量化归一化与量化 ---
     # 整个矩阵并行量化
     x_quant = cast_to_fp4(x.abs())
+    # ent_grp = grp_entropy(x, group_size, num_bins=256)
+    ent_grp = grp_entropy_vec(x_quant, group_size, num_bins=256)
+    print(f"Entropy after cast to fp4: {ent_grp:.4f}")
 
     # --- 3. 高效统计 Grid Counts ---
     # 假设 cast_to_fp4 返回的是离散的量化值（如 FP4 的 16 种索引或电平）
-    unique_levels, counts = torch.unique(x_quant, return_counts=True)
+    # unique_levels, counts = torch.unique(x_quant, return_counts=True)
 
     # 将结果转回字典（仅执行一次，速度极快）
-    final_grid_cnt = dict(zip(unique_levels.tolist(), counts.tolist()))
-    for level, count in final_grid_cnt.items():
-        grid_cnt[level] += count
+    # final_grid_cnt = dict(zip(unique_levels.tolist(), counts.tolist()))
+    # for level, count in final_grid_cnt.items():
+    #     grid_cnt[level] += count
     # --- 4. 输出结果 ---
     print("Quantization Level Counts:")
-    for level in sorted(grid_cnt.keys()):
-        print(f"Value: {level:.2f}, Count: {grid_cnt[level]}")
+    # for level in sorted(grid_cnt.keys()):
+    #     print(f"Value: {level:.2f}, Count: {grid_cnt[level]}")
     print("Total Histogram:")
     print(total_hist.cpu().numpy())
     bin_edges = np.linspace(min_val, max_val_bin, num_bins + 1)
@@ -463,3 +514,18 @@ if __name__ == "__main__":
     plt.title("Activation Value Distribution for " + name)
     plt.savefig("dump/" + "Histogram_for_" + name.replace(".pt", ".png"), dpi=150)
 
+if __name__ == "__main__":
+
+    # x = torch.load("dump/model_layers_8_mlp_up_proj.pt")  # [N, T, Cin]
+    name = "model_layers_0_self_attn_q_proj.pt"
+    # name = "model_layers_0_mlp_up_proj.pt"
+    # name = "model_layers_8_mlp_gate_proj.pt"
+    # name = "model_layers_16_self_attn_o_proj.pt"
+    x = torch.load("dump/" + name)  # [N, T, Cin]
+    x = x.reshape(-1, x.shape[-1])
+
+    # from collections import defaultdict
+    # grid_cnt = defaultdict(int)
+    # org_grid_cnt = defaultdict(int)
+
+    nvfp_anal(x, group_size=16)

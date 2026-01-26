@@ -863,6 +863,49 @@ def entropy(x: torch.Tensor, num_bins: int = 256):
     return ent
 
 
+def grp_entropy_vec(x: torch.Tensor, group_size: int, num_bins: int = 256):
+    import torch
+    """
+    x: [N] or [..., C]
+    """
+    x = x.reshape(-1, group_size)          # [G, group_size]
+    G, K = x.shape
+
+    # --- 1. 统一 bin 边界（非常重要） ---
+    xmin = x.min()
+    xmax = x.max()
+
+    # [num_bins + 1]
+    bin_edges = torch.linspace(
+        xmin, xmax, num_bins + 1, device=x.device
+    )
+
+    # --- 2. bucketize：每个元素 -> bin index ---
+    # [G, K], in [0, num_bins-1]
+    bin_idx = torch.bucketize(x, bin_edges) - 1
+    bin_idx = bin_idx.clamp(min=0, max=num_bins - 1)
+
+    # --- 3. 统计 group-wise histogram ---
+    # 构造 group index
+    group_idx = torch.arange(G, device=x.device).unsqueeze(1).expand(G, K)
+
+    # 展平后用 bincount
+    flat_idx = group_idx.reshape(-1) * num_bins + bin_idx.reshape(-1)
+
+    hist = torch.bincount(
+        flat_idx,
+        minlength=G * num_bins
+    ).reshape(G, num_bins).float()
+
+    # --- 4. 概率 & entropy ---
+    prob = hist / hist.sum(dim=1, keepdim=True)
+    prob = prob.clamp(min=1e-12)  # 防 log(0)
+
+    ent = -(prob * torch.log2(prob)).sum(dim=1)
+
+    return ent.mean()
+
+
 __name__ = "__main__"
 
 # a = torch.tensor([-0.27, 10.26, 6.41, 10.78, 9.25, 45.36, 10.72, 1.26])
@@ -924,6 +967,8 @@ x_axis = []
 
 mse1, mse2, mse3, mse4 = [], [], [], []
 mse5, mse6, mse7, mse8 = [], [], [], []
+entropy1, entropy2, entropy3, entropy4 = [], [], [], []
+entropy5, entropy6, entropy7, entropy8 = [], [], [], []
 
 # 采样次数
 num_samples = 100
@@ -954,68 +999,87 @@ num_samples = 100
 
 
 
-# for j in range(1, 34):
-#     x_val = j / 2
-#     x_axis.append(x_val) # 修正1：填充横坐标
-#     sigma = 0.01 * 2 ** (j / 2)
-#     m1, m2, m3, m4 = 0.0, 0.0, 0.0, 0.0
-#     m5, m6, m7, m8 = 0.0, 0.0, 0.0, 0.0
-#     # 计算当前信号的理论方差，用于归一化
-#     # 因为 b = randn * (sigma^2)，其方差是 (sigma^2)^2
-#     signal_variance = sigma ** 2
-#
-#     for i in range(num_samples):
-#         b = torch.randn(8192) * sigma 
-#         # 假设这些函数已经在你的命名空间中定义
-#         res1 = get_quant_hif4(b, 64)
-#         res2 = get_quant_nvfp(b, 16)
-#         res3 = get_quant_nves(b, 16)
-#         res4 = get_quant_nvem(b, 16)
-#         res5 = get_quant_mxfp(b, 32)
-#         res6 = get_quant_mxem(b, 32)
-#         res7 = get_quant_mxes(b, 32)
-#         res8 = get_quant_nvesem2(b, 16)
-#
-#         # 累加 MSE
-#         m1 += (res1 - b).pow(2).mean().item()
-#         m2 += (res2 - b).pow(2).mean().item()
-#         m3 += (res3 - b).pow(2).mean().item()
-#         m4 += (res4 - b).pow(2).mean().item()
-#         m5 += (res5 - b).pow(2).mean().item()
-#         m6 += (res6 - b).pow(2).mean().item()
-#         m7 += (res7 - b).pow(2).mean().item()
-#         m8 += (res8 - b).pow(2).mean().item()
-#
-#     # 修正2：均值除以样本数，再除以信号方差实现归一化
-#     mse1.append((m1 / num_samples) / signal_variance)
-#     mse2.append((m2 / num_samples) / signal_variance)
-#     mse3.append((m3 / num_samples) / signal_variance)
-#     mse4.append((m4 / num_samples) / signal_variance)
-#     mse5.append((m5 / num_samples) / signal_variance)
-#     mse6.append((m6 / num_samples) / signal_variance)
-#     mse7.append((m7 / num_samples) / signal_variance)
-#     mse8.append((m8 / num_samples) / signal_variance)
-#
-# # --- 绘图部分 ---
-# plt.figure(figsize=(12, 8))
-#
-# # 使用线性坐标轴，因为已经归一化了，数值应该在可比范围内
-# plt.plot(x_axis, mse1, label='HIF4 (4.5)', marker='o', markersize=4)
-# plt.plot(x_axis, mse2, label='NVFP (4.5)', marker='s', markersize=4)
-# plt.plot(x_axis, mse3, label='NVES (4.75)', marker='^', markersize=4)
-# plt.plot(x_axis, mse4, label='NVEM (4.75)', marker='x', markersize=4)
-# plt.plot(x_axis, mse5, label='MXFP (4.25)', marker='D', markersize=6)
-# plt.plot(x_axis, mse6, label='MXEM (4.5)', marker='v', markersize=4)
-# plt.plot(x_axis, mse7, label='MXES (4.5)', marker='*', markersize=4)
-# plt.plot(x_axis, mse8, label='NVESEM2 (4.625)', marker='P', markersize=4)
-#
-#
-# plt.xlabel('x variance = 0.01*2^(x)')
-# plt.ylabel('Normalized MSE (MSE / Variance)')
-# plt.title('Normalized Quantization Error vs. Signal Range')
-# plt.grid(True, which="both", ls="-", alpha=0.5)
-# plt.legend()
-#
-# # 保存并显示
-# plt.savefig('quant_mse_comparison.png')
-# plt.show()
+for j in range(1, 34):
+    x_val = j / 2
+    x_axis.append(x_val) # 修正1：填充横坐标
+    sigma = 0.01 * 2 ** (j / 2)
+    m1, m2, m3, m4 = 0.0, 0.0, 0.0, 0.0
+    m5, m6, m7, m8 = 0.0, 0.0, 0.0, 0.0
+    e1, e2, e3, e4 = 0.0, 0.0, 0.0, 0.0
+    e5, e6, e7, e8 = 0.0, 0.0, 0.0, 0.0
+    # 计算当前信号的理论方差，用于归一化
+    # 因为 b = randn * (sigma^2)，其方差是 (sigma^2)^2
+    signal_variance = sigma ** 2
+
+    for i in range(num_samples):
+        b = torch.randn(8192) * sigma 
+        # 假设这些函数已经在你的命名空间中定义
+        res1 = get_quant_hif4(b, 64)
+        res2 = get_quant_nvfp(b, 16)
+        res3 = get_quant_nves(b, 16)
+        res4 = get_quant_nvem(b, 16)
+        res5 = get_quant_mxfp(b, 32)
+        res6 = get_quant_mxem(b, 32)
+        res7 = get_quant_mxes(b, 32)
+        res8 = get_quant_nvesem2(b, 16)
+
+        # 累加 MSE
+        m1 += (res1 - b).pow(2).mean().item()
+        m2 += (res2 - b).pow(2).mean().item()
+        m3 += (res3 - b).pow(2).mean().item()
+        m4 += (res4 - b).pow(2).mean().item()
+        m5 += (res5 - b).pow(2).mean().item()
+        m6 += (res6 - b).pow(2).mean().item()
+        m7 += (res7 - b).pow(2).mean().item()
+        m8 += (res8 - b).pow(2).mean().item()
+        e1 += entropy(res1, num_bins=512).item()
+        e2 += entropy(res2, num_bins=512).item()
+        e3 += entropy(res3, num_bins=512).item()
+        e4 += entropy(res4, num_bins=512).item()
+        e5 += entropy(res5, num_bins=512).item()
+        e6 += entropy(res6, num_bins=512).item()
+        e7 += entropy(res7, num_bins=512).item()
+        e8 += entropy(res8, num_bins=512).item()
+
+    # 修正2：均值除以样本数，再除以信号方差实现归一化
+    mse1.append((m1 / num_samples) / signal_variance)
+    mse2.append((m2 / num_samples) / signal_variance)
+    mse3.append((m3 / num_samples) / signal_variance)
+    mse4.append((m4 / num_samples) / signal_variance)
+    mse5.append((m5 / num_samples) / signal_variance)
+    mse6.append((m6 / num_samples) / signal_variance)
+    mse7.append((m7 / num_samples) / signal_variance)
+    mse8.append((m8 / num_samples) / signal_variance)
+    entropy1.append(e1 / num_samples)
+    entropy2.append(e2 / num_samples)
+    entropy3.append(e3 / num_samples)
+    entropy4.append(e4 / num_samples)
+    entropy5.append(e5 / num_samples)
+    entropy6.append(e6 / num_samples)
+    entropy7.append(e7 / num_samples)
+    entropy8.append(e8 / num_samples)
+
+
+# --- 绘图部分 ---
+plt.figure(figsize=(12, 8))
+
+# 使用线性坐标轴，因为已经归一化了，数值应该在可比范围内
+plt.plot(x_axis, mse1, label='HIF4 (4.5)', marker='o', markersize=4)
+plt.plot(x_axis, mse2, label='NVFP (4.5)', marker='s', markersize=4)
+plt.plot(x_axis, mse3, label='NVES (4.75)', marker='^', markersize=4)
+plt.plot(x_axis, mse4, label='NVEM (4.75)', marker='x', markersize=4)
+plt.plot(x_axis, mse5, label='MXFP (4.25)', marker='D', markersize=6)
+plt.plot(x_axis, mse6, label='MXEM (4.5)', marker='v', markersize=4)
+plt.plot(x_axis, mse7, label='MXES (4.5)', marker='*', markersize=4)
+plt.plot(x_axis, mse8, label='NVESEM2 (4.625)', marker='P', markersize=4)
+
+
+plt.xlabel('x variance = 0.01*2^(x)')
+plt.ylabel('Normalized MSE (MSE / Variance)')
+plt.title('Normalized Quantization Error vs. Signal Range')
+plt.grid(True, which="both", ls="-", alpha=0.5)
+plt.legend()
+
+# 保存并显示
+plt.savefig('quant_mse_comparison.png')
+plt.show()

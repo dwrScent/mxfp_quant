@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# TASKS=${1:-"wikitext"}
-TASKS=${1:-"ptb"}
+TASKS=${1:-"wikitext"}
+# TASKS=${1:-"ptb"}
 # TASKS=${1:-"hellaswag,piqa,winogrande"}
 WBIT=4
 WMODE="nvesm2"

@@ -260,75 +260,75 @@ def cast_to_fp4(x: torch.Tensor):
     return x_quant * sign
 
 
-@torch.no_grad()
-def get_quant_nvess(tensor_value: torch.Tensor, group_size: int):
-
-    sub_group_size = 8  # extra 2 bit for scale in subgroup
-    assert group_size % sub_group_size == 0
-
-    org_shape = tensor_value.shape
-    org_dtype = tensor_value.dtype
-
-    tensor_value = tensor_value.float()
-
-    if group_size > 0:
-        assert org_shape[-1] % group_size == 0
-        tensor_value = tensor_value.reshape(-1, group_size)
-
-    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
-    # avoid divide a too small value
-    max_val = max_val.clamp(min=1e-8)
-
-    max_quant_val = torch.tensor(FLOAT4_E2M1_MAX, device=tensor_value.device)
-
-    scales = tensor_value.abs().amax(dim=1, keepdim=True) / max_quant_val
-
-    tensor_value = tensor_value.reshape(-1, sub_group_size)
-    # Compute the scaling factor
-    global_scale = scales.max() / FLOAT8_E4M3_MAX
-    scales = (
-        (scales / global_scale)
-        .clamp(min=FLOAT8_E4M3_EPS)
-        .to(torch.float8_e4m3fn)
-        .to(tensor_value.dtype)
-    ) * global_scale
-    exp = torch.floor(torch.log2(scales))
-    # exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
-    bias_mse = {}
-    range_ = range(-1, 2)
-    org_scales = scales
-    for bias in range_:
-        # scales = torch.pow(2, exp + bias)
-
-        scales = org_scales * torch.pow(2, torch.tensor(bias, device=tensor_value.device, dtype=tensor_value.dtype))
-        sub_groups_per_group = group_size // sub_group_size
-        scales = scales.expand(-1, sub_groups_per_group).reshape(-1, 1)
-        ratios = torch.tensor(
-            [1.0, 1.25, 1.5, 1.75], dtype=tensor_value.dtype, device=tensor_value.device
-        )
-        x_expanded = tensor_value.unsqueeze(2)
-        scales_expanded = scales.unsqueeze(2)
-
-        cand_scales = scales_expanded * ratios.view(1, 1, -1)
-        cand_qval = cast_to_fp4(x_expanded / cand_scales) * cand_scales
-        mse_per_ratio = (cand_qval - x_expanded).pow(2).mean(dim=1)
-        best_ratio_idx = mse_per_ratio.argmin(dim=1)
-        row_idx = torch.arange(tensor_value.size(0), device=tensor_value.device)
-        best_dqval = cand_qval[row_idx, :, best_ratio_idx]
-        quant_mse_per_subgrp = mse_per_ratio[row_idx, best_ratio_idx]
-        tensor_deq = best_dqval.reshape(-1, group_size)
-        quant_mse_sum = quant_mse_per_subgrp.view(-1, sub_groups_per_group).mean(
-            dim=1, keepdim=True
-        )
-        bias_mse[bias] = (tensor_deq, quant_mse_sum)
-    all_mse = torch.cat([bias_mse[b][1] for b in range_], dim=1)
-    best_bias_idx = all_mse.argmin(dim=1)
-    all_deq = torch.stack([bias_mse[b][0] for b in range_], dim=0)
-    all_deq = all_deq.view(len(range_), -1, group_size)
-    idx_expanded = best_bias_idx.view(1, -1, 1).expand(1, -1, group_size)
-    final_deq = torch.gather(all_deq, dim=0, index=idx_expanded).squeeze(0)
-    tensor_deq = final_deq.reshape(org_shape).to(org_dtype)
-    return tensor_deq
+# @torch.no_grad()
+# def get_quant_nvess(tensor_value: torch.Tensor, group_size: int):
+#
+#     sub_group_size = 8  # extra 2 bit for scale in subgroup
+#     assert group_size % sub_group_size == 0
+#
+#     org_shape = tensor_value.shape
+#     org_dtype = tensor_value.dtype
+#
+#     tensor_value = tensor_value.float()
+#
+#     if group_size > 0:
+#         assert org_shape[-1] % group_size == 0
+#         tensor_value = tensor_value.reshape(-1, group_size)
+#
+#     max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+#     # avoid divide a too small value
+#     max_val = max_val.clamp(min=1e-8)
+#
+#     max_quant_val = torch.tensor(FLOAT4_E2M1_MAX, device=tensor_value.device)
+#
+#     scales = tensor_value.abs().amax(dim=1, keepdim=True) / max_quant_val
+#
+#     tensor_value = tensor_value.reshape(-1, sub_group_size)
+#     # Compute the scaling factor
+#     global_scale = scales.max() / FLOAT8_E4M3_MAX
+#     scales = (
+#         (scales / global_scale)
+#         .clamp(min=FLOAT8_E4M3_EPS)
+#         .to(torch.float8_e4m3fn)
+#         .to(tensor_value.dtype)
+#     ) * global_scale
+#     exp = torch.floor(torch.log2(scales))
+#     # exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
+#     bias_mse = {}
+#     range_ = range(-1, 2)
+#     org_scales = scales
+#     for bias in range_:
+#         # scales = torch.pow(2, exp + bias)
+#
+#         scales = org_scales * torch.pow(2, torch.tensor(bias, device=tensor_value.device, dtype=tensor_value.dtype))
+#         sub_groups_per_group = group_size // sub_group_size
+#         scales = scales.expand(-1, sub_groups_per_group).reshape(-1, 1)
+#         ratios = torch.tensor(
+#             [1.0, 1.25, 1.5, 1.75], dtype=tensor_value.dtype, device=tensor_value.device
+#         )
+#         x_expanded = tensor_value.unsqueeze(2)
+#         scales_expanded = scales.unsqueeze(2)
+#
+#         cand_scales = scales_expanded * ratios.view(1, 1, -1)
+#         cand_qval = cast_to_fp4(x_expanded / cand_scales) * cand_scales
+#         mse_per_ratio = (cand_qval - x_expanded).pow(2).mean(dim=1)
+#         best_ratio_idx = mse_per_ratio.argmin(dim=1)
+#         row_idx = torch.arange(tensor_value.size(0), device=tensor_value.device)
+#         best_dqval = cand_qval[row_idx, :, best_ratio_idx]
+#         quant_mse_per_subgrp = mse_per_ratio[row_idx, best_ratio_idx]
+#         tensor_deq = best_dqval.reshape(-1, group_size)
+#         quant_mse_sum = quant_mse_per_subgrp.view(-1, sub_groups_per_group).mean(
+#             dim=1, keepdim=True
+#         )
+#         bias_mse[bias] = (tensor_deq, quant_mse_sum)
+#     all_mse = torch.cat([bias_mse[b][1] for b in range_], dim=1)
+#     best_bias_idx = all_mse.argmin(dim=1)
+#     all_deq = torch.stack([bias_mse[b][0] for b in range_], dim=0)
+#     all_deq = all_deq.view(len(range_), -1, group_size)
+#     idx_expanded = best_bias_idx.view(1, -1, 1).expand(1, -1, group_size)
+#     final_deq = torch.gather(all_deq, dim=0, index=idx_expanded).squeeze(0)
+#     tensor_deq = final_deq.reshape(org_shape).to(org_dtype)
+#     return tensor_deq
 
 
 @torch.no_grad()
@@ -577,8 +577,7 @@ def nvesm2_anal(x: torch.Tensor, group_size=16):
 
     x = x.reshape(-1, group_size)
     max_ = 6.0
-    tensor_value = x.float()
-    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+    max_val = x.abs().amax(dim=1, keepdim=True)
     scales = max_val / max_
     # avoid divide a too small value
     global_scale = scales.max() / FLOAT8_E4M3_MAX
@@ -586,22 +585,25 @@ def nvesm2_anal(x: torch.Tensor, group_size=16):
         (scales / global_scale)
         .clamp(min=FLOAT8_E4M3_EPS)
         .to(torch.float8_e4m3fn)
-        .to(tensor_value.dtype)
+        .to(x.dtype)
     )
 
     sub_group_size = 8  # extra 2 bit for scale in subgroup
     assert group_size % sub_group_size == 0
+
+    x = x.reshape(-1, sub_group_size)
 
     bias_mse = {}
     bias_data = {}
     # range_ = range(-1, 2)
     range_ = {0}
     org_scales = scales
+    sub_groups_per_group = group_size // sub_group_size
+    tensor_value = x
     for bias in range_:
         # scales = torch.pow(2, exp + bias)
 
         scales = org_scales * torch.pow(2, torch.tensor(bias, device=tensor_value.device, dtype=tensor_value.dtype))
-        sub_groups_per_group = group_size // sub_group_size
         scales = scales.expand(-1, sub_groups_per_group).reshape(-1, 1)
         ratios = torch.tensor(
             [1.0, 1.25, 1.5, 1.75], dtype=tensor_value.dtype, device=tensor_value.device
@@ -613,15 +615,16 @@ def nvesm2_anal(x: torch.Tensor, group_size=16):
         scales_expanded = scales.unsqueeze(2)
 
         cand_scales = scales_expanded * ratios.view(1, 1, -1)
-        cand_qval = cast_to_fp4(x_expanded / cand_scales) * cand_scales
+        cand_qval = cast_to_fp4(x_expanded / cand_scales / global_scale) * cand_scales * global_scale
         mse_per_ratio = (cand_qval - x_expanded).pow(2).mean(dim=1)
 
         best_ratio_idx = mse_per_ratio.argmin(dim=1)
         row_idx = torch.arange(tensor_value.size(0), device=tensor_value.device)
         best_dqval = cand_qval[row_idx, :, best_ratio_idx]
         # data start
-        data = x_expanded / cand_scales
-        best_data = data[row_idx, :, best_ratio_idx]
+        data = x_expanded / cand_scales / global_scale
+        best_dataval = data[row_idx, :, best_ratio_idx]
+        best_data = best_dataval.reshape(-1, group_size)
         bias_data[bias] = best_data
         # data end
         quant_mse_per_subgrp = mse_per_ratio[row_idx, best_ratio_idx]
@@ -638,11 +641,14 @@ def nvesm2_anal(x: torch.Tensor, group_size=16):
     final_deq = torch.gather(all_deq, dim=0, index=idx_expanded).squeeze(0)
 
     all_data = torch.stack([bias_data[b] for b in range_], dim=0)
+    all_data = all_data.view(len(range_), -1, group_size)
+    # best_bias_idx: [num_groups]
+    # best_bias_idx_sg = best_bias_idx.repeat_interleave(sub_groups_per_group)
+    # shape: [num_subgroups]
     idx_data = best_bias_idx.view(1, -1, 1).expand(
         1, all_data.size(1), all_data.size(2)
     )
     final_data = torch.gather(all_data, dim=0, index=idx_data).squeeze(0)
-    tensor_data = final_data.reshape(-1, group_size).reshape(org_shape)
 
     tensor_deq = final_deq.reshape(org_shape).to(org_dtype)
 
@@ -652,7 +658,7 @@ def nvesm2_anal(x: torch.Tensor, group_size=16):
     # bin_edges 假设是等间距的，例如从 0 到 6 分 100 份
     num_bins = 100
     min_val, max_val_bin = 0.0, 7.0 # 根据你的需求设置边界
-    x = tensor_data
+    x = final_data.reshape(-1, group_size)
 
     # --- 1. 并行化 Histogram 统计 ---
     # 不再逐行循环，直接对整个张量或大 Batch 进行统计
@@ -661,9 +667,13 @@ def nvesm2_anal(x: torch.Tensor, group_size=16):
 
     ent_grp = grp_entropy_vec(x, group_size, num_bins=256)
     print(f"Entropy before quantization: {ent_grp:.4f}")
-    data_quantized = torch.floor( x * 2**2 + 0.5) / 2**2
-    ent_grp_quantized = grp_entropy_vec(data_quantized, group_size, num_bins=256)
-    print(f"Entropy after quantization: {ent_grp_quantized:.4f}")
+    x_quant = cast_to_fp4(x.abs())
+    # ent_grp = grp_entropy(x, group_size, num_bins=256)
+    ent_grp = grp_entropy_vec(x_quant, group_size, num_bins=256)
+    print(f"Entropy after cast to fp4: {ent_grp:.4f}")
+    # data_quantized = cast_to_fp4(x)
+    # ent_grp_quantized = grp_entropy_vec(data_quantized, group_size, num_bins=256)
+    # print(f"Entropy after quantization: {ent_grp_quantized:.4f}")
     
     print("Total Histogram:")
     print(total_hist.cpu().numpy())
@@ -672,8 +682,8 @@ def nvesm2_anal(x: torch.Tensor, group_size=16):
     plt.figure(figsize=(10, 6))
     plt.plot(bin_centers, total_hist.cpu().numpy(), color='royalblue', linewidth=2)
     plt.fill_between(bin_centers, total_hist.cpu().numpy(), alpha=0.2, color='royalblue')
-    plt.title("Activation Value Distribution for " + name)
-    plt.savefig("dump/" + "Histogram_for_" + name.replace(".pt", ".png"), dpi=150)
+    plt.title("Activation Value Distribution(nvesm2) for " + name)
+    plt.savefig("dump/" + "Histogram(nvesm2)_for_" + name.replace(".pt", ".png"), dpi=150)
 if __name__ == "__main__":
 
     # x = torch.load("dump/model_layers_8_mlp_up_proj.pt")  # [N, T, Cin]

@@ -452,6 +452,22 @@ def grp_entropy_vec(x: torch.Tensor, group_size: int, num_bins: int = 256):
     return ent.mean()
 
 
+
+def draw_histogram(x: torch.Tensor, min_val, max_val, num_bins, method):
+
+    total_hist = None
+    print("Total Histogram: ")
+    total_hist = torch.histc(x.float().abs(), bins=num_bins, min=min_val, max=max_val)
+    print(total_hist)
+    bin_edges = np.linspace(min_val, max_val, num_bins + 1)
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+    plt.figure(figsize=(10, 6))
+    plt.plot(bin_centers, total_hist, color='royalblue', linewidth=2)
+    plt.fill_between(bin_centers, total_hist, alpha=0.2, color='royalblue')
+    plt.title("Activation Value Distribution " + method + " for " + name)
+    plt.savefig("dump/" + "Histogram_" + method + "_for_" + name.replace(".pt", ".png"), dpi=150)
+
+
 def nvfp_anal(x: torch.Tensor, group_size=16):
     import torch
     import numpy as np
@@ -476,9 +492,8 @@ def nvfp_anal(x: torch.Tensor, group_size=16):
     # bin_edges 假设是等间距的，例如从 0 到 6 分 100 份
     num_bins = 100
     min_val, max_val_bin = 0.0, 7.0 # 根据你的需求设置边界
+    draw_histogram(x, min_val, max_val_bin, num_bins, "nvfp")
 
-    # --- 1. 并行化 Histogram 统计 ---
-    total_hist = torch.histc(x.abs(), bins=num_bins, min=min_val, max=max_val_bin)
 
     # ent_grp = grp_entropy(x, group_size, num_bins=256)
     ent_grp = grp_entropy_vec(x.abs(), group_size, num_bins=256)
@@ -489,20 +504,6 @@ def nvfp_anal(x: torch.Tensor, group_size=16):
     # ent_grp = grp_entropy(x, group_size, num_bins=256)
     ent_grp = grp_entropy_vec(x_quant, group_size, num_bins=256)
     print(f"Entropy after cast to fp4: {ent_grp:.4f}")
-
-    # --- 4. 输出结果 ---
-    print("Quantization Level Counts:")
-    # for level in sorted(grid_cnt.keys()):
-    #     print(f"Value: {level:.2f}, Count: {grid_cnt[level]}")
-    print("Total Histogram:")
-    print(total_hist.cpu().numpy())
-    bin_edges = np.linspace(min_val, max_val_bin, num_bins + 1)
-    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-    plt.figure(figsize=(10, 6))
-    plt.plot(bin_centers, total_hist.cpu().numpy(), color='royalblue', linewidth=2)
-    plt.fill_between(bin_centers, total_hist.cpu().numpy(), alpha=0.2, color='royalblue')
-    plt.title("Activation Value Distribution for " + name)
-    plt.savefig("dump/" + "Histogram_for_" + name.replace(".pt", ".png"), dpi=150)
 
 
 def cast_to_E6M2(x: torch.Tensor):
@@ -539,9 +540,7 @@ def hif4_anal(tensor_value: torch.Tensor, group_size=64):
     data = tensor_value.abs() / (SF * 2.0 ** DE64)
     min_val, max_val = 0.0, 3.0
     num_bins = 100
-    total_hist = torch.histc(
-        data, bins=num_bins, min=min_val, max=max_val
-    )
+    draw_histogram(data, min_val, max_val, num_bins, "hif4")
 
     ent_grp = grp_entropy_vec(data, group_size, num_bins=256)
     print(f"Entropy before quantization: {ent_grp:.4f}")
@@ -553,34 +552,27 @@ def hif4_anal(tensor_value: torch.Tensor, group_size=64):
 
     ent_grp = grp_entropy_vec(in_grp, group_size, num_bins=256)
     print(f"Entropy after quantization: {ent_grp:.4f}")
-    print("Total Histogram:")
-    print(total_hist.cpu().numpy())
-    bin_edges = np.linspace(min_val, max_val, num_bins + 1)
-    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-    plt.figure(figsize=(10, 6))
-    plt.plot(bin_centers, total_hist.cpu().numpy(), color='royalblue', linewidth=2)
-    plt.fill_between(bin_centers, total_hist.cpu().numpy(), alpha=0.2, color='royalblue')
-    plt.title("Activation Value Distribution(hif4) for " + name)
-    plt.savefig("dump/" + "Histogram(hif4)_for_" + name.replace(".pt", ".png"), dpi=150)
-
-    tensor_quant = sign * in_grp * (SF * 2.0 ** DE64)
-
-    return tensor_quant.reshape(org_shape).to(org_dtype)
 
 
 def nvesm2_anal(x: torch.Tensor, group_size=16):
     org_shape = x.shape
     org_dtype = x.dtype
 
+    sub_group_size = 8  # extra 2 bit for scale in subgroup
+    assert group_size % sub_group_size == 0
+
+    x = x.reshape(-1, group_size).float()
+
     import torch
     import numpy as np
 
-    x = x.reshape(-1, group_size)
     max_ = 6.0
     max_val = x.abs().amax(dim=1, keepdim=True)
     scales = max_val / max_
+    x = x.reshape(-1, sub_group_size)
     # avoid divide a too small value
     global_scale = scales.max() / FLOAT8_E4M3_MAX
+    global_scale = global_scale.clamp(min=1e-8)
     scales = (
         (scales / global_scale)
         .clamp(min=FLOAT8_E4M3_EPS)
@@ -588,82 +580,55 @@ def nvesm2_anal(x: torch.Tensor, group_size=16):
         .to(x.dtype)
     )
 
-    sub_group_size = 8  # extra 2 bit for scale in subgroup
-    assert group_size % sub_group_size == 0
-
-    x = x.reshape(-1, sub_group_size)
-
     bias_mse = {}
-    bias_data = {}
-    # range_ = range(-1, 2)
     range_ = {0}
     org_scales = scales
     sub_groups_per_group = group_size // sub_group_size
     tensor_value = x
-    for bias in range_:
-        # scales = torch.pow(2, exp + bias)
 
-        scales = org_scales * torch.pow(2, torch.tensor(bias, device=tensor_value.device, dtype=tensor_value.dtype))
-        scales = scales.expand(-1, sub_groups_per_group).reshape(-1, 1)
-        ratios = torch.tensor(
-            [1.0, 1.25, 1.5, 1.75], dtype=tensor_value.dtype, device=tensor_value.device
-        )
-        # ratios = torch.tensor(
-        #     [1.0, 1.5], dtype=tensor_value.dtype, device=tensor_value.device
-        # )
-        x_expanded = tensor_value.unsqueeze(2)
-        scales_expanded = scales.unsqueeze(2)
-
-        cand_scales = scales_expanded * ratios.view(1, 1, -1)
-        cand_qval = cast_to_fp4(x_expanded / cand_scales / global_scale) * cand_scales * global_scale
-        mse_per_ratio = (cand_qval - x_expanded).pow(2).mean(dim=1)
-
-        best_ratio_idx = mse_per_ratio.argmin(dim=1)
-        row_idx = torch.arange(tensor_value.size(0), device=tensor_value.device)
-        best_dqval = cand_qval[row_idx, :, best_ratio_idx]
-        # data start
-        data = x_expanded / cand_scales / global_scale
-        best_dataval = data[row_idx, :, best_ratio_idx]
-        best_data = best_dataval.reshape(-1, group_size)
-        bias_data[bias] = best_data
-        # data end
-        quant_mse_per_subgrp = mse_per_ratio[row_idx, best_ratio_idx]
-        tensor_deq = best_dqval.reshape(-1, group_size)
-        quant_mse_sum = quant_mse_per_subgrp.view(-1, sub_groups_per_group).mean(
-            dim=1, keepdim=True
-        )
-        bias_mse[bias] = (tensor_deq, quant_mse_sum)
-    all_mse = torch.cat([bias_mse[b][1] for b in range_], dim=1)
-    best_bias_idx = all_mse.argmin(dim=1)
-    all_deq = torch.stack([bias_mse[b][0] for b in range_], dim=0)
-    all_deq = all_deq.view(len(range_), -1, group_size)
-    idx_expanded = best_bias_idx.view(1, -1, 1).expand(1, -1, group_size)
-    final_deq = torch.gather(all_deq, dim=0, index=idx_expanded).squeeze(0)
-
-    all_data = torch.stack([bias_data[b] for b in range_], dim=0)
-    all_data = all_data.view(len(range_), -1, group_size)
-    # best_bias_idx: [num_groups]
-    # best_bias_idx_sg = best_bias_idx.repeat_interleave(sub_groups_per_group)
-    # shape: [num_subgroups]
-    idx_data = best_bias_idx.view(1, -1, 1).expand(
-        1, all_data.size(1), all_data.size(2)
+    bias = 0
+    scales = org_scales * torch.pow(2, torch.tensor(bias, device=tensor_value.device, dtype=tensor_value.dtype))
+    scales = scales.expand(-1, sub_groups_per_group).reshape(-1, 1)
+    ratios = torch.tensor(
+        [1.0, 1.25, 1.5, 1.75], dtype=tensor_value.dtype, device=tensor_value.device
     )
-    final_data = torch.gather(all_data, dim=0, index=idx_data).squeeze(0)
+    # ratios = torch.tensor(
+    #     [1.0, 1.5], dtype=tensor_value.dtype, device=tensor_value.device
+    # )
+    x_expanded = tensor_value.unsqueeze(2)
+    scales_expanded = scales.unsqueeze(2)
 
-    tensor_deq = final_deq.reshape(org_shape).to(org_dtype)
+    cand_scales = scales_expanded * ratios.view(1, 1, -1)
+    cand_qval = cast_to_fp4(x_expanded / cand_scales / global_scale) * cand_scales * global_scale
+    mse_per_ratio = (cand_qval - x_expanded).pow(2).mean(dim=1)
 
-    total_hist = None
-    # x = x[::8, :]
+    best_ratio_idx = mse_per_ratio.argmin(dim=1)
+    row_idx = torch.arange(tensor_value.size(0), device=tensor_value.device)
+    best_dqval = cand_qval[row_idx, :, best_ratio_idx]
+
+    quant_mse_per_subgrp = mse_per_ratio[row_idx, best_ratio_idx]
+    tensor_deq = best_dqval.reshape(-1, group_size)
+    quant_mse_sum = quant_mse_per_subgrp.view(-1, sub_groups_per_group).mean(
+        dim=1, keepdim=True
+    )
+    bias_mse[bias] = (tensor_deq, quant_mse_sum)
+
+    # all_mse = torch.cat([bias_mse[b][1] for b in range_], dim=1)
+    # best_bias_idx = all_mse.argmin(dim=1)
+    # all_deq = torch.stack([bias_mse[b][0] for b in range_], dim=0)
+    # all_deq = all_deq.view(len(range_), -1, group_size)
+    # idx_expanded = best_bias_idx.view(1, -1, 1).expand(1, -1, group_size)
+    # final_deq = torch.gather(all_deq, dim=0, index=idx_expanded).squeeze(0)
+    # tensor_deq = final_deq.reshape(org_shape).to(org_dtype)
+
 
     # bin_edges 假设是等间距的，例如从 0 到 6 分 100 份
     num_bins = 100
     min_val, max_val_bin = 0.0, 7.0 # 根据你的需求设置边界
-    x = final_data.reshape(-1, group_size)
+    cand_data = x_expanded / cand_scales / global_scale
+    x = cand_data[row_idx, :, best_ratio_idx]
 
-    # --- 1. 并行化 Histogram 统计 ---
-    # 不再逐行循环，直接对整个张量或大 Batch 进行统计
-    # 如果显存允许，直接：
-    total_hist = torch.histc(x.abs(), bins=num_bins, min=min_val, max=max_val_bin)
+    draw_histogram(x, min_val, max_val_bin, num_bins, "nvesm2")
 
     ent_grp = grp_entropy_vec(x, group_size, num_bins=256)
     print(f"Entropy before quantization: {ent_grp:.4f}")
@@ -671,32 +636,17 @@ def nvesm2_anal(x: torch.Tensor, group_size=16):
     # ent_grp = grp_entropy(x, group_size, num_bins=256)
     ent_grp = grp_entropy_vec(x_quant, group_size, num_bins=256)
     print(f"Entropy after cast to fp4: {ent_grp:.4f}")
-    # data_quantized = cast_to_fp4(x)
-    # ent_grp_quantized = grp_entropy_vec(data_quantized, group_size, num_bins=256)
-    # print(f"Entropy after quantization: {ent_grp_quantized:.4f}")
-    
-    print("Total Histogram:")
-    print(total_hist.cpu().numpy())
-    bin_edges = np.linspace(min_val, max_val_bin, num_bins + 1)
-    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-    plt.figure(figsize=(10, 6))
-    plt.plot(bin_centers, total_hist.cpu().numpy(), color='royalblue', linewidth=2)
-    plt.fill_between(bin_centers, total_hist.cpu().numpy(), alpha=0.2, color='royalblue')
-    plt.title("Activation Value Distribution(nvesm2) for " + name)
-    plt.savefig("dump/" + "Histogram(nvesm2)_for_" + name.replace(".pt", ".png"), dpi=150)
+
+
 if __name__ == "__main__":
 
     # x = torch.load("dump/model_layers_8_mlp_up_proj.pt")  # [N, T, Cin]
-    # name = "model_layers_0_self_attn_q_proj.pt"
+    name = "model_layers_0_self_attn_q_proj.pt"
     # name = "model_layers_0_mlp_up_proj.pt"
     # name = "model_layers_8_mlp_gate_proj.pt"
-    name = "model_layers_16_self_attn_o_proj.pt"
+    # name = "model_layers_16_self_attn_o_proj.pt"
     x = torch.load("dump/" + name)  # [N, T, Cin]
     x = x.reshape(-1, x.shape[-1])
-
-    # from collections import defaultdict
-    # grid_cnt = defaultdict(int)
-    # org_grid_cnt = defaultdict(int)
 
     nvfp_anal(x, group_size=16)
     hif4_anal(x, group_size=64)

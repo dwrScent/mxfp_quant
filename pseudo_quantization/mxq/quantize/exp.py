@@ -1138,7 +1138,8 @@ print(entropy(res, num_bins=512))
 # draw mse comp with real input
 import torch
 import numpy as np
-name = "model_layers_18_mlp_up_proj.pt"
+# name = "model_layers_0_self_attn_o_proj.pt"
+name = "model_layers_8_mlp_down_proj.pt"
 tensor_value = torch.load('dump/' + name)
 
 device = torch.device('cuda:0')
@@ -1150,19 +1151,19 @@ tensor_value = tensor_value.to(device)
 indice_size = 2 ** 10
 tensor_value = tensor_value.reshape(-1, indice_size)
 x_axis = np.arange(0, tensor_value.shape[0], 1)
-res1 = get_quant_hif4(tensor_value, 64)
+# res1 = get_quant_hif4(tensor_value, 64)
 res2 = get_quant_nvem(tensor_value, 16)
 res3 = get_quant_nvfp(tensor_value, 16)
-# res5 = get_quant_nvint4(tensor_value, 16)
+res4 = get_quant_nvesm2(tensor_value, 16)
 # res7 = get_quant_nvem(tensor_value, 16)
 # res8 = get_quant_mxem(tensor_value, 32)
 # res9 = get_quant_mxes(tensor_value, 32)
 
 
-mse1 = (res1 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
+# mse1 = (res1 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
 mse2 = (res2 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
 mse3 = (res3 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
-# mse4 = (res4 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
+mse4 = (res4 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
 # mse5 = (res5 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
 # mse6 = (res6 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
 # mse7 = (res7 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
@@ -1172,15 +1173,24 @@ mse3 = (res3 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
 
 import matplotlib.pyplot as plt
 
-plt.figure(figsize=(12, 8))
-stride = 1024 * 2
+plt.figure(figsize=(10, 6))
+stride = 2 ** 10
 x_axis = x_axis[::stride]
-mse1 = mse1[::stride]
+# mse1 = mse1[::stride]
 mse2 = mse2[::stride]
 mse3 = mse3[::stride]
-plt.plot(x_axis, mse1, label='hif4')
-plt.plot(x_axis, mse2, label='nvem')
-plt.plot(x_axis, mse3, label='nvfp')
+mse4 = mse4[::stride]
+# plt.plot(x_axis, mse1, label='hif4')
+# plot with transparency
+plt.plot(x_axis, mse2, label='nvem', alpha=0.5)
+plt.plot(x_axis, mse3, label='nvfp', alpha=0.5)
+plt.plot(x_axis, mse4, label='nvesm2', alpha=0.5)
+
+max_val = tensor_value.amax(dim=1, keepdim=True)
+max_val = max_val[::stride].cpu().numpy()
+# normalize max_val by mse_max
+max_val = max_val / max_val.max() * 2 * 1e-5
+plt.plot(x_axis, max_val, label='max_magnitude', alpha=0.5)
 
 plt.xlabel('Layer Index')
 plt.ylabel('MSE')

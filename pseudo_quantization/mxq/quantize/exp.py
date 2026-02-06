@@ -1138,10 +1138,53 @@ print(entropy(res, num_bins=512))
 # draw mse comp with real input
 import torch
 import numpy as np
-name = "model_layers_14_mlp_gate_proj.pt"
+name = "model_layers_18_mlp_up_proj.pt"
 tensor_value = torch.load('dump/' + name)
 
 device = torch.device('cuda:0')
 tensor_value = tensor_value.to(device)
 
+# indice_num = 2 ** 5
+# tensor_value = tensor_value.reshape(indice_num, -1)
+# x_axis = np.arange(0, indice_num, 1)
+indice_size = 2 ** 10
+tensor_value = tensor_value.reshape(-1, indice_size)
+x_axis = np.arange(0, tensor_value.shape[0], 1)
+res1 = get_quant_hif4(tensor_value, 64)
+res2 = get_quant_nvem(tensor_value, 16)
+res3 = get_quant_nvfp(tensor_value, 16)
+# res5 = get_quant_nvint4(tensor_value, 16)
+# res7 = get_quant_nvem(tensor_value, 16)
+# res8 = get_quant_mxem(tensor_value, 32)
+# res9 = get_quant_mxes(tensor_value, 32)
 
+
+mse1 = (res1 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
+mse2 = (res2 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
+mse3 = (res3 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
+# mse4 = (res4 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
+# mse5 = (res5 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
+# mse6 = (res6 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
+# mse7 = (res7 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
+# mse8 = (res8 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
+# mse9 = (res9 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
+
+
+import matplotlib.pyplot as plt
+
+plt.figure(figsize=(12, 8))
+stride = 1024 * 2
+x_axis = x_axis[::stride]
+mse1 = mse1[::stride]
+mse2 = mse2[::stride]
+mse3 = mse3[::stride]
+plt.plot(x_axis, mse1, label='hif4')
+plt.plot(x_axis, mse2, label='nvem')
+plt.plot(x_axis, mse3, label='nvfp')
+
+plt.xlabel('Layer Index')
+plt.ylabel('MSE')
+plt.title('MSE Comparison with real input for ' + name)
+plt.legend()
+plt.show()
+plt.savefig("dump/" + "MSE_Comp_with_Real_Input_for_" + name.replace(".pt", ".png"), dpi=150)

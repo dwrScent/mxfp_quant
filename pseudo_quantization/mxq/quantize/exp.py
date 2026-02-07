@@ -1087,7 +1087,10 @@ def get_quant_nvesm2(tensor_value: torch.Tensor, group_size: int):
 
     # archive
     label = best_ratio_idx
+    tensor_value = tensor_value.reshape(-1, group_size) / global_scale / org_scales
+    tensor_value = tensor_value.reshape(-1, sub_group_size)
     for lab in range(4):
+        print(tensor_value[label == lab].shape)
         container[lab].append(tensor_value[label == lab])
 
     return tensor_deq
@@ -1095,6 +1098,7 @@ def get_quant_nvesm2(tensor_value: torch.Tensor, group_size: int):
 
 def draw_histogram(x: torch.Tensor, min_val, max_val, num_bins, method):
     import matplotlib.pyplot as plt
+    import numpy as np
     total_hist = None
     x = x.cpu()
     min_val = min_val.cpu()
@@ -1107,22 +1111,28 @@ def draw_histogram(x: torch.Tensor, min_val, max_val, num_bins, method):
     plt.figure(figsize=(10, 6))
     plt.plot(bin_centers, total_hist, color='royalblue', linewidth=2)
     plt.fill_between(bin_centers, total_hist, alpha=0.2, color='royalblue')
-    plt.title("Activation Value Distribution " + method + " for " + name)
-    plt.savefig("dump/" + "Histogram_" + method + "_for_" + name.replace(".pt", ".png"), dpi=150)
+    plt.title("Activation Value Distribution " + method)
+    plt.savefig("dump/" + "Histogram_" + method + ".png", dpi=150)
 
 def draw_histogram_for_different_ratio():
+    import os
 
     dump_dir = "dump"
+    device = torch.device('cuda:0')
 
     files = [f for f in os.listdir(dump_dir) if f.endswith(".pt")]
     print(f"找到 {len(files)} 个文件，准备开始处理...")
 
+    # only process last 8 of them
+    files = files[-8:]
     for name in files:
+
         print(f"正在处理文件: {name}")
         file_path = os.path.join(dump_dir, name)
         x = torch.load(file_path)
 
         x = torch.load("dump/" + name)  # [N, T, Cin]
+        x = x.to(device)
         x = x.reshape(-1, x.shape[-1])
         get_quant_nvesm2(x, group_size=16)
     # container
@@ -1139,29 +1149,37 @@ def draw_histogram_for_different_ratio():
 
         num_bins = 100
         draw_histogram(tensor_value, min_val, max_val, num_bins, "ratio_" + ratio[lab])
+    # draw historgram of all ratio together
+    for lab in range(4):
+        tensor_value = torch.tensor(container[lab], device=device).abs()
+        # normalize to 0-1
+        tensor_value = tensor_value / tensor_value.max()
+
+        min_val = tensor_value.min()
+        # min_val = torch.tensor(0, device=tensor_value.device)
+        max_val = tensor_value.max()
+        ratio = ["1","1.25","1.5","1.75"]
+
+        num_bins = 100
+        draw_histogram(tensor_value, min_val, max_val, num_bins, "ratio_all")
 
 __name__ = "__main__"
 
-container = {
-        0: [],
-        1: [],
-        2: [],
-        3: []
-}
-
-# draw mse comp with real input
-import torch
-import numpy as np
-# name = "model_layers_0_self_attn_o_proj.pt"
-name = "model_layers_8_mlp_down_proj.pt"
-tensor_value = torch.load('dump/' + name)
-
-device = torch.device('cuda:0')
-tensor_value = tensor_value.to(device)
-
-indice_num = 2 ** 5
-tensor_value = tensor_value.reshape(indice_num, -1)
-x_axis = np.arange(0, indice_num, 1)
+container = {0: [], 1: [], 2: [], 3: []}
+draw_histogram_for_different_ratio()
+# # draw mse comp with real input
+# import torch
+# import numpy as np
+# # name = "model_layers_0_self_attn_o_proj.pt"
+# name = "model_layers_8_mlp_down_proj.pt"
+# tensor_value = torch.load('dump/' + name)
+#
+# device = torch.device('cuda:0')
+# tensor_value = tensor_value.to(device)
+#
+# indice_num = 2 ** 5
+# tensor_value = tensor_value.reshape(indice_num, -1)
+# x_axis = np.arange(0, indice_num, 1)
 # indice_size = 2 ** 10
 # tensor_value = tensor_value.reshape(-1, indice_size)
 # x_axis = np.arange(0, tensor_value.shape[0], 1)

@@ -726,86 +726,13 @@ def get_quant_nvesm(tensor_value: torch.Tensor, group_size: int):
     final_deq = torch.gather(all_deq, dim=0, index=idx_expanded).squeeze(0)
     tensor_deq = final_deq.reshape(org_shape).to(org_dtype)
     return tensor_deq
-@torch.no_grad()
-def get_quant_nvesm2(tensor_value: torch.Tensor, group_size: int):
-
-    # group wise nvesm2
-
-    sub_group_size = 8  # extra 2 bit for scale in subgroup
-    sub_group_size = group_size
-    assert group_size % sub_group_size == 0
-
-    org_shape = tensor_value.shape
-    org_dtype = tensor_value.dtype
-
-    tensor_value = tensor_value.float()
-
-    if group_size > 0:
-        assert org_shape[-1] % group_size == 0
-        tensor_value = tensor_value.reshape(-1, group_size)
-
-    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
-    # avoid divide a too small value
-    max_val = max_val.clamp(min=1e-8)
-
-    max_quant_val = torch.tensor(FLOAT4_E2M1_MAX, device=tensor_value.device)
-
-    scales = tensor_value.abs().amax(dim=1, keepdim=True) / max_quant_val
-
-    tensor_value = tensor_value.reshape(-1, sub_group_size)
-    # Compute the scaling factor
-    global_scale = scales.max() / FLOAT8_E4M3_MAX
-    scales = (
-        (scales / global_scale)
-        .clamp(min=FLOAT8_E4M3_EPS)
-        .to(torch.float8_e4m3fn)
-        .to(tensor_value.dtype)
-    ) * global_scale
-    exp = torch.floor(torch.log2(scales))
-    # exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
-    bias_mse = {}
-    # range_ = range(-1, 2)
-    range_ = {0}
-    org_scales = scales
-    for bias in range_:
-        # scales = torch.pow(2, exp + bias)
-
-        scales = org_scales * torch.pow(2, torch.tensor(bias, device=tensor_value.device, dtype=tensor_value.dtype))
-        sub_groups_per_group = group_size // sub_group_size
-        scales = scales.expand(-1, sub_groups_per_group).reshape(-1, 1)
-        ratios = torch.tensor(
-            [1.0, 1.25, 1.5, 1.75], dtype=tensor_value.dtype, device=tensor_value.device
-        )
-        # ratios = torch.tensor(
-        #     [1.0, 1.5], dtype=tensor_value.dtype, device=tensor_value.device
-        # )
-        x_expanded = tensor_value.unsqueeze(2)
-        scales_expanded = scales.unsqueeze(2)
-
-        cand_scales = scales_expanded * ratios.view(1, 1, -1)
-        cand_qval = cast_to_fp4(x_expanded / cand_scales) * cand_scales
-        mse_per_ratio = (cand_qval - x_expanded).pow(2).mean(dim=1)
-        best_ratio_idx = mse_per_ratio.argmin(dim=1)
-        row_idx = torch.arange(tensor_value.size(0), device=tensor_value.device)
-        best_dqval = cand_qval[row_idx, :, best_ratio_idx]
-        quant_mse_per_subgrp = mse_per_ratio[row_idx, best_ratio_idx]
-        tensor_deq = best_dqval.reshape(-1, group_size)
-        quant_mse_sum = quant_mse_per_subgrp.view(-1, sub_groups_per_group).mean(
-            dim=1, keepdim=True
-        )
-        bias_mse[bias] = (tensor_deq, quant_mse_sum)
-    all_mse = torch.cat([bias_mse[b][1] for b in range_], dim=1)
-    best_bias_idx = all_mse.argmin(dim=1)
-    all_deq = torch.stack([bias_mse[b][0] for b in range_], dim=0)
-    all_deq = all_deq.view(len(range_), -1, group_size)
-    idx_expanded = best_bias_idx.view(1, -1, 1).expand(1, -1, group_size)
-    final_deq = torch.gather(all_deq, dim=0, index=idx_expanded).squeeze(0)
-    tensor_deq = final_deq.reshape(org_shape).to(org_dtype)
-    return tensor_deq
 # @torch.no_grad()
 # def get_quant_nvesm2(tensor_value: torch.Tensor, group_size: int):
 #
+#     # group wise nvesm2
+#
 #     sub_group_size = 8  # extra 2 bit for scale in subgroup
+#     sub_group_size = group_size
 #     assert group_size % sub_group_size == 0
 #
 #     org_shape = tensor_value.shape
@@ -875,7 +802,7 @@ def get_quant_nvesm2(tensor_value: torch.Tensor, group_size: int):
 #     final_deq = torch.gather(all_deq, dim=0, index=idx_expanded).squeeze(0)
 #     tensor_deq = final_deq.reshape(org_shape).to(org_dtype)
 #     return tensor_deq
-#
+
 E4M5_MAX = 2 ** 8 * 1.9735
 E4M5_GRID = torch.tensor(float_value(4, 5))
 @torch.no_grad()
@@ -1085,55 +1012,142 @@ def grp_entropy_vec(x: torch.Tensor, group_size: int, num_bins: int = 256):
     return ent.mean()
 
 
+@torch.no_grad()
+def get_quant_nvesm2(tensor_value: torch.Tensor, group_size: int):
+
+    sub_group_size = 8  # extra 2 bit for scale in subgroup
+    assert group_size % sub_group_size == 0
+
+    org_shape = tensor_value.shape
+    org_dtype = tensor_value.dtype
+
+    tensor_value = tensor_value.float()
+
+    if group_size > 0:
+        assert org_shape[-1] % group_size == 0
+        tensor_value = tensor_value.reshape(-1, group_size)
+
+    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+    # avoid divide a too small value
+    max_val = max_val.clamp(min=1e-8)
+
+    max_quant_val = torch.tensor(FLOAT4_E2M1_MAX, device=tensor_value.device)
+
+    scales = tensor_value.abs().amax(dim=1, keepdim=True) / max_quant_val
+
+    tensor_value = tensor_value.reshape(-1, sub_group_size)
+    # Compute the scaling factor
+    global_scale = scales.max() / FLOAT8_E4M3_MAX
+    scales = (
+        (scales / global_scale)
+        .clamp(min=FLOAT8_E4M3_EPS)
+        .to(torch.float8_e4m3fn)
+        .to(tensor_value.dtype)
+    ) * global_scale
+    exp = torch.floor(torch.log2(scales))
+    # exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
+    bias_mse = {}
+    # range_ = range(-1, 2)
+    range_ = {0}
+    org_scales = scales
+    bias = 0
+
+    scales = org_scales * torch.pow(2, torch.tensor(bias, device=tensor_value.device, dtype=tensor_value.dtype))
+    sub_groups_per_group = group_size // sub_group_size
+    scales = scales.expand(-1, sub_groups_per_group).reshape(-1, 1)
+    ratios = torch.tensor(
+        [1.0, 1.25, 1.5, 1.75], dtype=tensor_value.dtype, device=tensor_value.device
+    )
+    # ratios = torch.tensor(
+    #     [1.0, 1.5], dtype=tensor_value.dtype, device=tensor_value.device
+    # )
+    x_expanded = tensor_value.unsqueeze(2)
+    scales_expanded = scales.unsqueeze(2)
+
+    cand_scales = scales_expanded * ratios.view(1, 1, -1)
+    cand_qval = cast_to_fp4(x_expanded / cand_scales) * cand_scales
+    mse_per_ratio = (cand_qval - x_expanded).pow(2).mean(dim=1)
+    best_ratio_idx = mse_per_ratio.argmin(dim=1)
+    row_idx = torch.arange(tensor_value.size(0), device=tensor_value.device)
+    best_dqval = cand_qval[row_idx, :, best_ratio_idx]
+    quant_mse_per_subgrp = mse_per_ratio[row_idx, best_ratio_idx]
+    tensor_deq = best_dqval.reshape(-1, group_size)
+    quant_mse_sum = quant_mse_per_subgrp.view(-1, sub_groups_per_group).mean(
+        dim=1, keepdim=True
+    )
+    bias_mse[bias] = (tensor_deq, quant_mse_sum)
+
+    all_mse = torch.cat([bias_mse[b][1] for b in range_], dim=1)
+    best_bias_idx = all_mse.argmin(dim=1)
+    all_deq = torch.stack([bias_mse[b][0] for b in range_], dim=0)
+    all_deq = all_deq.view(len(range_), -1, group_size)
+    idx_expanded = best_bias_idx.view(1, -1, 1).expand(1, -1, group_size)
+    final_deq = torch.gather(all_deq, dim=0, index=idx_expanded).squeeze(0)
+    tensor_deq = final_deq.reshape(org_shape).to(org_dtype)
+
+    # archive
+    label = best_ratio_idx
+    for lab in range(4):
+        container[lab].append(tensor_value[label == lab])
+
+    return tensor_deq
+
+
+def draw_histogram(x: torch.Tensor, min_val, max_val, num_bins, method):
+    import matplotlib.pyplot as plt
+    total_hist = None
+    x = x.cpu()
+    min_val = min_val.cpu()
+    max_val = max_val.cpu()
+    print("Total Histogram: ")
+    total_hist = torch.histc(x.float().abs(), bins=num_bins, min=min_val, max=max_val)
+    print(total_hist)
+    bin_edges = np.linspace(min_val, max_val, num_bins + 1)
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+    plt.figure(figsize=(10, 6))
+    plt.plot(bin_centers, total_hist, color='royalblue', linewidth=2)
+    plt.fill_between(bin_centers, total_hist, alpha=0.2, color='royalblue')
+    plt.title("Activation Value Distribution " + method + " for " + name)
+    plt.savefig("dump/" + "Histogram_" + method + "_for_" + name.replace(".pt", ".png"), dpi=150)
+
+def draw_histogram_for_different_ratio():
+
+    dump_dir = "dump"
+
+    files = [f for f in os.listdir(dump_dir) if f.endswith(".pt")]
+    print(f"找到 {len(files)} 个文件，准备开始处理...")
+
+    for name in files:
+        print(f"正在处理文件: {name}")
+        file_path = os.path.join(dump_dir, name)
+        x = torch.load(file_path)
+
+        x = torch.load("dump/" + name)  # [N, T, Cin]
+        x = x.reshape(-1, x.shape[-1])
+        get_quant_nvesm2(x, group_size=16)
+    # container
+    for lab in range(4):
+        container[lab] = torch.cat(container[lab], dim=0)
+        tensor_value = torch.tensor(container[lab], device=device).abs()
+        # normalize to 0-1
+        tensor_value = tensor_value / tensor_value.max()
+
+        min_val = tensor_value.min()
+        # min_val = torch.tensor(0, device=tensor_value.device)
+        max_val = tensor_value.max()
+        ratio = ["1","1.25","1.5","1.75"]
+
+        num_bins = 100
+        draw_histogram(tensor_value, min_val, max_val, num_bins, "ratio_" + ratio[lab])
+
 __name__ = "__main__"
 
-# a = torch.tensor([-0.27, 10.26, 6.41, 10.78, 9.25, 45.36, 10.72, 1.26])
-# a = torch.tensor([-0.27, 10.26, 6.41, 70.08, 9.25, 45.36, 10.72, 1.26])
-# a = a.repeat(2, 8)
-#
-b = torch.randn(128) * 100
-print(b)
-print(entropy(b, num_bins=512))
-res = get_quant_hif4(b, 64)
-mse = (res - b).pow(2).mean()
-
-print(res)
-print("MSE HIF4:", mse)
-print(entropy(res, num_bins=512))
-
-# res = get_quant_nvfpm4(b, 16)
-# mse5 = (res - b).pow(2).mean()
-# print(res)
-# print("MSE NVFPM4:", mse5)
-#
-# res = get_quant_nvfpm5(b, 16)
-# mse6 = (res - b).pow(2).mean()
-# print(res)
-# print("MSE NVFPM5:", mse6)
-
-res = get_quant_nvfp(b, 16)
-mse3 = (res - b).pow(2).mean()
-print(res)
-print("MSE NVFP:", mse3)
-print(entropy(res, num_bins=512))
-
-res = get_quant_nves(b, 16)
-mse4 = (res - b).pow(2).mean()
-print(res)
-print("MSE NVES:", mse4)
-print(entropy(res, num_bins=512))
-
-res = get_quant_nvint4(b, 16)
-mse6 = (res - b).pow(2).mean()
-print(res)
-print("MSE NVINT4:", mse6)
-print(entropy(res, num_bins=512))
-
-# res = get_quant_nvess(b, 16)
-# mse5 = (res - b).pow(2).mean()
-# print(res)
-# print("MSE NVESS:", mse5)
-#
+container = {
+        0: [],
+        1: [],
+        2: [],
+        3: []
+}
 
 # draw mse comp with real input
 import torch
@@ -1145,25 +1159,24 @@ tensor_value = torch.load('dump/' + name)
 device = torch.device('cuda:0')
 tensor_value = tensor_value.to(device)
 
-# indice_num = 2 ** 5
-# tensor_value = tensor_value.reshape(indice_num, -1)
-# x_axis = np.arange(0, indice_num, 1)
-indice_size = 2 ** 10
-tensor_value = tensor_value.reshape(-1, indice_size)
-x_axis = np.arange(0, tensor_value.shape[0], 1)
-# res1 = get_quant_hif4(tensor_value, 64)
-res2 = get_quant_nvem(tensor_value, 16)
-res3 = get_quant_nvfp(tensor_value, 16)
-res4 = get_quant_nvesm2(tensor_value, 16)
-# res7 = get_quant_nvem(tensor_value, 16)
-# res8 = get_quant_mxem(tensor_value, 32)
-# res9 = get_quant_mxes(tensor_value, 32)
+indice_num = 2 ** 5
+tensor_value = tensor_value.reshape(indice_num, -1)
+x_axis = np.arange(0, indice_num, 1)
+# indice_size = 2 ** 10
+# tensor_value = tensor_value.reshape(-1, indice_size)
+# x_axis = np.arange(0, tensor_value.shape[0], 1)
 
+# res1 = get_quant_hif4(tensor_value, 64)
+# res2 = get_quant_nvem(tensor_value, 16)
+# res3 = get_quant_nvfp(tensor_value, 16)
+# res4 = get_quant_nvesm2(tensor_value, 16)
+# res5 = get_quant_mxem(tensor_value, 32)
+# res6 = get_quant_mxes(tensor_value, 32)
 
 # mse1 = (res1 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
-mse2 = (res2 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
-mse3 = (res3 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
-mse4 = (res4 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
+# mse2 = (res2 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
+# mse3 = (res3 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
+# mse4 = (res4 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
 # mse5 = (res5 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
 # mse6 = (res6 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
 # mse7 = (res7 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
@@ -1171,30 +1184,33 @@ mse4 = (res4 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
 # mse9 = (res9 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
 
 
-import matplotlib.pyplot as plt
-
-plt.figure(figsize=(10, 6))
-stride = 2 ** 10
-x_axis = x_axis[::stride]
+# import matplotlib.pyplot as plt
+#
+# plt.figure(figsize=(10, 6))
+# stride = 2 ** 0
+# x_axis = x_axis[::stride]
 # mse1 = mse1[::stride]
-mse2 = mse2[::stride]
-mse3 = mse3[::stride]
-mse4 = mse4[::stride]
-# plt.plot(x_axis, mse1, label='hif4')
-# plot with transparency
-plt.plot(x_axis, mse2, label='nvem', alpha=0.5)
-plt.plot(x_axis, mse3, label='nvfp', alpha=0.5)
-plt.plot(x_axis, mse4, label='nvesm2', alpha=0.5)
-
-max_val = tensor_value.amax(dim=1, keepdim=True)
-max_val = max_val[::stride].cpu().numpy()
-# normalize max_val by mse_max
-max_val = max_val / max_val.max() * 2 * 1e-5
-plt.plot(x_axis, max_val, label='max_magnitude', alpha=0.5)
-
-plt.xlabel('Layer Index')
-plt.ylabel('MSE')
-plt.title('MSE Comparison with real input for ' + name)
-plt.legend()
-plt.show()
-plt.savefig("dump/" + "MSE_Comp_with_Real_Input_for_" + name.replace(".pt", ".png"), dpi=150)
+# mse2 = mse2[::stride]
+# mse3 = mse3[::stride]
+# mse4 = mse4[::stride]
+# # plot with transparency
+# plt.plot(x_axis, mse1, label='hif4', alpha=0.7)
+# plt.plot(x_axis, mse2, label='nvem', alpha=0.7)
+# plt.plot(x_axis, mse3, label='nvfp', alpha=0.7)
+# plt.plot(x_axis, mse4, label='nvesm2', alpha=0.7)
+# plt.plot(x_axis, mse6, label='mxem', alpha=0.7)
+# plt.plot(x_axis, mse5, label='mxes', alpha=0.7)
+#
+# # max_val = tensor_value.amax(dim=1, keepdim=True)
+# # max_val = max_val[::stride].cpu().numpy()
+# # # normalize max_val by mse_max_nvfp
+# # mse_max = mse3.max()
+# # max_val = max_val / max_val.max() * mse_max
+# # plt.plot(x_axis, max_val, label='max_magnitude', alpha=0.6)
+#
+# plt.xlabel('Layer Index')
+# plt.ylabel('MSE')
+# plt.title('MSE Comparison with real input for ' + name)
+# plt.legend()
+# plt.show()
+# plt.savefig("dump/" + "MSE_Comp_with_Real_Input_for_" + name.replace(".pt", ".png"), dpi=150)

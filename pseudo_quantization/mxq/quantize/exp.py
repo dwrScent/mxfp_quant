@@ -1087,7 +1087,7 @@ def get_quant_nvesm2(tensor_value: torch.Tensor, group_size: int):
 
     # archive
     label = best_ratio_idx
-    tensor_value = tensor_value.reshape(-1, group_size) / global_scale / org_scales
+    tensor_value = tensor_value.reshape(-1, group_size) / org_scales
     tensor_value = tensor_value.reshape(-1, sub_group_size)
     for lab in range(4):
         print(tensor_value[label == lab].shape)
@@ -1123,8 +1123,8 @@ def draw_histogram_for_different_ratio():
     files = [f for f in os.listdir(dump_dir) if f.endswith(".pt")]
     print(f"找到 {len(files)} 个文件，准备开始处理...")
 
-    # only process last 8 of them
-    files = files[-8:]
+    # only process last 1 of them
+    files = files[-1:]
     for name in files:
 
         print(f"正在处理文件: {name}")
@@ -1135,33 +1135,77 @@ def draw_histogram_for_different_ratio():
         x = x.to(device)
         x = x.reshape(-1, x.shape[-1])
         get_quant_nvesm2(x, group_size=16)
-    # container
+
+
+    # draw 4 lines in one graph
+    import matplotlib.pyplot as plt
+
+    # 准备绘图窗口
+    plt.figure(figsize=(10, 6))
+
+    ratio_labels = ["1", "1.25", "1.5", "1.75"]
+    num_bins = 100
+
     for lab in range(4):
-        container[lab] = torch.cat(container[lab], dim=0)
-        tensor_value = torch.tensor(container[lab], device=device).abs()
-        # normalize to 0-1
-        tensor_value = tensor_value / tensor_value.max()
+        # 1. 拼接并确保在正确的设备上
+        # 假设 container[lab] 里的元素已经是 Tensor，如果不是，先转换
+        data_tensor = torch.cat(container[lab], dim=0).to(device).abs()
 
-        min_val = tensor_value.min()
-        # min_val = torch.tensor(0, device=tensor_value.device)
-        max_val = tensor_value.max()
-        ratio = ["1","1.25","1.5","1.75"]
+        # --- 去掉归一化到 6.0 的步骤 ---
+        # tensor_value = data_tensor / data_tensor.max() * 6.0  <-- 注释掉或删除
+        tensor_value = data_tensor 
 
-        num_bins = 100
-        draw_histogram(tensor_value, min_val, max_val, num_bins, "ratio_" + ratio[lab])
-    # draw historgram of all ratio together
-    for lab in range(4):
-        tensor_value = torch.tensor(container[lab], device=device).abs()
-        # normalize to 0-1
-        tensor_value = tensor_value / tensor_value.max()
+        # 2. 计算直方图数据 (在 GPU 上计算)
+        # 统一设置一个合理的 min/max 范围，或者根据当前 tensor 动态获取
+        v_min, v_max = tensor_value.min().item(), tensor_value.max().item()
+        
+        # torch.histc 返回的是频数
+        hist = torch.histc(tensor_value, bins=num_bins, min=v_min, max=v_max)
+        
+        # 3. 准备横坐标 (Bins 边缘)
+        x_bins = torch.linspace(v_min, v_max, num_bins)
 
-        min_val = tensor_value.min()
-        # min_val = torch.tensor(0, device=tensor_value.device)
-        max_val = tensor_value.max()
-        ratio = ["1","1.25","1.5","1.75"]
+        # 4. 绘制曲线
+        # 必须搬回 CPU 才能画图
+        plt.plot(x_bins.cpu().numpy(), hist.cpu().numpy(), label=f"Ratio: {ratio_labels[lab]}", alpha=0.8)
 
-        num_bins = 100
-        draw_histogram(tensor_value, min_val, max_val, num_bins, "ratio_all")
+    # 5. 修饰图表
+    plt.title("Histogram Comparison of Different Ratios")
+    plt.xlabel("Value")
+    plt.ylabel("Frequency")
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+
+    # 6. 保存或显示
+    plt.savefig('dump/combined_histogram_comp_for_different_ratio.png')
+    plt.show()
+    # # container
+    # for lab in range(4):
+    #     container[lab] = torch.cat(container[lab], dim=0)
+    #     tensor_value = torch.tensor(container[lab], device=device).abs()
+    #     # normalize to 0-6
+    #     tensor_value = tensor_value / tensor_value.max() * 6.0
+    #
+    #     min_val = tensor_value.min()
+    #     # min_val = torch.tensor(0, device=tensor_value.device)
+    #     max_val = tensor_value.max()
+    #     ratio = ["1","1.25","1.5","1.75"]
+    #
+    #     num_bins = 100
+    #     draw_histogram(tensor_value, min_val, max_val, num_bins, "ratio_" + ratio[lab])
+    # # draw historgram of all ratio together
+    # for lab in range(4):
+    #     tensor_value = torch.tensor(container[lab], device=device).abs()
+    #     # normalize to 0-6
+    #     tensor_value = tensor_value / tensor_value.max() * 6.0
+    #
+    #     min_val = tensor_value.min()
+    #     # min_val = torch.tensor(0, device=tensor_value.device)
+    #     max_val = tensor_value.max()
+    #     ratio = ["1","1.25","1.5","1.75"]
+    #
+    #     num_bins = 100
+    #     draw_histogram(tensor_value, min_val, max_val, num_bins, "ratio_all")
 
 __name__ = "__main__"
 

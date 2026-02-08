@@ -956,7 +956,11 @@ def get_quant_nvint4(tensor_value: torch.Tensor, group_size: int):
         .to(tensor_value.dtype)
     ) * global_scale
 
-    tensor_quant = torch.clamp(torch.round(tensor_value / scales), min=-7.0, max=7.0) * scales
+    E1 = ( tensor_value.abs() / scales ).mean(dim=1) <= 3
+    E1 = E1.to(tensor_value.dtype).unsqueeze(1)
+
+    tensor_quant = torch.clamp(torch.round(tensor_value / scales * 2 ** E1), min=-7.0, max=7.0) * scales / 2 ** E1
+    # tensor_quant = torch.clamp(torch.round(tensor_value / scales), min=-7.0, max=7.0) * scales
 
     return tensor_quant.reshape(org_shape).to(org_dtype)
 
@@ -1207,72 +1211,125 @@ def draw_histogram_for_different_ratio():
     #     num_bins = 100
     #     draw_histogram(tensor_value, min_val, max_val, num_bins, "ratio_all")
 
+
+def get_quant_new(tensor_value: torch.Tensor, group_size):
+    sub_group_size = 8  # extra 2 bit for scale in subgroup
+    assert group_size % sub_group_size == 0
+
+    org_shape = tensor_value.shape
+    org_dtype = tensor_value.dtype
+
+    tensor_value = tensor_value.float()
+    if group_size > 0:
+        assert org_shape[-1] % group_size == 0
+        tensor_value = tensor_value.reshape(-1, group_size)
+
+    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+    # avoid divide a too small value
+    max_val = max_val.clamp(min=1e-8)
+
+    max_quant_val = torch.tensor(FLOAT4_E2M1_MAX, device=tensor_value.device)
+
+    scales = tensor_value.abs().amax(dim=1, keepdim=True) / max_quant_val
+
+    # Compute the scaling factor
+    global_scale = scales.max() / FLOAT8_E4M3_MAX
+    scales = (
+        (scales / global_scale)
+        .clamp(min=FLOAT8_E4M3_EPS)
+        .to(torch.float8_e4m3fn)
+        .to(tensor_value.dtype)
+    ) * global_scale
+
+    subgroup_per_group = group_size // sub_group_size
+    scales = scales.expand(tensor_value.shape[0], subgroup_per_group).reshape(-1).unsqueeze(1)
+
+    tensor_value = tensor_value.reshape(-1, sub_group_size)
+    E1 = (tensor_value.abs() / scales).mean(dim=1) > 3.0
+    E1 = E1.to(org_dtype).unsqueeze(1)
+
+    tensor_quant = cast_to_fp4(tensor_value / scales / 2 ** E1) * scales * 2 ** E1
+    return tensor_quant.reshape(org_shape).to(org_dtype)
+
+
 __name__ = "__main__"
 
 container = {0: [], 1: [], 2: [], 3: []}
-draw_histogram_for_different_ratio()
-# # draw mse comp with real input
-# import torch
-# import numpy as np
-# # name = "model_layers_0_self_attn_o_proj.pt"
+# draw_histogram_for_different_ratio()
+
+# draw mse comp with real input
+import torch
+import numpy as np
+name = "model_layers_0_self_attn_o_proj.pt"
 # name = "model_layers_8_mlp_down_proj.pt"
-# tensor_value = torch.load('dump/' + name)
-#
-# device = torch.device('cuda:0')
-# tensor_value = tensor_value.to(device)
-#
+tensor_value = torch.load('dump/' + name)
+
+device = torch.device('cuda:0')
+tensor_value = tensor_value.to(device)
+
 # indice_num = 2 ** 5
 # tensor_value = tensor_value.reshape(indice_num, -1)
 # x_axis = np.arange(0, indice_num, 1)
-# indice_size = 2 ** 10
-# tensor_value = tensor_value.reshape(-1, indice_size)
-# x_axis = np.arange(0, tensor_value.shape[0], 1)
+indice_size = 2 ** 10
+tensor_value = tensor_value.reshape(-1, indice_size)
+x_axis = np.arange(0, tensor_value.shape[0], 1)
 
 # res1 = get_quant_hif4(tensor_value, 64)
 # res2 = get_quant_nvem(tensor_value, 16)
-# res3 = get_quant_nvfp(tensor_value, 16)
-# res4 = get_quant_nvesm2(tensor_value, 16)
-# res5 = get_quant_mxem(tensor_value, 32)
-# res6 = get_quant_mxes(tensor_value, 32)
+res3 = get_quant_nvfp(tensor_value, 16)
+res4 = get_quant_nvesm2(tensor_value, 16)
+res5 = get_quant_new(tensor_value, 16)
+res6 = get_quant_nvint4(tensor_value, 32)
 
 # mse1 = (res1 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
 # mse2 = (res2 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
-# mse3 = (res3 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
-# mse4 = (res4 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
-# mse5 = (res5 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
-# mse6 = (res6 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
+mse3 = (res3 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
+mse4 = (res4 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
+mse5 = (res5 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
+mse6 = (res6 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
 # mse7 = (res7 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
 # mse8 = (res8 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
 # mse9 = (res9 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
 
 
-# import matplotlib.pyplot as plt
-#
-# plt.figure(figsize=(10, 6))
-# stride = 2 ** 0
-# x_axis = x_axis[::stride]
+import matplotlib.pyplot as plt
+plt.rcParams['lines.linewidth'] = 0.5
+
+plt.figure(figsize=(10, 6))
+stride = 2 ** 11
+x_axis = x_axis[::stride]
 # mse1 = mse1[::stride]
 # mse2 = mse2[::stride]
-# mse3 = mse3[::stride]
-# mse4 = mse4[::stride]
-# # plot with transparency
+mse3 = mse3[::stride]
+mse4 = mse4[::stride]
+mse5 = mse5[::stride]
+mse6 = mse6[::stride]
+# plot with transparency
 # plt.plot(x_axis, mse1, label='hif4', alpha=0.7)
 # plt.plot(x_axis, mse2, label='nvem', alpha=0.7)
-# plt.plot(x_axis, mse3, label='nvfp', alpha=0.7)
-# plt.plot(x_axis, mse4, label='nvesm2', alpha=0.7)
-# plt.plot(x_axis, mse6, label='mxem', alpha=0.7)
-# plt.plot(x_axis, mse5, label='mxes', alpha=0.7)
-#
-# # max_val = tensor_value.amax(dim=1, keepdim=True)
-# # max_val = max_val[::stride].cpu().numpy()
-# # # normalize max_val by mse_max_nvfp
-# # mse_max = mse3.max()
-# # max_val = max_val / max_val.max() * mse_max
-# # plt.plot(x_axis, max_val, label='max_magnitude', alpha=0.6)
-#
-# plt.xlabel('Layer Index')
-# plt.ylabel('MSE')
-# plt.title('MSE Comparison with real input for ' + name)
-# plt.legend()
-# plt.show()
-# plt.savefig("dump/" + "MSE_Comp_with_Real_Input_for_" + name.replace(".pt", ".png"), dpi=150)
+plt.plot(x_axis, mse3, label='nvfp', alpha=0.7)
+plt.plot(x_axis, mse4, label='nvesm2', alpha=0.7)
+plt.plot(x_axis, mse5, label='new', alpha=0.7)
+plt.plot(x_axis, mse6, label='nvint4', alpha=0.7)
+
+
+# reference max or mean
+max_val = tensor_value.abs().amax(dim=1)
+max_val = max_val.cpu().numpy()
+mean_max_val = max_val.mean()
+mean_mse = mse3.mean()
+max_val = max_val[::stride] / mean_max_val * mean_mse
+plt.plot(x_axis, max_val, label='max', alpha=0.7)
+# mean_val = tensor_value.abs().mean(dim=1).cpu().numpy()
+# mean_mean_val = mean_val.mean()
+# mean_mse = mse3.mean()
+# mean_val = mean_val[::stride] / mean_mean_val * mean_mse
+# plt.plot(x_axis, mean_val, label='mean', alpha=0.7)
+# end of reference
+
+plt.xlabel('Layer Index')
+plt.ylabel('MSE')
+plt.title('MSE Comparison with real input for ' + name)
+plt.legend()
+plt.show()
+plt.savefig("dump/" + "MSE_Comp_with_Real_Input_for_" + name.replace(".pt", ".png"), dpi=150)

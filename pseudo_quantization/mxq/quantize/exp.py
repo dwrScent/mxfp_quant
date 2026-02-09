@@ -946,7 +946,7 @@ def get_quant_nvint4(tensor_value: torch.Tensor, group_size: int):
         tensor_value = tensor_value.reshape(-1, group_size)
 
     max_val = tensor_value.abs().amax(dim=1, keepdim=True)
-    scales = max_val / 7.0
+    scales = max_val / 7
     # avoid divide a too small value
     global_scale = scales.max() / FLOAT8_E4M3_MAX
     scales = (
@@ -956,11 +956,32 @@ def get_quant_nvint4(tensor_value: torch.Tensor, group_size: int):
         .to(tensor_value.dtype)
     ) * global_scale
 
-    E1 = ( tensor_value.abs() / scales ).mean(dim=1) <= 3
+    subgroup1_size = 16
+    subgroup2_size = 4
+    subgroup1_per_group = group_size // subgroup1_size
+    subgroup2_per_subgroup1 = subgroup1_size // subgroup2_size
+    scalesx4 = scales.repeat_interleave(subgroup1_per_group, dim=1).reshape(-1, 1)
+    tensor_value = tensor_value.reshape(-1, subgroup1_size)
+    E1 = ( tensor_value.abs() / scalesx4 ).amax(dim=1) <= 3.5
     E1 = E1.to(tensor_value.dtype).unsqueeze(1)
+    scalesx16 = scalesx4.repeat_interleave(subgroup2_per_subgroup1, dim=1).reshape(-1, 1)
+    tensor_value = tensor_value.reshape(-1, subgroup2_size)
+    E1x4 = E1.repeat_interleave(4, dim=1).reshape(-1, 1)
+    E2 = ( tensor_value.abs() / scalesx16 * 2 ** E1x4 ).amax(dim=1) <= 1.75
+    E2 = E2.to(tensor_value.dtype).unsqueeze(1)
+    # print amax
+    # print nums of E
+    print(E1.sum())
+    print(E2.sum())
 
-    tensor_quant = torch.clamp(torch.round(tensor_value / scales * 2 ** E1), min=-7.0, max=7.0) * scales / 2 ** E1
+    tensor_quant = torch.round(tensor_value / scalesx16 * 2 ** E1x4 * 2 ** E2).clamp(min=-7.0, max=7.0) * scalesx16 * 2 ** E1x4 * 2 ** E2
     # tensor_quant = torch.clamp(torch.round(tensor_value / scales), min=-7.0, max=7.0) * scales
+
+    num_bins = 100
+    max_val = torch.tensor(9.0, device=tensor_value.device)
+    min_val = torch.tensor(0.0, device=tensor_value.device)
+    test = tensor_value / scalesx16 * 2 ** E1x4 * 2 ** E2
+    draw_histogram(test.abs(), min_val=min_val, max_val=max_val, num_bins=num_bins, method="nvint4")
 
     return tensor_quant.reshape(org_shape).to(org_dtype)
 
@@ -1183,33 +1204,6 @@ def draw_histogram_for_different_ratio():
     # 6. 保存或显示
     plt.savefig('dump/combined_histogram_comp_for_different_ratio.png')
     plt.show()
-    # # container
-    # for lab in range(4):
-    #     container[lab] = torch.cat(container[lab], dim=0)
-    #     tensor_value = torch.tensor(container[lab], device=device).abs()
-    #     # normalize to 0-6
-    #     tensor_value = tensor_value / tensor_value.max() * 6.0
-    #
-    #     min_val = tensor_value.min()
-    #     # min_val = torch.tensor(0, device=tensor_value.device)
-    #     max_val = tensor_value.max()
-    #     ratio = ["1","1.25","1.5","1.75"]
-    #
-    #     num_bins = 100
-    #     draw_histogram(tensor_value, min_val, max_val, num_bins, "ratio_" + ratio[lab])
-    # # draw historgram of all ratio together
-    # for lab in range(4):
-    #     tensor_value = torch.tensor(container[lab], device=device).abs()
-    #     # normalize to 0-6
-    #     tensor_value = tensor_value / tensor_value.max() * 6.0
-    #
-    #     min_val = tensor_value.min()
-    #     # min_val = torch.tensor(0, device=tensor_value.device)
-    #     max_val = tensor_value.max()
-    #     ratio = ["1","1.25","1.5","1.75"]
-    #
-    #     num_bins = 100
-    #     draw_histogram(tensor_value, min_val, max_val, num_bins, "ratio_all")
 
 
 def get_quant_new(tensor_value: torch.Tensor, group_size):
@@ -1279,7 +1273,7 @@ x_axis = np.arange(0, tensor_value.shape[0], 1)
 res3 = get_quant_nvfp(tensor_value, 16)
 res4 = get_quant_nvesm2(tensor_value, 16)
 res5 = get_quant_new(tensor_value, 16)
-res6 = get_quant_nvint4(tensor_value, 32)
+res6 = get_quant_nvint4(tensor_value, 64)
 
 # mse1 = (res1 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
 # mse2 = (res2 - tensor_value).pow(2).mean(dim=1).cpu().numpy()

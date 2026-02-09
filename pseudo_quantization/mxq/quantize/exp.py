@@ -934,8 +934,36 @@ def get_quant_hifem(tensor_value: torch.Tensor, group_size: int):
     return tensor_quant.reshape(org_shape).to(org_dtype)
 
 
+def nvfp_anal(x: torch.Tensor, group_size=16):
+    import torch
+    import numpy as np
+    x = x.reshape(-1, group_size)
+    max_ = 6.0
+    tensor_value = x.float()
+    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+    scales = max_val / max_
+    # avoid divide a too small value
+    global_scale = scales.max() / FLOAT8_E4M3_MAX
+    scales = (
+        (scales / global_scale)
+        .clamp(min=FLOAT8_E4M3_EPS)
+        .to(torch.float8_e4m3fn)
+        .to(tensor_value.dtype)
+    ) * global_scale
+    x = x / scales
+
+    total_hist = None
+    # x = x[::8, :]
+
+    # bin_edges 假设是等间距的，例如从 0 到 6 分 100 份
+    num_bins = 100
+    min_val, max_val_bin = 0.0, 7.0 # 根据你的需求设置边界
+    draw_histogram(x, min_val, max_val_bin, num_bins, "nvfp")
+
+
 def get_quant_nvint4(tensor_value: torch.Tensor, group_size: int):
-    
+    # with E1 and E2
+
     org_shape = tensor_value.shape
     org_dtype = tensor_value.dtype
 
@@ -974,7 +1002,7 @@ def get_quant_nvint4(tensor_value: torch.Tensor, group_size: int):
     print(E1.sum())
     print(E2.sum())
 
-    tensor_quant = torch.round(tensor_value / scalesx16 * 2 ** E1x4 * 2 ** E2).clamp(min=-7.0, max=7.0) * scalesx16 * 2 ** E1x4 * 2 ** E2
+    tensor_quant = torch.round(tensor_value / scalesx16 * 2 ** E1x4 * 2 ** E2).clamp(min=-7.0, max=7.0) * scalesx16 / 2 ** E1x4 / 2 ** E2
     # tensor_quant = torch.clamp(torch.round(tensor_value / scales), min=-7.0, max=7.0) * scales
 
     num_bins = 100
@@ -1125,9 +1153,9 @@ def draw_histogram(x: torch.Tensor, min_val, max_val, num_bins, method):
     import matplotlib.pyplot as plt
     import numpy as np
     total_hist = None
-    x = x.cpu()
-    min_val = min_val.cpu()
-    max_val = max_val.cpu()
+    if isinstance(x, torch.Tensor): x = x.cpu()
+    if isinstance(min_val, torch.Tensor): min_val = min_val.cpu()
+    if isinstance(max_val, torch.Tensor): max_val = max_val.cpu()
     print("Total Histogram: ")
     total_hist = torch.histc(x.float().abs(), bins=num_bins, min=min_val, max=max_val)
     print(total_hist)
@@ -1259,12 +1287,12 @@ name = "model_layers_0_self_attn_o_proj.pt"
 tensor_value = torch.load('dump/' + name)
 
 device = torch.device('cuda:0')
-tensor_value = tensor_value.to(device)
+tensor_value = tensor_value.to(device).float()
 
 # indice_num = 2 ** 5
 # tensor_value = tensor_value.reshape(indice_num, -1)
 # x_axis = np.arange(0, indice_num, 1)
-indice_size = 2 ** 10
+indice_size = 2 ** 4
 tensor_value = tensor_value.reshape(-1, indice_size)
 x_axis = np.arange(0, tensor_value.shape[0], 1)
 
@@ -1272,40 +1300,56 @@ x_axis = np.arange(0, tensor_value.shape[0], 1)
 # res2 = get_quant_nvem(tensor_value, 16)
 res3 = get_quant_nvfp(tensor_value, 16)
 res4 = get_quant_nvesm2(tensor_value, 16)
-res5 = get_quant_new(tensor_value, 16)
-res6 = get_quant_nvint4(tensor_value, 64)
+# res5 = get_quant_new(tensor_value, 16)
+# res6 = get_quant_nvint4(tensor_value, 64)
 
 # mse1 = (res1 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
 # mse2 = (res2 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
 mse3 = (res3 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
 mse4 = (res4 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
-mse5 = (res5 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
-mse6 = (res6 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
+# mse5 = (res5 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
+# mse6 = (res6 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
 # mse7 = (res7 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
 # mse8 = (res8 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
 # mse9 = (res9 - tensor_value).pow(2).mean(dim=1).cpu().numpy()
 
 
 import matplotlib.pyplot as plt
+
+threshold = np.percentile(mse3, 99)   # 去掉最小1%
+
+top_idx = np.where(mse3 >= threshold)[0]
+
+selected_data = tensor_value[top_idx].abs().reshape(-1)
+
+# nvfp_anal(tensor_value, group_size=16)
+# nvfp_anal(selected_data, group_size=16)
+# max_val = selected_data.max()
+# min_val = torch.tensor(0.0).to(selected_data.device)
+# num_bins = 100
+#
+# draw_histogram(selected_data, min_val, max_val, num_bins, "1%_largest_mse")
+
+
 plt.rcParams['lines.linewidth'] = 0.5
 
 plt.figure(figsize=(10, 6))
-stride = 2 ** 11
+stride = 2 ** 14
 x_axis = x_axis[::stride]
 # mse1 = mse1[::stride]
 # mse2 = mse2[::stride]
 mse3 = mse3[::stride]
 mse4 = mse4[::stride]
-mse5 = mse5[::stride]
-mse6 = mse6[::stride]
+# mse5 = mse5[::stride]
+# mse6 = mse6[::stride]
 # plot with transparency
 # plt.plot(x_axis, mse1, label='hif4', alpha=0.7)
 # plt.plot(x_axis, mse2, label='nvem', alpha=0.7)
 plt.plot(x_axis, mse3, label='nvfp', alpha=0.7)
 plt.plot(x_axis, mse4, label='nvesm2', alpha=0.7)
-plt.plot(x_axis, mse5, label='new', alpha=0.7)
-plt.plot(x_axis, mse6, label='nvint4', alpha=0.7)
-
+# plt.plot(x_axis, mse5, label='new', alpha=0.7)
+# plt.plot(x_axis, mse6, label='nvint4', alpha=0.7)
+#
 
 # reference max or mean
 max_val = tensor_value.abs().amax(dim=1)

@@ -19,8 +19,10 @@ def manual_kl_divergence(p_data, q_data):
     return np.sum(p * np.log(p / q))
 
 # 测试
-P = [0.1, 0.9, 0.0]
-Q = [0.2, 0.7, 0.1]
+# P = [0.1, 0.9, 0.0]
+# Q = [0.2, 0.7, 0.1]
+P = [1,1,1,1,1]
+Q = [1,1,1,1,1]
 print(f"KL Divergence: {manual_kl_divergence(P, Q):.6f}")
 
 

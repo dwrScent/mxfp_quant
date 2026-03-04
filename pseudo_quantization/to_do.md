@@ -1,9 +1,9 @@
-- [ ] try awq
-    - [ ] modify: in linear.py mutiply weight by scale and add scale in register_buffer, in quant_func.py divide activation by scale
-- [ ] try other scale search methods
+- compare good and bad groups
+ - compare cross entropy
+ - compare wasserstein distance
+ - compare mutual imformation
+ - also try: use elem / sum as probability in calculation of entropy
 
+- nvesm2 search with cross entropy and qsinr
 
-
-
-- [x] try em em
-- [x] try nvem nvem
+- compare kurtosis, kldiv for nvesm2 and nvfp

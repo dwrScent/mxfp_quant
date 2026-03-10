@@ -29,7 +29,9 @@ def parser_gen():
     )
     parser.add_argument("--dtype", type=str, default="bfloat16", help="dtype to use")
     # quantization
-    parser.add_argument("--quant_method", type=str, choices=["mxfp", "m2xfp"])
+    parser.add_argument(
+        "--quant_method", type=str, choices=["mxfp", "m2xfp"], default="m2xfp"
+    )
     # dataset
     parser.add_argument(
         "--dataset",
@@ -45,6 +47,10 @@ def parser_gen():
             "GPQA-Diamond",
             "MMLU-PRO",
             "LiveCodeBench",
+            "LiveCodeBench-V6",
+            "SuperGPQA",
+            "IF-Eval",
+            "BFCL-V3",
         ],
         help="Dataset to load.",
     )
@@ -121,51 +127,24 @@ def main(args):
         generation_parameters=generation_parameters,
     )
 
-    if args.dataset == "AIME-2024":
-        task_kwargs = {
-            "tasks": "custom|aime24|0|0",
-            "custom_tasks": "mxq.evaluation.tasks.reasoning",
-        }
-    elif args.dataset == "AIME-2025":
-        task_kwargs = {
-            "tasks": "custom|aime25|0|0",
-            "custom_tasks": "mxq.evaluation.tasks.reasoning",
-        }
-    elif args.dataset == "AIME-90":
-        task_kwargs = {
-            "tasks": "custom|aime90|0|0",
-            "custom_tasks": "mxq.evaluation.tasks.reasoning",
-        }
-    elif args.dataset == "MATH-500":
-        task_kwargs = {
-            "tasks": "custom|math_500|0|0",
-            "custom_tasks": "mxq.evaluation.tasks.reasoning",
-        }
-    elif args.dataset == "NuminaMath-1.5":
-        task_kwargs = {
-            "tasks": "custom|numina_math|0|0",
-            "custom_tasks": "mxq.evaluation.tasks.reasoning",
-        }
-    elif args.dataset == "GSM8K":
-        task_kwargs = {
-            "tasks": "custom|gsm8k|0|0",
-            "custom_tasks": "mxq.evaluation.tasks.reasoning",
-        }
-    elif args.dataset == "GPQA-Diamond":
-        task_kwargs = {
-            "tasks": "custom|gpqa:diamond|0|0",
-            "custom_tasks": "mxq.evaluation.tasks.reasoning",
-        }
-    elif args.dataset == "MMLU-PRO":
-        task_kwargs = {
-            "tasks": "custom|mmlu_pro|0|0",
-            "custom_tasks": "mxq.evaluation.tasks.reasoning",
-        }
-    elif args.dataset == "LiveCodeBench":
-        task_kwargs = {
-            "tasks": "custom|lcb:codegeneration|0|0",
-            "custom_tasks": "mxq.evaluation.tasks.livecodebench",
-        }
+    task_map = {
+        "AIME-2024": ("custom|aime24|0|0", "mxq.evaluation.tasks.reasoning"),
+        "AIME-2025": ("custom|aime25|0|0", "mxq.evaluation.tasks.reasoning"),
+        "AIME-90": ("custom|aime90|0|0", "mxq.evaluation.tasks.reasoning"),
+        "MATH-500": ("custom|math_500|0|0", "mxq.evaluation.tasks.reasoning"),
+        "NuminaMath-1.5": ("custom|numina_math|0|0", "mxq.evaluation.tasks.reasoning"),
+        "GSM8K": ("custom|gsm8k|0|0", "mxq.evaluation.tasks.reasoning"),
+        "GPQA-Diamond": ("custom|gpqa:diamond|0|0", "mxq.evaluation.tasks.reasoning"),
+        "MMLU-PRO": ("custom|mmlu_pro|0|0", "mxq.evaluation.tasks.reasoning"),
+        # Keep legacy name for compatibility, but evaluate on v6 by default.
+        "LiveCodeBench": ("custom|lcb:codegeneration_v6|0|0", "mxq.evaluation.tasks.livecodebench_v6"),
+        "LiveCodeBench-V6": ("custom|lcb:codegeneration_v6|0|0", "mxq.evaluation.tasks.livecodebench_v6"),
+        "SuperGPQA": ("custom|supergpqa|0|0", "mxq.evaluation.tasks.supergpqa"),
+        "IF-Eval": ("custom|ifeval|0|0", "mxq.evaluation.tasks.ifeval"),
+        "BFCL-V3": ("custom|bfcl_v3|0|0", "mxq.evaluation.tasks.bfcl_v3"),
+    }
+    tasks, custom_tasks = task_map[args.dataset]
+    task_kwargs = {"tasks": tasks, "custom_tasks": custom_tasks}
 
     results, details = vllm(
         model_config=model_config,

@@ -8,6 +8,10 @@ import torch
 
 from lighteval.models.model_input import GenerationParameters
 from lighteval.models.vllm.vllm_model import VLLMModelConfig
+from lighteval.models.transformers.transformers_model import TransformersModelConfig
+from lighteval.models.endpoints.openai_model import OpenAIModelConfig
+from lighteval.logging.evaluation_tracker import EvaluationTracker
+from lighteval.pipeline import EnvConfig, ParallelismManager, Pipeline, PipelineParameters
 from mxq.evaluation.main_vllm import vllm
 
 
@@ -28,9 +32,39 @@ def parser_gen():
         help="Model to load.",
     )
     parser.add_argument("--dtype", type=str, default="bfloat16", help="dtype to use")
+    parser.add_argument(
+        "--trust_remote_code",
+        action="store_true",
+        help="Allow execution of custom model code from Hub repos.",
+    )
     # quantization
     parser.add_argument(
         "--quant_method", type=str, choices=["mxfp", "m2xfp"], default="m2xfp"
+    )
+    parser.add_argument(
+        "--backend",
+        type=str,
+        choices=["vllm", "transformers", "openai"],
+        default="vllm",
+        help="Inference backend. Use openai for omni-infer OpenAI-compatible API.",
+    )
+    parser.add_argument(
+        "--api_base_url",
+        type=str,
+        default=os.getenv("OPENAI_BASE_URL", "http://127.0.0.1:8000/v1"),
+        help="OpenAI-compatible API base URL (used when backend=openai).",
+    )
+    parser.add_argument(
+        "--api_key",
+        type=str,
+        default=os.getenv("OPENAI_API_KEY", "EMPTY"),
+        help="API key for OpenAI-compatible endpoint (used when backend=openai).",
+    )
+    parser.add_argument(
+        "--served_model_name",
+        type=str,
+        default=os.getenv("OPENAI_MODEL_NAME", "openpangu_r_72b_2512"),
+        help="Served model name for OpenAI-compatible endpoint (used when backend=openai).",
     )
     # dataset
     parser.add_argument(
@@ -72,8 +106,8 @@ def parser_gen():
     parser.add_argument(
         "--max_model_length",
         type=int,
-        default=32768,
-        help="Maximum model input length.",
+        default=None,
+        help="Maximum model input length. If unset, infer from model config.",
     )
     args = parser.parse_args()
 
@@ -99,6 +133,92 @@ def parser_gen():
     return args
 
 
+def transformers_eval(
+    model_config,
+    tasks,
+    custom_tasks,
+    use_chat_template,
+    max_samples,
+):
+    token = os.getenv("HF_TOKEN")
+    cache_dir = os.getenv("HF_HOME", "/scratch")
+    env_config = EnvConfig(token=token, cache_dir=cache_dir)
+
+    evaluation_tracker = EvaluationTracker(
+        output_dir="results",
+        save_details=False,
+        push_to_hub=False,
+        push_to_tensorboard=False,
+        public=False,
+        hub_results_org=None,
+    )
+    pipeline_params = PipelineParameters(
+        launcher_type=ParallelismManager.NONE,
+        env_config=env_config,
+        dataset_loading_processes=1,
+        custom_tasks_directory=custom_tasks,
+        override_batch_size=-1,
+        num_fewshot_seeds=1,
+        max_samples=max_samples,
+        use_chat_template=use_chat_template,
+        system_prompt=None,
+        load_responses_from_details_date_id=None,
+    )
+    pipeline = Pipeline(
+        tasks=tasks,
+        pipeline_parameters=pipeline_params,
+        evaluation_tracker=evaluation_tracker,
+        model_config=model_config,
+        metric_options={},
+    )
+    pipeline.evaluate()
+    pipeline.show_results()
+    return pipeline.get_results(), evaluation_tracker.details
+
+
+def openai_eval(
+    model_config,
+    tasks,
+    custom_tasks,
+    use_chat_template,
+    max_samples,
+):
+    token = os.getenv("HF_TOKEN")
+    cache_dir = os.getenv("HF_HOME", "/scratch")
+    env_config = EnvConfig(token=token, cache_dir=cache_dir)
+
+    evaluation_tracker = EvaluationTracker(
+        output_dir="results",
+        save_details=False,
+        push_to_hub=False,
+        push_to_tensorboard=False,
+        public=False,
+        hub_results_org=None,
+    )
+    pipeline_params = PipelineParameters(
+        launcher_type=ParallelismManager.OPENAI,
+        env_config=env_config,
+        dataset_loading_processes=1,
+        custom_tasks_directory=custom_tasks,
+        override_batch_size=-1,
+        num_fewshot_seeds=1,
+        max_samples=max_samples,
+        use_chat_template=use_chat_template,
+        system_prompt=None,
+        load_responses_from_details_date_id=None,
+    )
+    pipeline = Pipeline(
+        tasks=tasks,
+        pipeline_parameters=pipeline_params,
+        evaluation_tracker=evaluation_tracker,
+        model_config=model_config,
+        metric_options={},
+    )
+    pipeline.evaluate()
+    pipeline.show_results()
+    return pipeline.get_results(), evaluation_tracker.details
+
+
 def main(args):
     if not args.debug and not args.overwrite and os.path.exists(args.output_path):
         print(f"Evaluation results found at {args.output_path}. Skip evaluation")
@@ -115,18 +235,6 @@ def main(args):
         max_new_tokens=args.max_new_tokens,
         seed=args.seed,
     )
-    model_config = VLLMModelConfig(
-        pretrained=args.model,
-        dtype=args.dtype,
-        max_model_length=args.max_model_length,
-        tensor_parallel_size=args.tensor_parallel_size,
-        gpu_memory_utilization=0.9,
-        enforce_eager=True,
-        enable_prefix_caching=False,
-        enable_chunked_prefill=False,
-        generation_parameters=generation_parameters,
-    )
-
     task_map = {
         "AIME-2024": ("custom|aime24|0|0", "mxq.evaluation.tasks.reasoning"),
         "AIME-2025": ("custom|aime25|0|0", "mxq.evaluation.tasks.reasoning"),
@@ -145,14 +253,70 @@ def main(args):
     }
     tasks, custom_tasks = task_map[args.dataset]
     task_kwargs = {"tasks": tasks, "custom_tasks": custom_tasks}
-
-    results, details = vllm(
-        model_config=model_config,
-        use_chat_template=True,
-        # output_dir="./outputs/lighteval_outputs",
-        max_samples=args.max_samples,
-        **task_kwargs,
-    )
+    if args.backend == "vllm":
+        model_config = VLLMModelConfig(
+            pretrained=args.model,
+            dtype=args.dtype,
+            trust_remote_code=args.trust_remote_code,
+            max_model_length=args.max_model_length,
+            tensor_parallel_size=args.tensor_parallel_size,
+            gpu_memory_utilization=0.9,
+            enforce_eager=True,
+            enable_prefix_caching=False,
+            enable_chunked_prefill=False,
+            generation_parameters=generation_parameters,
+        )
+        try:
+            results, details = vllm(
+                model_config=model_config,
+                use_chat_template=True,
+                # output_dir="./outputs/lighteval_outputs",
+                max_samples=args.max_samples,
+                **task_kwargs,
+            )
+        except ValueError as e:
+            if "are not supported for now" in str(e):
+                raise ValueError(
+                    f"{e}\nModel is unsupported by vLLM. Re-run with `--backend transformers`."
+                ) from e
+            raise
+    elif args.backend == "transformers":
+        model_config = TransformersModelConfig(
+            pretrained=args.model,
+            dtype=args.dtype,
+            trust_remote_code=args.trust_remote_code,
+            max_length=args.max_model_length,
+            generation_parameters=generation_parameters,
+            use_chat_template=True,
+        )
+        try:
+            results, details = transformers_eval(
+                model_config=model_config,
+                use_chat_template=True,
+                max_samples=args.max_samples,
+                **task_kwargs,
+            )
+        except OSError as e:
+            if "modeling_pangu_moe.py" in str(e):
+                raise OSError(
+                    f"{e}\n`{args.model}` repo is missing required modeling code for HF AutoModel."
+                    " This model currently needs its official omni-infer deployment path "
+                    "(see repo docs) or a different HF-compatible model."
+                ) from e
+            raise
+    else:
+        model_config = OpenAIModelConfig(
+            model=args.served_model_name,
+            base_url=args.api_base_url,
+            api_key=args.api_key,
+            generation_parameters=generation_parameters,
+        )
+        results, details = openai_eval(
+            model_config=model_config,
+            use_chat_template=False,
+            max_samples=args.max_samples,
+            **task_kwargs,
+        )
 
     # save evaluation results
     eval_results = []

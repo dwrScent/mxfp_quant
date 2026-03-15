@@ -3,6 +3,8 @@ import os
 import json
 import random
 import argparse
+import glob
+import shutil
 
 import torch
 
@@ -131,6 +133,59 @@ def parser_gen():
     args.tensor_parallel_size = torch.cuda.device_count()
 
     return args
+
+
+def _ensure_pangu_modeling(model_name_or_path: str) -> None:
+    """Inject missing modeling_pangu_moe.py for openPangu-R repos."""
+    if "openPangu-R-72B-2512" not in model_name_or_path:
+        return
+
+    src = os.path.join(os.path.dirname(__file__), "modeling_pangu_moe.py")
+    if not os.path.exists(src):
+        raise FileNotFoundError(f"Missing local helper file: {src}")
+
+    if "/" not in model_name_or_path:
+        return
+
+    repo_id = model_name_or_path.strip("/")
+    repo_fs = repo_id.replace("/", "--")
+    hf_home = os.getenv("HF_HOME", os.path.expanduser("~/.cache/huggingface"))
+    hub_root = os.path.join(hf_home, "hub", f"models--{repo_fs}")
+    modules_root = os.path.join(hf_home, "modules", "transformers_modules")
+
+    copied_paths = []
+    # 1) Inject into HF snapshots cache.
+    for snap_dir in glob.glob(os.path.join(hub_root, "snapshots", "*")):
+        if not os.path.isdir(snap_dir):
+            continue
+        dst = os.path.join(snap_dir, "modeling_pangu_moe.py")
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        shutil.copy2(src, dst)
+        for pycache in glob.glob(os.path.join(snap_dir, "__pycache__", "modeling_pangu_moe*.pyc")):
+            os.remove(pycache)
+        copied_paths.append(dst)
+
+    # 2) Inject into transformers dynamic modules cache.
+    repo_path_nested = os.path.join(modules_root, *repo_id.split("/"))
+    repo_path_flat = os.path.join(modules_root, repo_fs)
+    for base in [repo_path_nested, repo_path_flat]:
+        for mod_dir in glob.glob(os.path.join(base, "*")):
+            if not os.path.isdir(mod_dir):
+                continue
+            dst = os.path.join(mod_dir, "modeling_pangu_moe.py")
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copy2(src, dst)
+            for pycache in glob.glob(os.path.join(mod_dir, "__pycache__", "modeling_pangu_moe*.pyc")):
+                os.remove(pycache)
+            copied_paths.append(dst)
+
+    if copied_paths:
+        print(f"[pangu] injected modeling code into {len(copied_paths)} cache path(s).")
+    else:
+        print(
+            "[pangu] no local cache snapshot found yet; once model files are cached, "
+            "re-running this command will inject modeling code automatically."
+        )
 
 
 def transformers_eval(
@@ -281,6 +336,8 @@ def main(args):
                 ) from e
             raise
     elif args.backend == "transformers":
+        if args.trust_remote_code:
+            _ensure_pangu_modeling(args.model)
         model_config = TransformersModelConfig(
             pretrained=args.model,
             dtype=args.dtype,

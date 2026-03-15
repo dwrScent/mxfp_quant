@@ -8,19 +8,54 @@ TASKS=${1:-"SuperGPQA"}
 QUANT_METHOD=${QUANT_METHOD:-"mxfp"}
 MODEL=${MODEL:-"FreedomIntelligence/openPangu-R-72B-2512"}
 BACKEND=${BACKEND:-"openai"}
-MAX_MODEL_LENGTH=${MAX_MODEL_LENGTH:-4096}
+if [ -z "${MAX_MODEL_LENGTH+x}" ]; then
+  MAX_MODEL_LENGTH=4096
+fi
+if [ -z "${MAX_NEW_TOKENS+x}" ]; then
+  MAX_NEW_TOKENS=1024
+fi
 API_BASE_URL=${API_BASE_URL:-"http://127.0.0.1:8000/v1"}
 API_KEY=${API_KEY:-"EMPTY"}
 SERVED_MODEL_NAME=${SERVED_MODEL_NAME:-"openpangu_r_72b_2512"}
+HF_HOME=${HF_HOME:-"/cephfs/shared/xyli/hf_cache"}
+AUTO_TUNE_MEM=${AUTO_TUNE_MEM:-1}
 
 OMNI_AUTO_DEPLOY=${OMNI_AUTO_DEPLOY:-0}
 OMNI_SERVE_SCRIPT=${OMNI_SERVE_SCRIPT:-"/path/to/omniinfer/tools/scripts/start_serving_openpangu_r_72b_2512.sh"}
 OMNI_START_TIMEOUT=${OMNI_START_TIMEOUT:-600}
 
+if [ "${BACKEND}" = "transformers" ] && [ "${AUTO_TUNE_MEM}" = "1" ]; then
+  MEM_LIMIT_BYTES=""
+  if [ -f /sys/fs/cgroup/memory/memory.limit_in_bytes ]; then
+    MEM_LIMIT_BYTES="$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes)"
+  elif [ -f /sys/fs/cgroup/memory.max ]; then
+    MEM_LIMIT_BYTES="$(cat /sys/fs/cgroup/memory.max)"
+  fi
+
+  # If running under a ~100GiB memcg, clamp defaults to safer values.
+  if [ -n "${MEM_LIMIT_BYTES}" ] && [ "${MEM_LIMIT_BYTES}" != "max" ]; then
+    MEM_LIMIT_GB=$((MEM_LIMIT_BYTES / 1024 / 1024 / 1024))
+    if [ "${MEM_LIMIT_GB}" -le 110 ]; then
+      if [ "${MAX_NEW_TOKENS}" -gt 256 ]; then
+        MAX_NEW_TOKENS=256
+      fi
+      if [ "${MAX_MODEL_LENGTH}" -gt 3072 ]; then
+        MAX_MODEL_LENGTH=3072
+      fi
+    fi
+  fi
+fi
+
 echo "[reasoning_pangu] model=${MODEL}"
 echo "[reasoning_pangu] dataset=${TASKS}"
 echo "[reasoning_pangu] backend=${BACKEND}"
 echo "[reasoning_pangu] api_base_url=${API_BASE_URL}"
+echo "[reasoning_pangu] hf_home=${HF_HOME}"
+echo "[reasoning_pangu] max_new_tokens=${MAX_NEW_TOKENS}"
+echo "[reasoning_pangu] max_model_length=${MAX_MODEL_LENGTH}"
+echo "[reasoning_pangu] auto_tune_mem=${AUTO_TUNE_MEM}"
+
+export HF_HOME
 
 if [ "${OMNI_AUTO_DEPLOY}" = "1" ]; then
   echo "[reasoning_pangu] starting omni-infer service via ${OMNI_SERVE_SCRIPT}"
@@ -85,6 +120,7 @@ python -m mxq.evaluation.inference \
   --backend "$BACKEND" \
   --quant_method "$QUANT_METHOD" \
   --max_model_length "$MAX_MODEL_LENGTH" \
+  --max_new_tokens "$MAX_NEW_TOKENS" \
   --api_base_url "$API_BASE_URL" \
   --api_key "$API_KEY" \
   --served_model_name "$SERVED_MODEL_NAME" \

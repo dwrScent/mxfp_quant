@@ -3,7 +3,6 @@ import os
 import json
 import random
 import argparse
-import glob
 import shutil
 
 import torch
@@ -135,57 +134,75 @@ def parser_gen():
     return args
 
 
-def _ensure_pangu_modeling(model_name_or_path: str) -> None:
-    """Inject missing modeling_pangu_moe.py for openPangu-R repos."""
+def _find_local_hf_snapshot(repo_id: str) -> str | None:
+    """Find local HF snapshot path only; never trigger network download."""
+    repo_fs = repo_id.replace("/", "--")
+    hf_homes = [
+        os.getenv("HF_HOME"),
+        "/cephfs/shared/xyli/hf_cache",
+        os.path.expanduser("~/.cache/huggingface"),
+    ]
+
+    seen = set()
+    for hf_home in hf_homes:
+        if not hf_home or hf_home in seen:
+            continue
+        seen.add(hf_home)
+        hub_root = os.path.join(hf_home, "hub", f"models--{repo_fs}")
+        snapshots_root = os.path.join(hub_root, "snapshots")
+        if not os.path.isdir(snapshots_root):
+            continue
+
+        ref_main = os.path.join(hub_root, "refs", "main")
+        if os.path.isfile(ref_main):
+            with open(ref_main, "r") as f:
+                sha = f.read().strip()
+            snapshot = os.path.join(snapshots_root, sha)
+            if sha and os.path.isdir(snapshot):
+                return snapshot
+
+        snapshot_dirs = [
+            os.path.join(snapshots_root, d)
+            for d in os.listdir(snapshots_root)
+            if os.path.isdir(os.path.join(snapshots_root, d))
+        ]
+        if snapshot_dirs:
+            snapshot_dirs.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+            return snapshot_dirs[0]
+    return None
+
+
+def _ensure_pangu_modeling(model_name_or_path: str) -> str:
+    """Inject missing modeling_pangu_moe.py for openPangu-R and return local load path."""
     if "openPangu-R-72B-2512" not in model_name_or_path:
-        return
+        return model_name_or_path
 
     src = os.path.join(os.path.dirname(__file__), "modeling_pangu_moe.py")
     if not os.path.exists(src):
         raise FileNotFoundError(f"Missing local helper file: {src}")
 
-    if "/" not in model_name_or_path:
-        return
+    if os.path.isdir(model_name_or_path):
+        dst = os.path.join(model_name_or_path, "modeling_pangu_moe.py")
+        shutil.copy2(src, dst)
+        print(f"[pangu] using local model dir and injected modeling code: {dst}")
+        return model_name_or_path
 
     repo_id = model_name_or_path.strip("/")
-    repo_fs = repo_id.replace("/", "--")
-    hf_home = os.getenv("HF_HOME", os.path.expanduser("~/.cache/huggingface"))
-    hub_root = os.path.join(hf_home, "hub", f"models--{repo_fs}")
-    modules_root = os.path.join(hf_home, "modules", "transformers_modules")
+    if "/" not in repo_id:
+        return model_name_or_path
 
-    copied_paths = []
-    # 1) Inject into HF snapshots cache.
-    for snap_dir in glob.glob(os.path.join(hub_root, "snapshots", "*")):
-        if not os.path.isdir(snap_dir):
-            continue
-        dst = os.path.join(snap_dir, "modeling_pangu_moe.py")
-        os.makedirs(os.path.dirname(dst), exist_ok=True)
-        shutil.copy2(src, dst)
-        for pycache in glob.glob(os.path.join(snap_dir, "__pycache__", "modeling_pangu_moe*.pyc")):
-            os.remove(pycache)
-        copied_paths.append(dst)
-
-    # 2) Inject into transformers dynamic modules cache.
-    repo_path_nested = os.path.join(modules_root, *repo_id.split("/"))
-    repo_path_flat = os.path.join(modules_root, repo_fs)
-    for base in [repo_path_nested, repo_path_flat]:
-        for mod_dir in glob.glob(os.path.join(base, "*")):
-            if not os.path.isdir(mod_dir):
-                continue
-            dst = os.path.join(mod_dir, "modeling_pangu_moe.py")
-            os.makedirs(os.path.dirname(dst), exist_ok=True)
-            shutil.copy2(src, dst)
-            for pycache in glob.glob(os.path.join(mod_dir, "__pycache__", "modeling_pangu_moe*.pyc")):
-                os.remove(pycache)
-            copied_paths.append(dst)
-
-    if copied_paths:
-        print(f"[pangu] injected modeling code into {len(copied_paths)} cache path(s).")
-    else:
-        print(
-            "[pangu] no local cache snapshot found yet; once model files are cached, "
-            "re-running this command will inject modeling code automatically."
+    snapshot_dir = _find_local_hf_snapshot(repo_id)
+    if snapshot_dir is None:
+        raise FileNotFoundError(
+            "[pangu] local snapshot not found. "
+            "Expected cache under /cephfs/shared/xyli/hf_cache (or HF_HOME). "
+            "Please download weights first, then rerun."
         )
+
+    dst = os.path.join(snapshot_dir, "modeling_pangu_moe.py")
+    shutil.copy2(src, dst)
+    print(f"[pangu] using local snapshot and injected modeling code: {dst}")
+    return snapshot_dir
 
 
 def transformers_eval(
@@ -337,12 +354,13 @@ def main(args):
             raise
     elif args.backend == "transformers":
         if args.trust_remote_code:
-            _ensure_pangu_modeling(args.model)
+            args.model = _ensure_pangu_modeling(args.model)
         model_config = TransformersModelConfig(
             pretrained=args.model,
             dtype=args.dtype,
             trust_remote_code=args.trust_remote_code,
             max_length=args.max_model_length,
+            model_parallel=False,
             generation_parameters=generation_parameters,
             use_chat_template=True,
         )

@@ -133,13 +133,17 @@ def greedy_until(
     )
     results = []
 
-    for _ in tqdm(
+    for split_start, split_end in tqdm(
         dataset.splits_start_end_iterator(),
         total=dataset.num_dataset_splits,
         desc="Splits",
         position=0,
         disable=False,  # self.disable_tqdm,
     ):
+        split_requests = [dataset[idx] for idx in range(split_start, split_end)]
+        if not split_requests:
+            continue
+
         # For chat models, generation stops with EOS token, so we don't need to specify stop tokens
         if self.use_chat_template:
             stop_tokens = []
@@ -147,16 +151,16 @@ def greedy_until(
             # NOTE: we are assuming all items in a batch behave similarly (same
             # stop_tokens and max_tokens genrated) which is not necessarily
             # the case! Because of that we only use batch size of 1
-            stop_tokens = dataset[0].stop_sequence
+            stop_tokens = split_requests[0].stop_sequence
 
         max_new_tokens = (
             self._config.generation_parameters.max_new_tokens
-            or dataset[0].generation_size
+            or split_requests[0].generation_size
         )
-        returns_logits = dataset[0].use_logits
-        num_samples = dataset[0].num_samples
+        returns_logits = split_requests[0].use_logits
+        num_samples = split_requests[0].num_samples
 
-        context = [c.context for c in dataset]
+        context = [c.context for c in split_requests]
         tokenized = self.tokenizer(context, add_special_tokens=self.add_special_tokens)
 
         # The main question for this step is the following:

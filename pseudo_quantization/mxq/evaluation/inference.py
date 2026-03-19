@@ -101,7 +101,7 @@ def parser_gen():
     parser.add_argument(
         "--max_new_tokens",
         type=int,
-        default=32768,
+        default=1024,
         help="Maximum number of tokens to generate per output sequence.",
     )
     parser.add_argument(
@@ -109,6 +109,11 @@ def parser_gen():
         type=int,
         default=None,
         help="Maximum model input length. If unset, infer from model config.",
+    )
+    parser.add_argument(
+        "--model_parallel",
+        action="store_true",
+        help="Enable transformers model-parallel (requires accelerate multi-process launch).",
     )
     args = parser.parse_args()
 
@@ -355,12 +360,20 @@ def main(args):
     elif args.backend == "transformers":
         if args.trust_remote_code:
             args.model = _ensure_pangu_modeling(args.model)
+        model_parallel = args.model_parallel
+        if model_parallel and int(os.getenv("LOCAL_WORLD_SIZE", "1")) <= 1:
+            print(
+                "[warn] --model_parallel requested but LOCAL_WORLD_SIZE<=1; "
+                "falling back to model_parallel=False. "
+                "Use `accelerate launch --num_processes N ... --model_parallel` to enable it."
+            )
+            model_parallel = False
         model_config = TransformersModelConfig(
             pretrained=args.model,
             dtype=args.dtype,
             trust_remote_code=args.trust_remote_code,
             max_length=args.max_model_length,
-            model_parallel=False,
+            model_parallel=model_parallel,
             generation_parameters=generation_parameters,
             use_chat_template=True,
         )

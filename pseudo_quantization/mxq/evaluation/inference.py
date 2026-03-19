@@ -361,19 +361,29 @@ def main(args):
         if args.trust_remote_code:
             args.model = _ensure_pangu_modeling(args.model)
         model_parallel = args.model_parallel
-        if model_parallel and int(os.getenv("LOCAL_WORLD_SIZE", "1")) <= 1:
+        local_world_size = int(os.getenv("LOCAL_WORLD_SIZE", "1"))
+        if model_parallel and local_world_size > 1:
             print(
-                "[warn] --model_parallel requested but LOCAL_WORLD_SIZE<=1; "
-                "falling back to model_parallel=False. "
-                "Use `accelerate launch --num_processes N ... --model_parallel` to enable it."
+                "[warn] --model_parallel is only supported in single-process mode for this lighteval version. "
+                f"Detected LOCAL_WORLD_SIZE={local_world_size}, falling back to model_parallel=False."
             )
             model_parallel = False
+        accelerator = None
+        if model_parallel:
+            try:
+                from accelerate import Accelerator
+            except Exception as e:
+                raise ImportError(
+                    "--model_parallel requires `accelerate` package. Install via `pip install accelerate`."
+                ) from e
+            accelerator = Accelerator()
         model_config = TransformersModelConfig(
             pretrained=args.model,
             dtype=args.dtype,
             trust_remote_code=args.trust_remote_code,
             max_length=args.max_model_length,
             model_parallel=model_parallel,
+            accelerator=accelerator,
             generation_parameters=generation_parameters,
             use_chat_template=True,
         )

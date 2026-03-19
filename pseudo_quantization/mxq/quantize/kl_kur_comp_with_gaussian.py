@@ -211,6 +211,8 @@ def main():
     bad_groups_abs = []
     good_kurt_all = []
     bad_kurt_all = []
+    mse_good_acc = []
+    mse_bad_acc = []
 
     group_size = int(os.getenv("GROUP_SIZE", "8"))
     l1_group_size = group_size * 2
@@ -242,6 +244,12 @@ def main():
         good_threshold = torch.quantile(mse_per_l1_group, 0.1)
         bad_threshold = torch.quantile(mse_per_l1_group, 0.9)
 
+        # also collect mse of good and bad groups
+        mse_good = mse_per_l1_group[mse_per_l1_group < good_threshold]
+        mse_bad = mse_per_l1_group[mse_per_l1_group > bad_threshold]
+        mse_good_acc.append(mse_good.cpu().mean() / sigma ** 2)
+        mse_bad_acc.append(mse_bad.cpu().mean() / sigma ** 2)
+
         tensor_value_norm = tensor_value / scales
         good_groups = tensor_value_norm[mse_per_l1_group < good_threshold].reshape(-1, group_size)
         bad_groups = tensor_value_norm[mse_per_l1_group > bad_threshold].reshape(-1, group_size)
@@ -254,6 +262,15 @@ def main():
 
         append_group_metrics(good_groups, good_acc, hist_bins=16)
         append_group_metrics(bad_groups, bad_acc, hist_bins=16)
+
+    plot_metric(
+        x_axis,
+        mse_good_acc,
+        mse_bad_acc,
+        "mse Comparison",
+        "mse",
+        "dump/mse_comparison_good_bad.png",
+    )
 
     plot_metric(
         x_axis,

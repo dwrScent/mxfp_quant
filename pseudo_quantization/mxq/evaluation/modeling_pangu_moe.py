@@ -322,10 +322,17 @@ class PanguProMoESparseMoeBlock(nn.Module):
 
         router_logits = self.gate(flat_states)
         routing_scores = torch.sigmoid(router_logits.float())
-        if self.e_score_correction_bias is not None:
-            routing_scores = routing_scores + self.e_score_correction_bias.unsqueeze(0)
 
-        topk_scores, topk_idx = torch.topk(routing_scores, k=self.top_k, dim=-1)
+        # Expert bias is only for expert selection ranking. Keep aggregation
+        # weights from raw positive routing scores to avoid negative/unstable
+        # top-k weights that can explode after normalization.
+        if self.e_score_correction_bias is not None:
+            score_for_choice = routing_scores + self.e_score_correction_bias.unsqueeze(0)
+        else:
+            score_for_choice = routing_scores
+
+        _, topk_idx = torch.topk(score_for_choice, k=self.top_k, dim=-1)
+        topk_scores = torch.gather(routing_scores, dim=-1, index=topk_idx)
         if self.norm_topk_prob:
             denom = topk_scores.sum(dim=-1, keepdim=True).clamp_min(1e-20)
             topk_scores = topk_scores / denom

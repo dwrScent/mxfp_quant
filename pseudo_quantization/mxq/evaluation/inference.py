@@ -1,4 +1,3 @@
-from mxq.evaluation import patch, quant_method
 import os
 import json
 import random
@@ -177,6 +176,29 @@ def _find_local_hf_snapshot(repo_id: str) -> str | None:
     return None
 
 
+def _sync_pangu_dynamic_module(src: str, snapshot_dir: str) -> None:
+    """Keep HF dynamic module cache in sync with patched modeling file."""
+    sha = os.path.basename(os.path.normpath(snapshot_dir))
+    hf_homes = [
+        os.getenv("HF_HOME"),
+        "/cephfs/shared/xyli/hf_cache",
+        os.path.expanduser("~/.cache/huggingface"),
+    ]
+    seen = set()
+    for hf_home in hf_homes:
+        if not hf_home or hf_home in seen:
+            continue
+        seen.add(hf_home)
+        module_dir = os.path.join(
+            hf_home, "modules", "transformers_modules", sha
+        )
+        if not os.path.isdir(module_dir):
+            continue
+        dst = os.path.join(module_dir, "modeling_pangu_moe.py")
+        shutil.copy2(src, dst)
+        print(f"[pangu] synced dynamic module cache: {dst}")
+
+
 def _ensure_pangu_modeling(model_name_or_path: str) -> str:
     """Inject missing modeling_pangu_moe.py for openPangu-R and return local load path."""
     if "openPangu-R-72B-2512" not in model_name_or_path:
@@ -190,6 +212,7 @@ def _ensure_pangu_modeling(model_name_or_path: str) -> str:
         dst = os.path.join(model_name_or_path, "modeling_pangu_moe.py")
         shutil.copy2(src, dst)
         print(f"[pangu] using local model dir and injected modeling code: {dst}")
+        _sync_pangu_dynamic_module(src, model_name_or_path)
         return model_name_or_path
 
     repo_id = model_name_or_path.strip("/")
@@ -207,7 +230,30 @@ def _ensure_pangu_modeling(model_name_or_path: str) -> str:
     dst = os.path.join(snapshot_dir, "modeling_pangu_moe.py")
     shutil.copy2(src, dst)
     print(f"[pangu] using local snapshot and injected modeling code: {dst}")
+    _sync_pangu_dynamic_module(src, snapshot_dir)
     return snapshot_dir
+
+
+def _should_use_chat_template(model_name_or_path: str) -> bool:
+    """Return whether lighteval should apply tokenizer chat template."""
+    # openPangu-R-72B-2512 tends to return empty generations when wrapped by
+    # lighteval chat template in transformers backend. Use raw prompt instead.
+    if "openPangu-R-72B-2512" in model_name_or_path:
+        return False
+    return True
+
+
+def _patch_decode_keep_special_for_pangu(model_name_or_path: str) -> None:
+    """Avoid decoding empty strings when model emits special-only tokens."""
+    if "openPangu-R-72B-2512" not in model_name_or_path:
+        return
+    from lighteval.models.abstract_model import LightevalModel
+
+    def _tok_decode_keep_special(self, tokens):
+        return self.tokenizer.batch_decode(tokens, skip_special_tokens=False)
+
+    LightevalModel.tok_decode = _tok_decode_keep_special
+    print("[pangu] patched tok_decode(skip_special_tokens=False)")
 
 
 def transformers_eval(
@@ -312,6 +358,9 @@ def main(args):
         max_new_tokens=args.max_new_tokens,
         seed=args.seed,
     )
+    _patch_decode_keep_special_for_pangu(args.model)
+    use_chat_template = _should_use_chat_template(args.model)
+    print(f"[eval] use_chat_template={use_chat_template}")
     task_map = {
         "AIME-2024": ("custom|aime24|0|0", "mxq.evaluation.tasks.reasoning"),
         "AIME-2025": ("custom|aime25|0|0", "mxq.evaluation.tasks.reasoning"),
@@ -331,6 +380,8 @@ def main(args):
     tasks, custom_tasks = task_map[args.dataset]
     task_kwargs = {"tasks": tasks, "custom_tasks": custom_tasks}
     if args.backend == "vllm":
+        from mxq.evaluation import patch, quant_method  # noqa: F401
+
         model_config = VLLMModelConfig(
             pretrained=args.model,
             dtype=args.dtype,
@@ -346,7 +397,7 @@ def main(args):
         try:
             results, details = vllm(
                 model_config=model_config,
-                use_chat_template=True,
+                use_chat_template=use_chat_template,
                 # output_dir="./outputs/lighteval_outputs",
                 max_samples=args.max_samples,
                 **task_kwargs,
@@ -385,12 +436,12 @@ def main(args):
             model_parallel=model_parallel,
             accelerator=accelerator,
             generation_parameters=generation_parameters,
-            use_chat_template=True,
+            use_chat_template=use_chat_template,
         )
         try:
             results, details = transformers_eval(
                 model_config=model_config,
-                use_chat_template=True,
+                use_chat_template=use_chat_template,
                 max_samples=args.max_samples,
                 **task_kwargs,
             )
@@ -428,6 +479,9 @@ def main(args):
                 "metrics": detail["metrics"],
             }
         )
+    total = len(eval_results)
+    non_empty = sum(1 for x in eval_results if str(x.get("generated_text", "")).strip())
+    print(f"[eval] non_empty_generations={non_empty}/{total}")
     with open(args.output_path, "w") as f:
         json.dump(eval_results, f, indent=4)
     print(f"Evaluation results saved at {args.output_path}.")

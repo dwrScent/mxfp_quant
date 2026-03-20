@@ -1,0 +1,12 @@
+[
+    {
+        "full_prompt": "Answer the following multiple choice question. Think step by step before answering. The last line of your response must be exactly: 'Answer: $LETTER' (without quotes), where LETTER is one of ABCDEFGHIJ.\n\nThe isotonic equivalent of sodium chloride of cephalothiophene sodium is 0.24. How many more grams of sodium chloride is needed to prepare 2% eye drops 100mL?\n\nA) 0.36g\nB) 0.58g\nC) 0.33g\nD) 0.27g\nE) 0.61g\nF) 0.75g\nG) 0.92g\nH) 0.53g\nI) 0.42g\nJ) 1.42g",
+        "generated_text": "<unk>",
+        "gold": [
+            "I"
+        ],
+        "metrics": {
+            "extractive_match": 0.0
+        }
+    }
+]

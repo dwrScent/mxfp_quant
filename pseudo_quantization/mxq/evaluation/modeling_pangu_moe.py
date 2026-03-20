@@ -571,7 +571,9 @@ class PanguProMoEModel(PanguProMoEPreTrainedModel):
 
         next_cache = None
         if use_cache:
-            next_cache = next_decoder_cache.to_legacy_cache() if isinstance(next_decoder_cache, Cache) else next_decoder_cache
+            # Keep the modern Cache object instead of converting to legacy tuple.
+            # Legacy tuple cache breaks this model's attention path on newer transformers.
+            next_cache = next_decoder_cache
 
         if not return_dict:
             return tuple(
@@ -601,7 +603,21 @@ class PanguProMoEModel(PanguProMoEPreTrainedModel):
                 return attention_mask
             return None
 
-        past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
+        # Compatibility for older/newer transformers cache formats.
+        # New format: Cache object with get_seq_length().
+        # Legacy format: tuple(layer_past), where layer_past[0] is key tensor.
+        past_seen_tokens = 0
+        if past_key_values is not None:
+            if hasattr(past_key_values, "get_seq_length"):
+                past_seen_tokens = past_key_values.get_seq_length()
+            elif isinstance(past_key_values, (tuple, list)) and len(past_key_values) > 0:
+                first_layer_past = past_key_values[0]
+                if (
+                    isinstance(first_layer_past, (tuple, list))
+                    and len(first_layer_past) > 0
+                    and hasattr(first_layer_past[0], "shape")
+                ):
+                    past_seen_tokens = first_layer_past[0].shape[-2]
         using_static_cache = isinstance(past_key_values, StaticCache)
 
         if self._attn_implementation == "sdpa" and not using_static_cache and not output_attentions:

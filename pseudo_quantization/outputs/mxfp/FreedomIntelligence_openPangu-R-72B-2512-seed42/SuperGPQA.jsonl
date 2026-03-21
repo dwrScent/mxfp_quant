@@ -1,9 +1,49 @@
 [
     {
-        "full_prompt": "Answer the following multiple choice question. Think step by step before answering. The last line of your response must be exactly: 'Answer: $LETTER' (without quotes), where LETTER is one of ABCDEFGHIJ.\n\nThe isotonic equivalent of sodium chloride of cephalothiophene sodium is 0.24. How many more grams of sodium chloride is needed to prepare 2% eye drops 100mL?\n\nA) 0.36g\nB) 0.58g\nC) 0.33g\nD) 0.27g\nE) 0.61g\nF) 0.75g\nG) 0.92g\nH) 0.53g\nI) 0.42g\nJ) 1.42g",
-        "generated_text": "<unk>",
+        "full_prompt": "<s>[unused9]\u7cfb\u7edf\uff1a[unused10][unused9]\u7528\u6237\uff1aAnswer the following multiple choice question. Think step by step before answering. The last line of your response must be exactly: 'Answer: $LETTER' (without quotes), where LETTER is one of ABCDEFGHIJ.\n\nThe isotonic equivalent of sodium chloride of cephalothiophene sodium is 0.24. How many more grams of sodium chloride is needed to prepare 2% eye drops 100mL?\n\nA) 0.36g\nB) 0.58g\nC) 0.33g\nD) 0.27g\nE) 0.61g\nF) 0.75g\nG) 0.92g\nH) 0.53g\nI) 0.42g\nJ) 1.42g[unused10][unused9]\u52a9\u624b\uff1a",
+        "generated_text": "\u5404\u79cd\u5404",
         "gold": [
             "I"
+        ],
+        "metrics": {
+            "extractive_match": 0.0
+        }
+    },
+    {
+        "full_prompt": "<s>[unused9]\u7cfb\u7edf\uff1a[unused10][unused9]\u7528\u6237\uff1aAnswer the following multiple choice question. Think step by step before answering. The last line of your response must be exactly: 'Answer: $LETTER' (without quotes), where LETTER is one of ABCDEFGHIJ.\n\nWhat is the earliest existing Chinese map drawn using the scale grid mapping method?\n\nA) The Southern Song stone-carved Yu Ji Tu (incorrectly labeled)\nB) The Southern Song stone-carved Yu Ji Tu (incorrectly restored)\nC) The Southern Song stone-carved Yu Ji Tu (incorrectly scaled)\nD) The Southern Song stone-carved Yu Ji Tu (incorrectly dated)\nE) The Northern Song stone-carved Yu Ji Tu\nF) The Northern Song stone-carved Yu Ji Tu (incorrectly dated)\nG) The Southern Song stone-carved Yu Ji Tu\nH) The Southern Song stone-carved Yu Ji Tu (incorrectly attributed)\nI) The Southern Song stone-carved Yu Ji Tu (incorrectly proportioned)\nJ) The Southern Song stone-carved Yu Ji Tu (incorrectly oriented)[unused10][unused9]\u52a9\u624b\uff1a",
+        "generated_text": "ZKJ",
+        "gold": [
+            "G"
+        ],
+        "metrics": {
+            "extractive_match": 0.0
+        }
+    },
+    {
+        "full_prompt": "<s>[unused9]\u7cfb\u7edf\uff1a[unused10][unused9]\u7528\u6237\uff1aAnswer the following multiple choice question. Think step by step before answering. The last line of your response must be exactly: 'Answer: $LETTER' (without quotes), where LETTER is one of ABCDEFGHIJ.\n\nWith regard to international franchise agreements, which of the following statements is correct?\n\nA) The franchise arrangement restricts all partners from nation-based decision making\nB) The franchise agreement ensures universal regulatory standards across various governments\nC) The franchise agreement is not a domestic law contract\nD) The franchise agreement grants all international associates equal voting power in corporate decisions\nE) The franchise agreement allows foreign investors to enjoy the rights of resource development or infrastructure management exclusively owned by the government\nF) The franchise agreement is an agreement between the subjects of international law\nG) The franchise agreement protects domestic investment rights solely controlled by private sectors\nH) The franchise agreement permits local businesses to utilize national infrastructure independently\nI) The franchise contract mandates a single national standard without exception\nJ) The franchise document prescribes uniform global prices for all involved partners[unused10][unused9]\u52a9\u624b\uff1a",
+        "generated_text": "\u6587\u4e66",
+        "gold": [
+            "E"
+        ],
+        "metrics": {
+            "extractive_match": 0.0
+        }
+    },
+    {
+        "full_prompt": "<s>[unused9]\u7cfb\u7edf\uff1a[unused10][unused9]\u7528\u6237\uff1aAnswer the following multiple choice question. Think step by step before answering. The last line of your response must be exactly: 'Answer: $LETTER' (without quotes), where LETTER is one of ABCDEFGHIJ.\n\nWhich of the following groups of medicines is a component of Maimenduo Decoction?\n\nA) Peony, saffron\nB) Cinnamon, cardamom\nC) Eucalyptus\nD) Ginger, licorice\nE) Lavender, rosemary\nF) Ginseng, jujube\nG) Turmeric, clove\nH) Hawthorn, chamomile\nI) Reishi, shiitake\nJ) Cumin, coriander[unused10][unused9]\u52a9\u624b\uff1a",
+        "generated_text": "\ufeff#",
+        "gold": [
+            "F"
+        ],
+        "metrics": {
+            "extractive_match": 0.0
+        }
+    },
+    {
+        "full_prompt": "<s>[unused9]\u7cfb\u7edf\uff1a[unused10][unused9]\u7528\u6237\uff1aAnswer the following multiple choice question. Think step by step before answering. The last line of your response must be exactly: 'Answer: $LETTER' (without quotes), where LETTER is one of ABCDEFGHIJ.\n\nCalculate $I=\\int_{\\pi}^{\\frac{ 5 }{ 4 } \\cdot \\pi}{\\frac{ \\sin(2 \\cdot x) }{ \\left(\\cos(x)\\right)^4+\\left(\\sin(x)\\right)^4 } \\, dx}$\n\nA) I=\\frac{\\pi}{12}\nB) I=\\frac{\\pi}{4}\nC) I=\\frac{\\pi}{3}\nD) I=\\frac{\\pi}{9}\nE) I=\\frac{\\pi}{7}\nF) I=\\frac{\\pi}{5}\nG) I=\\frac{\\pi}{2}\nH) I=\\frac{\\pi}{6}\nI) I=\\frac{\\pi}{10}\nJ) I=\\frac{\\pi}{8}[unused10][unused9]\u52a9\u624b\uff1a",
+        "generated_text": "Thankfully",
+        "gold": [
+            "B"
         ],
         "metrics": {
             "extractive_match": 0.0

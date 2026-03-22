@@ -52,8 +52,8 @@ def draw_mse_comp_with_gaussian():
             res4 = get_quant_nvem(b, 16)
             res5 = get_quant_mxfp(b, 32)
             res6 = get_quant_mxem(b, 32)
-            res7 = get_quant_mxes(b, 32)
-            res8 = get_quant_nvesem2(b, 16)
+            res7 = get_quant_new(b, 16)
+            res8 = get_quant_nvesm2(b, 16)
 
             # 累加 MSE
             m1 += (res1 - b).pow(2).mean().item()
@@ -102,8 +102,8 @@ def draw_mse_comp_with_gaussian():
     plt.plot(x_axis, mse4, label='NVEM (4.75)', marker='x', markersize=4)
     plt.plot(x_axis, mse5, label='MXFP (4.25)', marker='D', markersize=6)
     plt.plot(x_axis, mse6, label='MXEM (4.5)', marker='v', markersize=4)
-    plt.plot(x_axis, mse7, label='MXES (4.5)', marker='*', markersize=4)
-    plt.plot(x_axis, mse8, label='NVESEM2 (4.625)', marker='P', markersize=4)
+    plt.plot(x_axis, mse7, label='NEW', marker='*', markersize=4)
+    plt.plot(x_axis, mse8, label='NVESEM (4.625)', marker='P', markersize=4)
 
 
     plt.xlabel('x variance = 0.01*2^(x)')
@@ -422,79 +422,6 @@ def get_quant_nves(tensor_value: torch.Tensor, group_size: int):
     return tensor_deq
 
 
-@torch.no_grad()
-def get_quant_nvesem(tensor_value: torch.Tensor, group_size: int):
-
-    sub_group_size = 8  # extra 2 bit for scale in subgroup
-    assert group_size % sub_group_size == 0
-
-    org_shape = tensor_value.shape
-    org_dtype = tensor_value.dtype
-
-    tensor_value = tensor_value.float()
-
-    if group_size > 0:
-        assert org_shape[-1] % group_size == 0
-        tensor_value = tensor_value.reshape(-1, group_size)
-
-    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
-    # avoid divide a too small value
-    max_val = max_val.clamp(min=1e-8)
-
-    max_quant_val = torch.tensor(FLOAT4_E2M1_MAX, device=tensor_value.device)
-
-    scales = tensor_value.abs().amax(dim=1, keepdim=True) / max_quant_val
-
-    tensor_value = tensor_value.reshape(-1, sub_group_size)
-    # Compute the scaling factor
-    global_scale = scales.max() / FLOAT8_E4M3_MAX
-    scales = (
-        (scales / global_scale)
-        .clamp(min=FLOAT8_E4M3_EPS)
-        .to(torch.float8_e4m3fn)
-        .to(tensor_value.dtype)
-    ) * global_scale
-    exp = torch.floor(torch.log2(scales))
-    # exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
-    bias_mse = {}
-    range_ = range(-1, 2)
-    # range_ = {0}
-    org_scales = scales
-    for bias in range_:
-        # scales = torch.pow(2, exp + bias)
-
-        scales = org_scales * torch.pow(2, torch.tensor(bias, device=tensor_value.device, dtype=tensor_value.dtype))
-        sub_groups_per_group = group_size // sub_group_size
-        scales = scales.expand(-1, sub_groups_per_group).reshape(-1, 1)
-        ratios = torch.tensor(
-            [1.0, 1.5], dtype=tensor_value.dtype, device=tensor_value.device
-        )
-        # ratios = torch.tensor(
-        #     [1.0, 1.5], dtype=tensor_value.dtype, device=tensor_value.device
-        # )
-        x_expanded = tensor_value.unsqueeze(2)
-        scales_expanded = scales.unsqueeze(2)
-
-        cand_scales = scales_expanded * ratios.view(1, 1, -1)
-        cand_qval = cast_to_fp4(x_expanded / cand_scales) * cand_scales
-        mse_per_ratio = (cand_qval - x_expanded).pow(2).mean(dim=1)
-        best_ratio_idx = mse_per_ratio.argmin(dim=1)
-        row_idx = torch.arange(tensor_value.size(0), device=tensor_value.device)
-        best_dqval = cand_qval[row_idx, :, best_ratio_idx]
-        quant_mse_per_subgrp = mse_per_ratio[row_idx, best_ratio_idx]
-        tensor_deq = best_dqval.reshape(-1, group_size)
-        quant_mse_sum = quant_mse_per_subgrp.view(-1, sub_groups_per_group).mean(
-            dim=1, keepdim=True
-        )
-        bias_mse[bias] = (tensor_deq, quant_mse_sum)
-    all_mse = torch.cat([bias_mse[b][1] for b in range_], dim=1)
-    best_bias_idx = all_mse.argmin(dim=1)
-    all_deq = torch.stack([bias_mse[b][0] for b in range_], dim=0)
-    all_deq = all_deq.view(len(range_), -1, group_size)
-    idx_expanded = best_bias_idx.view(1, -1, 1).expand(1, -1, group_size)
-    final_deq = torch.gather(all_deq, dim=0, index=idx_expanded).squeeze(0)
-    tensor_deq = final_deq.reshape(org_shape).to(org_dtype)
-    return tensor_deq
 @torch.no_grad()
 def get_quant_nvesem2(tensor_value: torch.Tensor, group_size: int):
 
@@ -1027,12 +954,12 @@ def get_quant_nvesm2(tensor_value: torch.Tensor, group_size: int):
     scales = org_scales * torch.pow(2, torch.tensor(bias, device=tensor_value.device, dtype=tensor_value.dtype))
     sub_groups_per_group = group_size // sub_group_size
     scales = scales.expand(-1, sub_groups_per_group).reshape(-1, 1)
-    ratios = torch.tensor(
-        [1.0, 1.25, 1.5, 1.75], dtype=tensor_value.dtype, device=tensor_value.device
-    )
     # ratios = torch.tensor(
-    #     [1.0, 1.5], dtype=tensor_value.dtype, device=tensor_value.device
+    #     [1.0, 1.25, 1.5, 1.75], dtype=tensor_value.dtype, device=tensor_value.device
     # )
+    ratios = torch.tensor(
+        [1.0, 1.5], dtype=tensor_value.dtype, device=tensor_value.device
+    )
     x_expanded = tensor_value.unsqueeze(2)
     scales_expanded = scales.unsqueeze(2)
 
@@ -1095,8 +1022,13 @@ def draw_histogram_for_different_ratio():
     files = [f for f in os.listdir(dump_dir) if f.endswith(".pt")]
     print(f"找到 {len(files)} 个文件，准备开始处理...")
 
+    # ratio_labels = ["1", "1.25", "1.5", "1.75"]
+    ratio_labels = ["1", "1.5"]
+
     # only process last 1 of them
-    files = files[-1:]
+    # files = files[-5:]
+    files = files[:11]
+    sub_group_size = 8
     for name in files:
 
         print(f"正在处理文件: {name}")
@@ -1108,6 +1040,12 @@ def draw_histogram_for_different_ratio():
         x = x.reshape(-1, x.shape[-1])
         get_quant_nvesm2(x, group_size=16)
 
+        # for lab in range(len(ratio_labels)):
+        #     data_tensor = torch.cat(container[lab], dim=0).to(device).abs().reshape(-1, sub_group_size)
+        #     num_gt_2 = (data_tensor > 2.0).sum(dim=1)
+        #     percentage_gt_2 = (num_gt_2 > 3.0).float().mean().item() * 100
+        #     print(f"Ratio: {ratio_labels[lab]}, Percentage of subgroup that has >=3 elem>2 : {percentage_gt_2:.2f}%")
+
 
     # draw 4 lines in one graph
     import matplotlib.pyplot as plt
@@ -1115,10 +1053,9 @@ def draw_histogram_for_different_ratio():
     # 准备绘图窗口
     plt.figure(figsize=(10, 6))
 
-    ratio_labels = ["1", "1.25", "1.5", "1.75"]
     num_bins = 100
 
-    for lab in range(4):
+    for lab in range(len(ratio_labels)):
         # 1. 拼接并确保在正确的设备上
         # 假设 container[lab] 里的元素已经是 Tensor，如果不是，先转换
         data_tensor = torch.cat(container[lab], dim=0).to(device).abs()
@@ -1140,6 +1077,13 @@ def draw_histogram_for_different_ratio():
         # 4. 绘制曲线
         # 必须搬回 CPU 才能画图
         plt.plot(x_bins.cpu().numpy(), hist.cpu().numpy(), label=f"Ratio: {ratio_labels[lab]}", alpha=0.8)
+
+        tensor_value = tensor_value.reshape(-1, sub_group_size)
+        num_gt_2 = (tensor_value > 2.25).sum(dim=1)
+        count_num_gt_2 = []
+        for i in range(sub_group_size+1):
+            count_num_gt_2.append((num_gt_2 == i).float().mean().item() * 100)
+            print(f"Ratio: {ratio_labels[lab]}, Percentage of subgroup that has {i} elem>2 : {count_num_gt_2[-1]:.2f}%")
 
     # 5. 修饰图表
     plt.title("Histogram Comparison of Different Ratios")
@@ -1253,13 +1197,16 @@ def get_quant_new(tensor_value: torch.Tensor, group_size):
     ) * global_scale
 
     subgroup_per_group = group_size // sub_group_size
-    scales = scales.expand(tensor_value.shape[0], subgroup_per_group).reshape(-1).unsqueeze(1)
+    # scales = scales.expand(tensor_value.shape[0], subgroup_per_group).reshape(-1).unsqueeze(1)
+    # tensor_value = tensor_value.reshape(-1, sub_group_size)
 
-    tensor_value = tensor_value.reshape(-1, sub_group_size)
-    E1 = (tensor_value.abs() / scales).mean(dim=1) > 3.0
-    E1 = E1.to(org_dtype).unsqueeze(1)
+    num_gt_2 = (tensor_value.abs() / scales > 2).sum(dim=1, keepdim=True) / group_size
+    extra_scale = 1 + 0.5 * ( num_gt_2 > 0.5 )
+    # num_gt_2 = (tensor_value.abs() / scales > 2).sum(dim=1, keepdim=True)
+    # extra_scale = 1 + 0.5 * (num_gt_2 >= 4).float()
 
-    tensor_quant = cast_to_fp4(tensor_value / scales / 2 ** E1) * scales * 2 ** E1
+    tensor_quant = cast_to_fp4(tensor_value / (scales * extra_scale)) * (scales * extra_scale)
+
     return tensor_quant.reshape(org_shape).to(org_dtype)
 
 
@@ -1285,6 +1232,7 @@ __name__ = "__main__"
 
 container = {0: [], 1: [], 2: [], 3: []}
 # draw_histogram_for_different_ratio()
-draw_kurtosis_histogram_for_different_ratio()
+# draw_kurtosis_histogram_for_different_ratio()
+draw_mse_comp_with_gaussian()
 
 # compare_quant_err_with_different_sf()

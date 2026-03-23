@@ -23,6 +23,7 @@ AUTO_TUNE_MEM=${AUTO_TUNE_MEM:-1}
 MODEL_PARALLEL=${MODEL_PARALLEL:-1}
 NUM_PROCESSES=${NUM_PROCESSES:-}
 TRANSFORMERS_MP_MODE=${TRANSFORMERS_MP_MODE:-"single_process"}
+PANGU_USE_CHAT_TEMPLATE=${PANGU_USE_CHAT_TEMPLATE:-1}
 if [ -z "${CUDA_VISIBLE_DEVICES+x}" ]; then
   CUDA_VISIBLE_DEVICES="0,1,2,3,4,5"
 fi
@@ -69,8 +70,10 @@ echo "[reasoning_pangu] auto_tune_mem=${AUTO_TUNE_MEM}"
 echo "[reasoning_pangu] model_parallel=${MODEL_PARALLEL}"
 echo "[reasoning_pangu] num_processes=${NUM_PROCESSES:-auto}"
 echo "[reasoning_pangu] transformers_mp_mode=${TRANSFORMERS_MP_MODE}"
+echo "[reasoning_pangu] pangu_use_chat_template=${PANGU_USE_CHAT_TEMPLATE}"
 
 export HF_HOME
+export PANGU_USE_CHAT_TEMPLATE
 
 EXTRA_ARGS=()
 if [ -n "${MAX_SAMPLES}" ]; then

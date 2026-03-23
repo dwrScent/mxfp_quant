@@ -14,8 +14,6 @@ from transformers.models.llama.modeling_llama import LlamaForCausalLM
 from transformers.models.bert.modeling_bert import BertForSequenceClassification
 from transformers.models.mistral.modeling_mistral import MistralForCausalLM
 from transformers.models.qwen2.modeling_qwen2 import Qwen2ForCausalLM
-
-from transformers.models.qwen2.modeling_qwen2 import Qwen2ForCausalLM
 from transformers.models.falcon.modeling_falcon import FalconForCausalLM
 
 
@@ -40,6 +38,16 @@ def get_blocks(model):
         layers = model.model.layers
     elif isinstance(model, (Qwen2ForCausalLM)):
         layers = model.model.layers
+    elif hasattr(model, "model") and hasattr(model.model, "layers"):
+        # Generic HF/remote-code CausalLM fallback (e.g., QWenLMHeadModel).
+        layers = model.model.layers
+    elif hasattr(model, "transformer") and hasattr(model.transformer, "h"):
+        # GPT-style block container used by GPT2/Bloom/Falcon/Qwen-v1 style models.
+        layers = model.transformer.h
+    elif hasattr(model, "model") and hasattr(model.model, "decoder") and hasattr(model.model.decoder, "layers"):
+        layers = model.model.decoder.layers
+    elif hasattr(model, "bert") and hasattr(model.bert, "encoder") and hasattr(model.bert.encoder, "layer"):
+        layers = model.bert.encoder.layer
     else:
         raise NotImplementedError(type(model))
 

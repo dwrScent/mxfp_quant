@@ -139,7 +139,6 @@ def get_quant_hif4(tensor_value: torch.Tensor, group_size: int):
     # it's round to nearest with 2 bit mantissa
     in_grp = torch.floor(tensor_value.abs() / (SF * 2.0 ** (DE64 - 2)) + 0.5) * 2.0 ** (-2)
     in_grp[in_grp >= 2.0] = 1.75
-    print(in_grp)
     tensor_quant = sign * in_grp * (SF * 2.0 ** DE64)
 
     return tensor_quant.reshape(org_shape).to(org_dtype)

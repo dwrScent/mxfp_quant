@@ -1079,11 +1079,11 @@ def draw_histogram_for_different_ratio():
         plt.plot(x_bins.cpu().numpy(), hist.cpu().numpy(), label=f"Ratio: {ratio_labels[lab]}", alpha=0.8)
 
         tensor_value = tensor_value.reshape(-1, sub_group_size)
-        num_gt_2 = (tensor_value > 2.25).sum(dim=1)
+        num_gt_2 = (tensor_value > 3.5).sum(dim=1)
         count_num_gt_2 = []
         for i in range(sub_group_size+1):
             count_num_gt_2.append((num_gt_2 == i).float().mean().item() * 100)
-            print(f"Ratio: {ratio_labels[lab]}, Percentage of subgroup that has {i} elem>2 : {count_num_gt_2[-1]:.2f}%")
+            print(f"Ratio: {ratio_labels[lab]}, Percentage of subgroup that has {i} elem>3.5 : {count_num_gt_2[-1]:.2f}%")
 
     # 5. 修饰图表
     plt.title("Histogram Comparison of Different Ratios")
@@ -1197,11 +1197,11 @@ def get_quant_new(tensor_value: torch.Tensor, group_size):
     ) * global_scale
 
     subgroup_per_group = group_size // sub_group_size
-    # scales = scales.expand(tensor_value.shape[0], subgroup_per_group).reshape(-1).unsqueeze(1)
-    # tensor_value = tensor_value.reshape(-1, sub_group_size)
+    scales = scales.expand(tensor_value.shape[0], subgroup_per_group).reshape(-1).unsqueeze(1)
+    tensor_value = tensor_value.reshape(-1, sub_group_size)
 
-    num_gt_2 = (tensor_value.abs() / scales > 2).sum(dim=1, keepdim=True) / group_size
-    extra_scale = 1 + 0.5 * ( num_gt_2 > 0.5 )
+    num_gt_2 = (tensor_value.abs() / scales > 4).sum(dim=1, keepdim=True) / sub_group_size
+    extra_scale = 1 + 0.5 * ( num_gt_2 >= 0.25 )
     # num_gt_2 = (tensor_value.abs() / scales > 2).sum(dim=1, keepdim=True)
     # extra_scale = 1 + 0.5 * (num_gt_2 >= 4).float()
 
@@ -1231,8 +1231,8 @@ def compare_quant_err_with_different_sf():
 __name__ = "__main__"
 
 container = {0: [], 1: [], 2: [], 3: []}
-# draw_histogram_for_different_ratio()
+draw_histogram_for_different_ratio()
 # draw_kurtosis_histogram_for_different_ratio()
-draw_mse_comp_with_gaussian()
+# draw_mse_comp_with_gaussian()
 
 # compare_quant_err_with_different_sf()

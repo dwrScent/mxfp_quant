@@ -32,11 +32,11 @@ parser.add_argument("--num_fewshot", type=int, default=0)
 # quantization config
 parser.add_argument("--w_bit", type=int, default=16)
 parser.add_argument(
-        "--w_mode", type=str, choices=["mxfp", "nvfp", "mxem", "mxes", "nvem", "nves", "nvesem2", "nvesm", "nvesm2", "hif4", "hifem", "hifes", "nvfpe5", "nvfpm4", "nvfpm5", "nvint4"], default=None
+        "--w_mode", type=str, choices=["mxfp", "nvfp", "mxem", "mxes", "nvem", "nves", "nvesem2", "nvesm", "nvesm2", "hif4", "hifem", "hifes", "nvgt4"], default=None
 )
 parser.add_argument("--a_bit", type=int, default=16)
 parser.add_argument(
-    "--a_mode", type=str, choices=["mxfp", "nvfp", "mxem", "mxes", "nvem", "nves", "nvesem2", "nvesm", "nvesm2", "hif4", "hifem", "hifes", "nvfpe5", "nvfpm4", "nvfpm5", "nvint4"], default=None
+    "--a_mode", type=str, choices=["mxfp", "nvfp", "mxem", "mxes", "nvem", "nves", "nvesem2", "nvesm", "nvesm2", "hif4", "hifem", "hifes", "nvgt4"], default=None
 )
 parser.add_argument("--group_size", type=int, default=-1)
 parser.add_argument("--awq", action="store_true", help="Whether to use AWQ")
@@ -48,7 +48,7 @@ args = parser.parse_args()
 def build_model_and_enc(model_path):
     print(f"* Building model {model_path}")
 
-    config = AutoConfig.from_pretrained(model_path)
+    config = AutoConfig.from_pretrained(model_path, trust_remote_code=True)
     # fp16 to quantized
     # kwargs = {"device_map": "balanced", "torch_dtype": torch.float16}
     # model = AutoModelForCausalLM.from_pretrained(model_path, config=config, **kwargs)
@@ -58,7 +58,8 @@ def build_model_and_enc(model_path):
         config=config,
         torch_dtype=torch.float16,
         low_cpu_mem_usage=True,
-        device_map=None          # ★ 禁止 balanced
+        device_map=None,          # ★ 禁止 balanced
+        trust_remote_code=True,
     )
 
     # if args.awq:
@@ -158,7 +159,11 @@ def main():
         else:
             # do other evaluations
             # print("no implementation yet")
-            lm_eval_model = HFLM(pretrained=model, batch_size=args.batch_size)
+            lm_eval_model = HFLM(
+                pretrained=model,
+                batch_size=args.batch_size,
+                trust_remote_code=True,
+            )
             print_time("Start a task")
             task_names = args.tasks.split(",")
 

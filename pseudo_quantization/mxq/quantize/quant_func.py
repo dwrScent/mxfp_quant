@@ -578,107 +578,6 @@ def get_quant_nvem(tensor_value: torch.Tensor, group_size: int):
     return tensor_quant.reshape(org_shape).to(org_dtype)
 
 
-FLOAT8_E5M3_MAX = 2 ** 16 * 1.75
-def cast_to_E5M3(x: torch.Tensor):
-    x_quant, _ = quantize_to_grid(x, FP8_E5M3_GRID)
-    return x_quant
-    # x = x.clamp(min=2 ** (-17), max=FLOAT8_E5M3_MAX)
-    # E = torch.floor(torch.log2(x))
-    # return torch.round(x * 2 ** (-E + 3)) * 2 ** (E - 3)
-@torch.no_grad()
-def get_quant_nvfpe5(tensor_value: torch.Tensor, group_size: int):
-
-    org_shape = tensor_value.shape
-    org_dtype = tensor_value.dtype
-
-    tensor_value = tensor_value.float()
-    if group_size > 0:
-        assert org_shape[-1] % group_size == 0
-        tensor_value = tensor_value.reshape(-1, group_size)
-
-    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
-    scales = max_val / FLOAT4_E2M1_MAX
-    # avoid divide a too small value
-    global_scale = scales.max() / FLOAT8_E5M3_MAX
-    scales = cast_to_E5M3((scales.abs() / global_scale).clamp(min=FLOAT8_E4M3_EPS)) * global_scale
-    # scales = (
-    #     (scales / global_scale)
-    #     .clamp(min=FLOAT8_E4M3_EPS)
-    #     .to(torch.float8_e4m3fn)
-    #     .to(tensor_value.dtype)
-    # ) * global_scale
-
-    tensor_quant = cast_to_fp4(tensor_value / scales) * scales
-
-    return tensor_quant.reshape(org_shape).to(org_dtype)
-
-
-FLOAT8_E4M4_MAX = 2 ** 8 * 1.875
-@torch.no_grad()
-def cast_to_E4M4(x: torch.Tensor):
-    x_quant, _ = quantize_to_grid(x, FP8_E4M4_GRID)
-    return x_quant
-
-
-@torch.no_grad()
-def get_quant_nvfpm4(tensor_value: torch.Tensor, group_size: int):
-
-    org_shape = tensor_value.shape
-    org_dtype = tensor_value.dtype
-
-    tensor_value = tensor_value.float()
-    if group_size > 0:
-        assert org_shape[-1] % group_size == 0
-        tensor_value = tensor_value.reshape(-1, group_size)
-
-    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
-    scales = max_val / FLOAT4_E2M1_MAX
-    # avoid divide a too small value
-    global_scale = scales.max() / FLOAT8_E4M4_MAX
-    scales = cast_to_E4M4( scales.abs() / global_scale ).clamp(min=FLOAT8_E4M4_EPS) * global_scale
-
-    tensor_quant = cast_to_fp4(tensor_value / scales) * scales
-
-    return tensor_quant.reshape(org_shape).to(org_dtype)
-
-
-E4M5_MAX = 2 ** 8 * 1.9735
-E4M5_GRID = torch.tensor(float_value(4, 5))
-@torch.no_grad()
-def cast_to_E4M5(x: torch.Tensor):
-    x_quant, _ = quantize_to_grid(x, E4M5_GRID)
-    return x_quant
-
-@torch.no_grad()
-def get_quant_nvfpm5(tensor_value: torch.Tensor, group_size: int):
-
-    # sub_group_size = 4  # extra 2 bit for scale in subgroup
-    # assert group_size % sub_group_size == 0
-
-    org_shape = tensor_value.shape
-    org_dtype = tensor_value.dtype
-
-    tensor_value = tensor_value.float()
-
-    if group_size > 0:
-        assert org_shape[-1] % group_size == 0
-        tensor_value = tensor_value.reshape(-1, group_size)
-
-    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
-    # avoid divide a too small value
-    max_val = max_val.clamp(min=1e-8)
-
-    max_quant_val = torch.tensor(FLOAT4_E2M1_MAX, device=tensor_value.device)
-
-    scales = tensor_value.abs().amax(dim=1, keepdim=True) / max_quant_val
-
-    # Compute the scaling factor
-    global_scale = scales.max() / E4M5_MAX
-    scales = cast_to_E4M5((scales / global_scale)) * global_scale
-    tensor_quant = cast_to_fp4(tensor_value / scales) * scales
-    return tensor_quant.reshape(org_shape).to(org_dtype)
-
-
 def get_quant_nvint4(tensor_value: torch.Tensor, group_size: int):
     
     org_shape = tensor_value.shape
@@ -706,6 +605,49 @@ def get_quant_nvint4(tensor_value: torch.Tensor, group_size: int):
     return tensor_quant.reshape(org_shape).to(org_dtype)
 
 
+def get_quant_gt4(tensor_value: torch.Tensor, group_size):
+    sub_group_size = 8  # extra 2 bit for scale in subgroup
+    assert group_size % sub_group_size == 0
+
+    org_shape = tensor_value.shape
+    org_dtype = tensor_value.dtype
+
+    tensor_value = tensor_value.float()
+    if group_size > 0:
+        assert org_shape[-1] % group_size == 0
+        tensor_value = tensor_value.reshape(-1, group_size)
+
+    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+    # avoid divide a too small value
+    max_val = max_val.clamp(min=1e-8)
+
+    max_quant_val = torch.tensor(FLOAT4_E2M1_MAX, device=tensor_value.device)
+
+    scales = tensor_value.abs().amax(dim=1, keepdim=True) / max_quant_val
+
+    # Compute the scaling factor
+    global_scale = scales.max() / FLOAT8_E4M3_MAX
+    scales = (
+        (scales / global_scale)
+        .clamp(min=FLOAT8_E4M3_EPS)
+        .to(torch.float8_e4m3fn)
+        .to(tensor_value.dtype)
+    ) * global_scale
+
+    subgroup_per_group = group_size // sub_group_size
+    scales = scales.expand(tensor_value.shape[0], subgroup_per_group).reshape(-1).unsqueeze(1)
+    tensor_value = tensor_value.reshape(-1, sub_group_size)
+
+    num_gt_2 = (tensor_value.abs() / scales > 4).sum(dim=1, keepdim=True) / sub_group_size
+    extra_scale = 1 + 0.5 * ( num_gt_2 >= 0.25 )
+    # num_gt_2 = (tensor_value.abs() / scales > 2).sum(dim=1, keepdim=True)
+    # extra_scale = 1 + 0.5 * (num_gt_2 >= 4).float()
+
+    tensor_quant = cast_to_fp4(tensor_value / (scales * extra_scale)) * (scales * extra_scale)
+
+    return tensor_quant.reshape(org_shape).to(org_dtype)
+
+
 QUANT_METHOD_MAP = {
     "mxfp": get_quant_mxfp,
     "nvfp": get_quant_nvfp,
@@ -719,10 +661,7 @@ QUANT_METHOD_MAP = {
     "hif4": get_quant_hif4,
     "hifem": get_quant_hifem,
     "hifes": get_quant_hifes,
-    "nvfpe5": get_quant_nvfpe5,
-    "nvfpm4": get_quant_nvfpm4,
-    "nvfpm5": get_quant_nvfpm5,
-    "nvint4": get_quant_nvint4,
+    "nvgt4": get_quant_gt4,
 }
 
 

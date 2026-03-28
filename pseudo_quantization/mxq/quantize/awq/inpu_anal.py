@@ -101,95 +101,6 @@ def draw_3d_activation_surface():
         plt.savefig(f"dump/{name.replace('.pt', '.png')}", dpi=150)
         plt.show()
         plt.close()
-    # import numpy as np
-    # import torch
-    # import matplotlib.pyplot as plt
-    # from matplotlib.colors import LogNorm
-    #
-    # name = "model_layers_8_mlp_up_proj.pt"
-    # x = torch.load("dump/" + name)  # [N, T, Cin]
-    # x = x.reshape(-1, x.shape[-1])
-    #
-    # # === 核心改动 ===
-    # plot_data = x.abs().cpu().numpy()
-    #
-    # def streaming_quantile(x, q=0.999, chunk_size=1_000_000):
-    #     x = x.abs().flatten()
-    #     qs = []
-    #     for i in range(0, x.numel(), chunk_size):
-    #         chunk = x[i : i + chunk_size]
-    #         qs.append(torch.quantile(chunk.float(), q))
-    #     return torch.quantile(torch.stack(qs), q)
-    #
-    # p99 = streaming_quantile(x, 0.999)
-    #
-    # # clip to expose bulk
-    # # p99 = torch.quantile(x.abs().float(), 0.99).item()
-    # plot_data = np.clip(plot_data, 1e-6, p99)
-    #
-    # # structured subsample
-    # # plot_data = plot_data[::16, ::16]
-    #
-    # group_size = 256
-    # num_groups = plot_data.shape[1] // group_size
-    #
-    # cmaps = [
-    #     "viridis", "plasma", "inferno", "magma",
-    #     "cividis", "turbo"
-    # ]
-    #
-    # fig = plt.figure(figsize=(12, 8))
-    # ax = fig.add_subplot(111, projection="3d")
-    # for g in range(num_groups):
-    #     c_start = g * group_size
-    #     c_end = min((g + 1) * group_size, plot_data.shape[1])
-    #
-    #     Z = plot_data[:, c_start:c_end]
-    #     if Z.size == 0:
-    #         continue
-    #
-    #     rows, cols = Z.shape
-    #     Cin_sub, N_sub = np.meshgrid(
-    #         np.arange(c_start, c_end),
-    #         np.arange(rows)
-    #     )
-    #
-    #     surf = ax.plot_surface(
-    #         Cin_sub,
-    #         N_sub,
-    #         Z,
-    #         cmap=cmaps[g % len(cmaps)],
-    #         norm=LogNorm(vmin=1e-6, vmax=p99),
-    #         linewidth=0,
-    #         antialiased=False,
-    #         alpha=0.85,
-    #     )
-    #
-    # # rows, cols = plot_data.shape
-    # # N_grid, Cin_grid = np.meshgrid(np.arange(cols), np.arange(rows))
-    # #
-    # # fig = plt.figure(figsize=(12, 8))
-    # # ax = fig.add_subplot(111, projection="3d")
-    # #
-    # # surf = ax.plot_surface(
-    # #     Cin_grid,
-    # #     N_grid,
-    # #     plot_data,
-    # #     cmap="viridis",
-    # #     norm=LogNorm(vmin=1e-6, vmax=p99),
-    # #     linewidth=0,
-    # #     antialiased=False,
-    # # )
-    #
-    # fig.colorbar(surf, ax=ax, shrink=0.5)
-    # ax.set_xlabel("Channel")
-    # ax.set_ylabel("Sample")
-    # ax.set_zlabel("|Activation| (clipped, log)")
-    # ax.set_title("3D Activation Surface for " + name)
-    #
-    # ax.view_init(elev=30, azim=45)
-    # plt.show()
-    # plt.savefig("dump/" + name.replace(".pt", "_fixed.png"))
 
 
 FLOAT4_E2M1_MAX = 6.0
@@ -258,77 +169,6 @@ def cast_to_fp4(x: torch.Tensor):
     x_abs = torch.abs(x)
     x_quant, _ = quantize_to_grid(x_abs, FP4_E2M1_GRID)
     return x_quant * sign
-
-
-# @torch.no_grad()
-# def get_quant_nvess(tensor_value: torch.Tensor, group_size: int):
-#
-#     sub_group_size = 8  # extra 2 bit for scale in subgroup
-#     assert group_size % sub_group_size == 0
-#
-#     org_shape = tensor_value.shape
-#     org_dtype = tensor_value.dtype
-#
-#     tensor_value = tensor_value.float()
-#
-#     if group_size > 0:
-#         assert org_shape[-1] % group_size == 0
-#         tensor_value = tensor_value.reshape(-1, group_size)
-#
-#     max_val = tensor_value.abs().amax(dim=1, keepdim=True)
-#     # avoid divide a too small value
-#     max_val = max_val.clamp(min=1e-8)
-#
-#     max_quant_val = torch.tensor(FLOAT4_E2M1_MAX, device=tensor_value.device)
-#
-#     scales = tensor_value.abs().amax(dim=1, keepdim=True) / max_quant_val
-#
-#     tensor_value = tensor_value.reshape(-1, sub_group_size)
-#     # Compute the scaling factor
-#     global_scale = scales.max() / FLOAT8_E4M3_MAX
-#     scales = (
-#         (scales / global_scale)
-#         .clamp(min=FLOAT8_E4M3_EPS)
-#         .to(torch.float8_e4m3fn)
-#         .to(tensor_value.dtype)
-#     ) * global_scale
-#     exp = torch.floor(torch.log2(scales))
-#     # exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
-#     bias_mse = {}
-#     range_ = range(-1, 2)
-#     org_scales = scales
-#     for bias in range_:
-#         # scales = torch.pow(2, exp + bias)
-#
-#         scales = org_scales * torch.pow(2, torch.tensor(bias, device=tensor_value.device, dtype=tensor_value.dtype))
-#         sub_groups_per_group = group_size // sub_group_size
-#         scales = scales.expand(-1, sub_groups_per_group).reshape(-1, 1)
-#         ratios = torch.tensor(
-#             [1.0, 1.25, 1.5, 1.75], dtype=tensor_value.dtype, device=tensor_value.device
-#         )
-#         x_expanded = tensor_value.unsqueeze(2)
-#         scales_expanded = scales.unsqueeze(2)
-#
-#         cand_scales = scales_expanded * ratios.view(1, 1, -1)
-#         cand_qval = cast_to_fp4(x_expanded / cand_scales) * cand_scales
-#         mse_per_ratio = (cand_qval - x_expanded).pow(2).mean(dim=1)
-#         best_ratio_idx = mse_per_ratio.argmin(dim=1)
-#         row_idx = torch.arange(tensor_value.size(0), device=tensor_value.device)
-#         best_dqval = cand_qval[row_idx, :, best_ratio_idx]
-#         quant_mse_per_subgrp = mse_per_ratio[row_idx, best_ratio_idx]
-#         tensor_deq = best_dqval.reshape(-1, group_size)
-#         quant_mse_sum = quant_mse_per_subgrp.view(-1, sub_groups_per_group).mean(
-#             dim=1, keepdim=True
-#         )
-#         bias_mse[bias] = (tensor_deq, quant_mse_sum)
-#     all_mse = torch.cat([bias_mse[b][1] for b in range_], dim=1)
-#     best_bias_idx = all_mse.argmin(dim=1)
-#     all_deq = torch.stack([bias_mse[b][0] for b in range_], dim=0)
-#     all_deq = all_deq.view(len(range_), -1, group_size)
-#     idx_expanded = best_bias_idx.view(1, -1, 1).expand(1, -1, group_size)
-#     final_deq = torch.gather(all_deq, dim=0, index=idx_expanded).squeeze(0)
-#     tensor_deq = final_deq.reshape(org_shape).to(org_dtype)
-#     return tensor_deq
 
 
 @torch.no_grad()
@@ -554,6 +394,68 @@ def hif4_anal(tensor_value: torch.Tensor, group_size=64):
     print(f"Entropy after quantization: {ent_grp:.4f}")
 
 
+@torch.no_grad()
+def get_quant_nvesm2(tensor_value: torch.Tensor, group_size: int):
+
+    sub_group_size = 8  # extra 2 bit for scale in subgroup
+    assert group_size % sub_group_size == 0
+
+    org_shape = tensor_value.shape
+    org_dtype = tensor_value.dtype
+
+    tensor_value = tensor_value.float()
+
+    if group_size > 0:
+        assert org_shape[-1] % group_size == 0
+        tensor_value = tensor_value.reshape(-1, group_size)
+
+    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+    # avoid divide a too small value
+    max_val = max_val.clamp(min=1e-8)
+
+    max_quant_val = torch.tensor(FLOAT4_E2M1_MAX, device=tensor_value.device)
+
+    scales = tensor_value.abs().amax(dim=1, keepdim=True) / max_quant_val
+
+    tensor_value = tensor_value.reshape(-1, sub_group_size)
+    # Compute the scaling factor
+    global_scale = scales.max() / FLOAT8_E4M3_MAX
+    scales = (
+        (scales / global_scale)
+        .clamp(min=FLOAT8_E4M3_EPS)
+        .to(torch.float8_e4m3fn)
+        .to(tensor_value.dtype)
+    ) * global_scale
+
+    tensor_value = tensor_value.reshape(-1, sub_group_size)
+    # ratio = torch.tensor([1.0, 1.5], dtype=tensor_value.dtype, device=tensor_value.device)
+    ratio = torch.tensor([1.0, 1.25, 1.5, 1.75], dtype=tensor_value.dtype, device=tensor_value.device)
+    ratio_div = torch.tensor([1.0, 0.78125, 0.65625, 0.5713125], dtype=tensor_value.dtype, device=tensor_value.device)
+    scales = scales.reshape(-1, 1).expand(-1, group_size // sub_group_size).reshape(-1, 1)
+    x_expanded = tensor_value.unsqueeze(2)
+    scales_expanded = scales.unsqueeze(2)
+    scales_expanded_div = 1 / scales_expanded
+    cand_scales_div = scales_expanded_div * ratio_div.view(1, 1, -1)
+    cand_scales = scales_expanded * ratio.view(1, 1, -1)
+    cand_qval = cast_to_fp4(x_expanded / cand_scales) * cand_scales
+    norm_val = (x_expanded / cand_scales)
+    pre_scale_val = (tensor_value / scales).unsqueeze(2) * torch.ones(1, 1, len(ratio), device=tensor_value.device)
+    norm_val = x_expanded * cand_scales_div
+    # err_per_ratio = (norm_val - cast_to_fp4(norm_val)).abs() * ratio.view(1, 1, -1)
+    err_per_ratio = (pre_scale_val - cast_to_fp4(norm_val) * ratio.view(1, 1, -1)).abs()
+    err_count.append(err_per_ratio)
+    err_per_ratio = (err_per_ratio - torch.round(err_per_ratio)).abs()
+    # err_count.append((norm_val - cast_to_fp4(norm_val)).abs() * ratio.view(1, 1, -1))
+    # mse_per_ratio = (cand_qval - x_expanded).pow(2).mean(dim=1)
+    mse_per_ratio = (cand_qval - x_expanded).abs().mean(dim=1)
+    best_ratio_idx = mse_per_ratio.argmin(dim=1)
+    row_idx = torch.arange(tensor_value.size(0), device=tensor_value.device)
+    best_dqval = cand_qval[row_idx, :, best_ratio_idx]
+
+    tensor_deq = best_dqval.reshape(org_shape).to(org_dtype)
+    return tensor_deq
+
+
 def nvesm2_anal(x: torch.Tensor, group_size=16):
     org_shape = x.shape
     org_dtype = x.dtype
@@ -640,14 +542,27 @@ def nvesm2_anal(x: torch.Tensor, group_size=16):
 
 if __name__ == "__main__":
 
-    # x = torch.load("dump/model_layers_8_mlp_up_proj.pt")  # [N, T, Cin]
-    name = "model_layers_0_self_attn_q_proj.pt"
-    # name = "model_layers_0_mlp_up_proj.pt"
-    # name = "model_layers_8_mlp_gate_proj.pt"
-    # name = "model_layers_16_self_attn_o_proj.pt"
-    x = torch.load("dump/" + name)  # [N, T, Cin]
-    x = x.reshape(-1, x.shape[-1])
+    dump_dir = "dump"
+    device = torch.device('cuda:0')
 
-    nvfp_anal(x, group_size=16)
-    hif4_anal(x, group_size=64)
-    nvesm2_anal(x, group_size=16)
+    files = [f for f in os.listdir(dump_dir) if f.endswith(".pt")]
+    print(f"找到 {len(files)} 个文件，准备开始处理...")
+
+    files = files[32:37]
+    err_count = []
+    for name in files:
+        print(f"正在处理文件: {name}")
+        x = torch.load("dump/" + name)  # [N, T, Cin]
+        x = x.reshape(-1, x.shape[-1])
+
+        # nvfp_anal(x, group_size=16)
+        # hif4_anal(x, group_size=64)
+        # nvesm2_anal(x, group_size=16)
+        get_quant_nvesm2(x, group_size=16)
+
+        # draw histogram of err_count
+        err_count_tensor = torch.cat(err_count, dim=0).cpu()
+        num_bins = 100
+        min_val = err_count_tensor.min().item()
+        max_val = err_count_tensor.max().item()
+        draw_histogram(err_count_tensor, min_val, max_val, num_bins, "nvesm2_error")

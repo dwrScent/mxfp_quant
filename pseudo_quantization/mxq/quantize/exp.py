@@ -46,14 +46,11 @@ def draw_mse_comp_with_gaussian():
         for i in range(num_samples):
             b = torch.randn(8192) * sigma 
             # 假设这些函数已经在你的命名空间中定义
-            res1 = get_quant_hif4(b, 64)
-            res2 = get_quant_nvfp(b, 16)
-            res3 = get_quant_nves(b, 16)
-            res4 = get_quant_nvem(b, 16)
-            res5 = get_quant_mxfp(b, 32)
-            res6 = get_quant_mxem(b, 32)
-            res7 = get_quant_new(b, 16)
-            res8 = get_quant_nvesm2(b, 16)
+            res1 = get_quant_nvfp(b, 16)
+            res2 = get_quant_nves(b, 16)
+            res3 = get_quant_nvint4(b, 16)
+            res4 = get_quant_nvesm2(b, 16)
+            res5 = get_quant_nvintesm2(b, 16)
 
             # 累加 MSE
             m1 += (res1 - b).pow(2).mean().item()
@@ -61,17 +58,17 @@ def draw_mse_comp_with_gaussian():
             m3 += (res3 - b).pow(2).mean().item()
             m4 += (res4 - b).pow(2).mean().item()
             m5 += (res5 - b).pow(2).mean().item()
-            m6 += (res6 - b).pow(2).mean().item()
-            m7 += (res7 - b).pow(2).mean().item()
-            m8 += (res8 - b).pow(2).mean().item()
-            e1 += entropy(res1, num_bins=512).item()
-            e2 += entropy(res2, num_bins=512).item()
-            e3 += entropy(res3, num_bins=512).item()
-            e4 += entropy(res4, num_bins=512).item()
-            e5 += entropy(res5, num_bins=512).item()
-            e6 += entropy(res6, num_bins=512).item()
-            e7 += entropy(res7, num_bins=512).item()
-            e8 += entropy(res8, num_bins=512).item()
+            # m6 += (res6 - b).pow(2).mean().item()
+            # m7 += (res7 - b).pow(2).mean().item()
+            # m8 += (res8 - b).pow(2).mean().item()
+            # e1 += entropy(res1, num_bins=512).item()
+            # e2 += entropy(res2, num_bins=512).item()
+            # e3 += entropy(res3, num_bins=512).item()
+            # e4 += entropy(res4, num_bins=512).item()
+            # e5 += entropy(res5, num_bins=512).item()
+            # e6 += entropy(res6, num_bins=512).item()
+            # e7 += entropy(res7, num_bins=512).item()
+            # e8 += entropy(res8, num_bins=512).item()
 
         # 修正2：均值除以样本数，再除以信号方差实现归一化
         mse1.append((m1 / num_samples) / signal_variance)
@@ -79,31 +76,31 @@ def draw_mse_comp_with_gaussian():
         mse3.append((m3 / num_samples) / signal_variance)
         mse4.append((m4 / num_samples) / signal_variance)
         mse5.append((m5 / num_samples) / signal_variance)
-        mse6.append((m6 / num_samples) / signal_variance)
-        mse7.append((m7 / num_samples) / signal_variance)
-        mse8.append((m8 / num_samples) / signal_variance)
-        entropy1.append(e1 / num_samples)
-        entropy2.append(e2 / num_samples)
-        entropy3.append(e3 / num_samples)
-        entropy4.append(e4 / num_samples)
-        entropy5.append(e5 / num_samples)
-        entropy6.append(e6 / num_samples)
-        entropy7.append(e7 / num_samples)
-        entropy8.append(e8 / num_samples)
+        # mse6.append((m6 / num_samples) / signal_variance)
+        # mse7.append((m7 / num_samples) / signal_variance)
+        # mse8.append((m8 / num_samples) / signal_variance)
+        # entropy1.append(e1 / num_samples)
+        # entropy2.append(e2 / num_samples)
+        # entropy3.append(e3 / num_samples)
+        # entropy4.append(e4 / num_samples)
+        # entropy5.append(e5 / num_samples)
+        # entropy6.append(e6 / num_samples)
+        # entropy7.append(e7 / num_samples)
+        # entropy8.append(e8 / num_samples)
 
 
     # --- 绘图部分 ---
     plt.figure(figsize=(12, 8))
 
     # 使用线性坐标轴，因为已经归一化了，数值应该在可比范围内
-    plt.plot(x_axis, mse1, label='HIF4 (4.5)', marker='o', markersize=4)
-    plt.plot(x_axis, mse2, label='NVFP (4.5)', marker='s', markersize=4)
-    plt.plot(x_axis, mse3, label='NVES (4.75)', marker='^', markersize=4)
-    plt.plot(x_axis, mse4, label='NVEM (4.75)', marker='x', markersize=4)
-    plt.plot(x_axis, mse5, label='MXFP (4.25)', marker='D', markersize=6)
-    plt.plot(x_axis, mse6, label='MXEM (4.5)', marker='v', markersize=4)
-    plt.plot(x_axis, mse7, label='NEW', marker='*', markersize=4)
-    plt.plot(x_axis, mse8, label='NVESEM (4.625)', marker='P', markersize=4)
+    plt.plot(x_axis, mse1, label='NVFP (4.5)', marker='o', markersize=4)
+    plt.plot(x_axis, mse2, label='NVES (4.75)', marker='s', markersize=4)
+    plt.plot(x_axis, mse3, label='NVINT (4.5)', marker='^', markersize=4)
+    plt.plot(x_axis, mse4, label='NVESM2 (4.75)', marker='x', markersize=4)
+    plt.plot(x_axis, mse5, label='NVINTESM2 (4.75)', marker='D', markersize=6)
+    # plt.plot(x_axis, mse6, label='MXEM (4.5)', marker='v', markersize=4)
+    # plt.plot(x_axis, mse7, label='NEW', marker='*', markersize=4)
+    # plt.plot(x_axis, mse8, label='NVESEM (4.625)', marker='P', markersize=4)
 
 
     plt.xlabel('x variance = 0.01*2^(x)')
@@ -113,8 +110,114 @@ def draw_mse_comp_with_gaussian():
     plt.legend()
 
     # 保存并显示
-    plt.savefig('quant_mse_comparison.png')
+    plt.savefig('dump/quant_mse_comparison.png')
     plt.show()
+
+
+@torch.no_grad()
+def draw_mse_comp_with_real_weight_per_tensor():
+
+    import os
+    import gc
+
+    dump_dir = "dump"
+    device = torch.device('cuda:0')
+
+    files = [f for f in os.listdir(dump_dir) if f.endswith(".pt")]
+    print(f"找到 {len(files)} 个文件，准备开始处理...")
+
+    quant_method = [ "nvfp", "nves", "nvesm2", "nvint4", "nvintesm2", "nvesm" ]
+    # only process last 1 of them
+    files = files[:30]
+    files = files[::2]
+    mse_tensor = torch.zeros((len(quant_method), len(files)), dtype=torch.float32)
+
+    for name in files:
+
+        print(f"正在处理文件: {name}")
+        file_path = os.path.join(dump_dir, name)
+
+        x = torch.load("dump/" + name)  # [N, T, Cin]
+        x = x.to(device)
+        x = x.reshape(-1, x.shape[-1])
+
+        for mode in quant_method:
+            quant_func = QUANT_METHOD_MAP[mode]
+            group_size = 16
+            mse = (quant_func(x, group_size) - x).pow(2).mean().item()
+            mse_tensor[quant_method.index(mode)][files.index(name)] = mse
+
+        del x
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    # draw mse comp
+    import matplotlib.pyplot as plt
+
+    plt.figure(figsize=(10, 6))
+    x_axis = range(len(files))
+    for i, mode in enumerate(quant_method):
+        plt.plot(x_axis, mse_tensor[i].cpu(), label=mode, marker='o', markersize=4)
+    plt.xlabel('File Index')
+    plt.ylabel('MSE')
+    plt.title('MSE Comparison with Real Weights')
+    plt.grid(True, which="both", ls="-", alpha=0.5)
+    plt.legend()
+    plt.savefig('dump/mse_comparison_with_real_weight_per_tensor.png')
+
+
+@torch.no_grad()
+def draw_mse_comp_with_real_weight():
+
+    import os
+    import gc
+
+    dump_dir = "dump"
+    device = torch.device('cuda:0')
+
+    files = [f for f in os.listdir(dump_dir) if f.endswith(".pt")]
+    print(f"找到 {len(files)} 个文件，准备开始处理...")
+
+    quant_method = [ "nvfp", "nves", "nvesm2", "nvint4", "nvintesm2", "nvesm" ]
+    # only process the 32th of the files
+    files = files[::35]
+    block_num = 32
+    mse_tensor = torch.zeros((len(quant_method), block_num), dtype=torch.float32)
+
+    for name in files:
+
+        print(f"正在处理文件: {name}")
+        file_path = os.path.join(dump_dir, name)
+
+        x = torch.load("dump/" + name)  # [N, T, Cin]
+        x = x.to(device)
+        x = x.reshape(-1, x.shape[-1])
+
+        x = x.reshape(block_num, -1)
+
+        for mode in quant_method:
+            quant_func = QUANT_METHOD_MAP[mode]
+            group_size = 16
+            mse = (quant_func(x, group_size) - x).pow(2).mean(dim=1)
+            mse_tensor[quant_method.index(mode)] = mse
+
+        del x
+        gc.collect()
+        torch.cuda.empty_cache()
+
+        # draw mse comp
+        import matplotlib.pyplot as plt
+
+        plt.figure(figsize=(10, 6))
+        x_axis = range(block_num)
+        for i, mode in enumerate(quant_method):
+            plt.plot(x_axis, mse_tensor[i].cpu(), label=mode, marker='o', markersize=4)
+        plt.xlabel('Block Index')
+        plt.ylabel('MSE')
+        plt.title('MSE Comparison with Real Weights ' + name)
+        plt.grid(True, which="both", ls="-", alpha=0.5)
+        plt.legend()
+        plt.savefig('dump/mse_comparison_with_real_weight_' + name + '.png')
 
 
 @torch.no_grad()
@@ -615,87 +718,6 @@ def get_quant_nvem(tensor_value: torch.Tensor, group_size: int):
     return tensor_quant.reshape(org_shape).to(org_dtype)
 
 
-@torch.no_grad()
-def get_quant_hif4(tensor_value: torch.Tensor, group_size: int):
-
-    org_shape = tensor_value.shape
-    org_dtype = tensor_value.dtype
-
-    tensor_value = tensor_value.float()
-
-    assert group_size == 64
-    tensor_value = tensor_value.reshape(-1, group_size)
-
-    sign = torch.sign(tensor_value)
-
-    v_max16 = torch.zeros((tensor_value.shape[0], 16), device=tensor_value.device)
-    v_max8 = torch.zeros((tensor_value.shape[0], 8), device=tensor_value.device)
-    v_max16 = tensor_value.abs().reshape(tensor_value.shape[0], -1, 4).amax(dim=2)
-    v_max16 = v_max16.reshape(tensor_value.shape[0], 16)
-    v_max8 = v_max16.reshape(tensor_value.shape[0], -1, 2).amax(dim=2)
-    v_max8 = v_max8.reshape(tensor_value.shape[0], 8)
-    v_max = v_max8.amax(dim=1, keepdim=True)
-    SF = cast_to_E6M2(v_max / LEVEL_2_MAX)
-    E1_8 = (v_max8 / SF) >= 4
-    E1_8 = E1_8.to(v_max8.dtype)
-    E1_8x2 = E1_8.repeat_interleave(2, dim=1)
-    E1_16 = (v_max16 / SF * 2.0 ** (-E1_8x2)) >= 2
-    E1_16 = E1_16.to(v_max16.dtype)
-    DE16 = E1_16 + E1_8x2
-    DE64 = DE16.repeat_interleave(4, dim=1)
-    in_grp = torch.floor(tensor_value.abs() / (SF * 2.0 ** (DE64 - 2)) + 0.5) * 2.0 ** (-2)
-    in_grp[in_grp >= 2.0] = 1.75
-    tensor_quant = sign * in_grp * (SF * 2.0 ** DE64)
-
-    return tensor_quant.reshape(org_shape).to(org_dtype)
-
-
-@torch.no_grad()
-def get_quant_hifem(tensor_value: torch.Tensor, group_size: int):
-
-    org_shape = tensor_value.shape
-    org_dtype = tensor_value.dtype
-
-    tensor_value = tensor_value.float()
-
-    assert group_size == 64
-    tensor_value = tensor_value.reshape(-1, group_size)
-
-    sign = torch.sign(tensor_value)
-
-    v_max16 = torch.zeros((tensor_value.shape[0], 16), device=tensor_value.device)
-    v_max8 = torch.zeros((tensor_value.shape[0], 8), device=tensor_value.device)
-    v_max16, indices = tensor_value.abs().reshape(tensor_value.shape[0], -1, 4).max(dim=2)
-    # v_max16 = v_max16.reshape(tensor_value.shape[0], 16)
-    v_max8 = v_max16.reshape(tensor_value.shape[0], -1, 2).amax(dim=2)
-    # v_max8 = v_max8.reshape(tensor_value.shape[0], 8)
-    v_max = v_max8.amax(dim=1, keepdim=True)
-    SF = cast_to_E6M2(v_max / LEVEL_2_MAX)
-    E1_8 = (v_max8 / SF) >= 4
-    E1_8 = E1_8.to(v_max8.dtype)
-    E1_8x2 = E1_8.repeat_interleave(2, dim=1)
-    E1_16 = (v_max16 / SF * 2.0 ** (-E1_8x2)) >= 2
-    E1_16 = E1_16.to(v_max16.dtype)
-    DE16 = E1_16 + E1_8x2
-    DE64 = DE16.repeat_interleave(4, dim=1)
-    in_grp = tensor_value.abs() / (SF * 2.0 ** (DE64)) 
-    e1m2 = torch.floor(in_grp * 2.0 ** 2 + 0.5) * 2.0 ** (-2)
-    e1m4 = torch.floor(in_grp * 2.0 ** 4 + 0.5) * 2.0 ** (-4)
-    outlier_mask = torch.zeros_like(tensor_value, dtype=tensor_value.dtype).to(
-        tensor_value.device
-    )
-    e1m2[e1m2 >= 2.0] = 1.75
-    e1m4[e1m4 >= 2.0] = 1.9375
-    indices = indices.view(-1, 1)
-    outlier_mask = outlier_mask.reshape(-1, 4).scatter_(1, indices , 1)
-    outlier_mask.scatter_(1, indices, 1)
-    outlier_mask = outlier_mask.reshape(-1, group_size)
-    in_grp = e1m2 * (1 - outlier_mask) + e1m4 * outlier_mask
-    tensor_quant = sign * in_grp * (SF * 2.0 ** DE64)
-
-    return tensor_quant.reshape(org_shape).to(org_dtype)
-
-
 def nvfp_anal(x: torch.Tensor, group_size=16):
     import torch
     import numpy as np
@@ -723,8 +745,36 @@ def nvfp_anal(x: torch.Tensor, group_size=16):
     draw_histogram(x, min_val, max_val_bin, num_bins, "nvfp")
 
 
+@torch.no_grad()
 def get_quant_nvint4(tensor_value: torch.Tensor, group_size: int):
-    # with E1 and E2
+    
+    org_shape = tensor_value.shape
+    org_dtype = tensor_value.dtype
+
+    tensor_value = tensor_value.float()
+
+    if group_size > 0:
+        assert org_shape[-1] % group_size == 0
+        tensor_value = tensor_value.reshape(-1, group_size)
+
+    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+    scales = max_val / 7.0
+    # avoid divide a too small value
+    global_scale = scales.max() / FLOAT8_E4M3_MAX
+    scales = (
+        (scales / global_scale)
+        .clamp(min=FLOAT8_E4M3_EPS)
+        .to(torch.float8_e4m3fn)
+        .to(tensor_value.dtype)
+    ) * global_scale
+
+    tensor_quant = torch.clamp(torch.round(tensor_value / scales), min=-7.0, max=7.0) * scales
+
+    return tensor_quant.reshape(org_shape).to(org_dtype)
+
+
+@torch.no_grad()
+def get_quant_nvintesm2(tensor_value: torch.Tensor, group_size=16):
 
     org_shape = tensor_value.shape
     org_dtype = tensor_value.dtype
@@ -736,7 +786,7 @@ def get_quant_nvint4(tensor_value: torch.Tensor, group_size: int):
         tensor_value = tensor_value.reshape(-1, group_size)
 
     max_val = tensor_value.abs().amax(dim=1, keepdim=True)
-    scales = max_val / 7
+    scales = max_val / 7.0
     # avoid divide a too small value
     global_scale = scales.max() / FLOAT8_E4M3_MAX
     scales = (
@@ -746,34 +796,24 @@ def get_quant_nvint4(tensor_value: torch.Tensor, group_size: int):
         .to(tensor_value.dtype)
     ) * global_scale
 
-    subgroup1_size = 16
-    subgroup2_size = 4
-    subgroup1_per_group = group_size // subgroup1_size
-    subgroup2_per_subgroup1 = subgroup1_size // subgroup2_size
-    scalesx4 = scales.repeat_interleave(subgroup1_per_group, dim=1).reshape(-1, 1)
-    tensor_value = tensor_value.reshape(-1, subgroup1_size)
-    E1 = ( tensor_value.abs() / scalesx4 ).amax(dim=1) <= 3.5
-    E1 = E1.to(tensor_value.dtype).unsqueeze(1)
-    scalesx16 = scalesx4.repeat_interleave(subgroup2_per_subgroup1, dim=1).reshape(-1, 1)
-    tensor_value = tensor_value.reshape(-1, subgroup2_size)
-    E1x4 = E1.repeat_interleave(4, dim=1).reshape(-1, 1)
-    E2 = ( tensor_value.abs() / scalesx16 * 2 ** E1x4 ).amax(dim=1) <= 1.75
-    E2 = E2.to(tensor_value.dtype).unsqueeze(1)
-    # print amax
-    # print nums of E
-    print(E1.sum())
-    print(E2.sum())
+    sub_group_size = 8
+    tensor_value = tensor_value.reshape(-1, sub_group_size)
+    # ratio = torch.tensor([1.0, 1.5], dtype=tensor_value.dtype, device=tensor_value.device)
+    ratio = torch.tensor([1.0, 1.25, 1.5, 1.75], dtype=tensor_value.dtype, device=tensor_value.device)
+    scales = scales.reshape(-1, 1).expand(-1, group_size // sub_group_size).reshape(-1, 1)
+    x_expanded = tensor_value.unsqueeze(2)
+    scales_expanded = scales.unsqueeze(2)
+    cand_scales = scales_expanded * ratio.view(1, 1, -1)
+    cand_qval = torch.clamp(torch.round(x_expanded / cand_scales), min=-7.0, max=7.0) * cand_scales
+    mse_per_ratio = (cand_qval - x_expanded).pow(2).mean(dim=1)
+    best_ratio_idx = mse_per_ratio.argmin(dim=1)
+    row_idx = torch.arange(tensor_value.size(0), device=tensor_value.device)
+    best_dqval = cand_qval[row_idx, :, best_ratio_idx]
 
-    tensor_quant = torch.round(tensor_value / scalesx16 * 2 ** E1x4 * 2 ** E2).clamp(min=-7.0, max=7.0) * scalesx16 / 2 ** E1x4 / 2 ** E2
-    # tensor_quant = torch.clamp(torch.round(tensor_value / scales), min=-7.0, max=7.0) * scales
-
-    num_bins = 100
-    max_val = torch.tensor(9.0, device=tensor_value.device)
-    min_val = torch.tensor(0.0, device=tensor_value.device)
-    test = tensor_value / scalesx16 * 2 ** E1x4 * 2 ** E2
-    draw_histogram(test.abs(), min_val=min_val, max_val=max_val, num_bins=num_bins, method="nvint4")
+    tensor_quant = best_dqval
 
     return tensor_quant.reshape(org_shape).to(org_dtype)
+
 
 
 def entropy(x: torch.Tensor, num_bins: int = 256):
@@ -943,55 +983,43 @@ def get_quant_nvesm2(tensor_value: torch.Tensor, group_size: int):
         .to(torch.float8_e4m3fn)
         .to(tensor_value.dtype)
     ) * global_scale
-    exp = torch.floor(torch.log2(scales))
-    # exp = torch.floor(torch.log2(max_val)) - torch.floor(torch.log2(max_quant_val))
-    bias_mse = {}
-    # range_ = range(-1, 2)
-    range_ = {0}
-    org_scales = scales
-    bias = 0
 
-    scales = org_scales * torch.pow(2, torch.tensor(bias, device=tensor_value.device, dtype=tensor_value.dtype))
-    sub_groups_per_group = group_size // sub_group_size
-    scales = scales.expand(-1, sub_groups_per_group).reshape(-1, 1)
-    # ratios = torch.tensor(
-    #     [1.0, 1.25, 1.5, 1.75], dtype=tensor_value.dtype, device=tensor_value.device
-    # )
-    ratios = torch.tensor(
-        [1.0, 1.5], dtype=tensor_value.dtype, device=tensor_value.device
-    )
+    tensor_value = tensor_value.reshape(-1, sub_group_size)
+    # ratio = torch.tensor([1.0, 1.5], dtype=tensor_value.dtype, device=tensor_value.device)
+    ratio = torch.tensor([1.0, 1.25, 1.5, 1.75], dtype=tensor_value.dtype, device=tensor_value.device)
+    ratio_div = torch.tensor([1.0, 0.78125, 0.65625, 0.5713125], dtype=tensor_value.dtype, device=tensor_value.device)
+    # ratio_div = torch.tensor([1.0, 0.75, 0.625, 0.5625], dtype=tensor_value.dtype, device=tensor_value.device)
+    scales = scales.reshape(-1, 1).expand(-1, group_size // sub_group_size).reshape(-1, 1)
     x_expanded = tensor_value.unsqueeze(2)
     scales_expanded = scales.unsqueeze(2)
+    cand_scales = scales_expanded * ratio.view(1, 1, -1)
+    scales_expanded_div = 1 / scales_expanded
+    cand_scales_div = scales_expanded_div * ratio_div.view(1, 1, -1)
+    cand_qval = cast_to_fp4(x_expanded * cand_scales_div) * cand_scales
+    # mse_per_ratio = (cand_qval - x_expanded).pow(2).mean(dim=1)
+    # mse_per_ratio = (cand_qval - x_expanded).abs().mean(dim=1)
+    # best_ratio_idx = mse_per_ratio.argmin(dim=1)
 
-    cand_scales = scales_expanded * ratios.view(1, 1, -1)
-    cand_qval = cast_to_fp4(x_expanded / cand_scales) * cand_scales
-    mse_per_ratio = (cand_qval - x_expanded).pow(2).mean(dim=1)
-    best_ratio_idx = mse_per_ratio.argmin(dim=1)
+    # rate: according to err >0.125, >0.25, >0.5, rate 1,2,4 points
+    # pre_scale_val = (tensor_value / scales).unsqueeze(2) * torch.ones(1, 1, len(ratio), device=tensor_value.device)
+    norm_val = x_expanded * cand_scales_div
+    err_per_ratio = (norm_val - cast_to_fp4(norm_val)).abs()
+    # err_per_ratio = (pre_scale_val - cast_to_fp4(norm_val) * ratio.view(1, 1, -1)).abs()
+    # err_per_ratio = (err_per_ratio - torch.round(err_per_ratio)).abs()
+    score_per_elem = torch.zeros_like(err_per_ratio)
+    # score_per_elem = torch.where(err_per_ratio > 0.0625, 0.5, score_per_elem)
+    score_per_elem = torch.where(err_per_ratio > 0.125, 1.0, score_per_elem)
+    score_per_elem = torch.where(err_per_ratio > 0.25,  2.0, score_per_elem)
+    score_per_elem = torch.where(err_per_ratio > 0.375, 3.0, score_per_elem)
+    score_per_elem = torch.where(err_per_ratio > 0.5,   4.0, score_per_elem)
+    score_per_elem = score_per_elem * ratio.view(1, 1, -1)
+    score_per_ratio = score_per_elem.sum(dim=1)   # [N, 4]
+    best_ratio_idx = score_per_ratio.argmin(dim=1)
+
     row_idx = torch.arange(tensor_value.size(0), device=tensor_value.device)
     best_dqval = cand_qval[row_idx, :, best_ratio_idx]
-    quant_mse_per_subgrp = mse_per_ratio[row_idx, best_ratio_idx]
-    tensor_deq = best_dqval.reshape(-1, group_size)
-    quant_mse_sum = quant_mse_per_subgrp.view(-1, sub_groups_per_group).mean(
-        dim=1, keepdim=True
-    )
-    bias_mse[bias] = (tensor_deq, quant_mse_sum)
 
-    all_mse = torch.cat([bias_mse[b][1] for b in range_], dim=1)
-    best_bias_idx = all_mse.argmin(dim=1)
-    all_deq = torch.stack([bias_mse[b][0] for b in range_], dim=0)
-    all_deq = all_deq.view(len(range_), -1, group_size)
-    idx_expanded = best_bias_idx.view(1, -1, 1).expand(1, -1, group_size)
-    final_deq = torch.gather(all_deq, dim=0, index=idx_expanded).squeeze(0)
-    tensor_deq = final_deq.reshape(org_shape).to(org_dtype)
-
-    # archive
-    label = best_ratio_idx
-    tensor_value = tensor_value.reshape(-1, group_size) / org_scales
-    tensor_value = tensor_value.reshape(-1, sub_group_size)
-    for lab in range(4):
-        # print(tensor_value[label == lab].shape)
-        container[lab].append(tensor_value[label == lab])
-
+    tensor_deq = best_dqval.reshape(org_shape).to(org_dtype)
     return tensor_deq
 
 
@@ -1228,11 +1256,31 @@ def compare_quant_err_with_different_sf():
     print(f"qsinr_a: {qsinr_a.item()}, qsinr_b: {qsinr_b.item()}")
 
 
+QUANT_METHOD_MAP = {
+    "mxfp": get_quant_mxfp,
+    "nvfp": get_quant_nvfp,
+    "mxes": get_quant_mxes,
+    "mxem": get_quant_mxem,
+    "nves": get_quant_nves,
+    "nvem": get_quant_nvem,
+    "nvesm": get_quant_nvesm,
+    "nvesm2": get_quant_nvesm2,
+    "nvesem2": get_quant_nvesem2,
+    "nvint4": get_quant_nvint4,
+    "nvintesm2": get_quant_nvintesm2,
+    # "hif4": get_quant_hif4,
+    # "hifem": get_quant_hifem,
+    # "hifes": get_quant_hifes,
+    # "nvgt4": get_quant_gt4,
+}
+
+
 __name__ = "__main__"
 
 container = {0: [], 1: [], 2: [], 3: []}
-draw_histogram_for_different_ratio()
+# draw_histogram_for_different_ratio()
 # draw_kurtosis_histogram_for_different_ratio()
 # draw_mse_comp_with_gaussian()
+draw_mse_comp_with_real_weight()
 
 # compare_quant_err_with_different_sf()

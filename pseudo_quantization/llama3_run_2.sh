@@ -4,15 +4,14 @@ TASKS=${1:-"wikitext"}
 # TASKS=${1:-"ptb"}
 # TASKS=${1:-"arc_easy,arc_challenge"}
 WBIT=4
-WMODE="nvintesm2"
+WMODE="nvfp"
 ABIT=4
-AMODE="nvintesm2"
+AMODE="nvfp"
 GROUP_SIZE=16
-AWQ=False
 
 # MODEL=meta-llama/Meta-Llama-3-8B
-MODEL=/cephfs/shared/model/llama-3-8b-hf
-# MODEL=/cephfs/shared/model/llama-2-7b-hf
+# MODEL=/cephfs/shared/model/llama-3-8b-hf
+MODEL=/cephfs/shared/model/llama-2-7b-hf
 # MODEL=/cephfs/shared/model/DeepSeek-R1-Distill-Qwen-7B
 # MODEL=/cephfs/shared/model/Qwen-7B
 

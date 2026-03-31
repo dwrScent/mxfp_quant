@@ -5,6 +5,10 @@ from transformers import (
     AutoModelForCausalLM,
     AutoConfig,
 )
+try:
+    from .nvesm2_quant_func import get_quant_nvesm2_hw
+except ImportError:
+    from nvesm2_quant_func import get_quant_nvesm2_hw
 
 FLOAT4_E2M1_MAX = 6.0
 FLOAT8_E4M3_EPS = torch.finfo(torch.float8_e4m3fn).tiny
@@ -51,6 +55,7 @@ def draw_mse_comp_with_gaussian():
             res3 = get_quant_nvint4(b, 16)
             res4 = get_quant_nvesm2(b, 16)
             res5 = get_quant_nvintesm2(b, 16)
+            res6 = get_quant_nvesm2_hw(b, 16)
 
             # 累加 MSE
             m1 += (res1 - b).pow(2).mean().item()
@@ -58,7 +63,7 @@ def draw_mse_comp_with_gaussian():
             m3 += (res3 - b).pow(2).mean().item()
             m4 += (res4 - b).pow(2).mean().item()
             m5 += (res5 - b).pow(2).mean().item()
-            # m6 += (res6 - b).pow(2).mean().item()
+            m6 += (res6 - b).pow(2).mean().item()
             # m7 += (res7 - b).pow(2).mean().item()
             # m8 += (res8 - b).pow(2).mean().item()
             # e1 += entropy(res1, num_bins=512).item()
@@ -76,7 +81,7 @@ def draw_mse_comp_with_gaussian():
         mse3.append((m3 / num_samples) / signal_variance)
         mse4.append((m4 / num_samples) / signal_variance)
         mse5.append((m5 / num_samples) / signal_variance)
-        # mse6.append((m6 / num_samples) / signal_variance)
+        mse6.append((m6 / num_samples) / signal_variance)
         # mse7.append((m7 / num_samples) / signal_variance)
         # mse8.append((m8 / num_samples) / signal_variance)
         # entropy1.append(e1 / num_samples)
@@ -98,7 +103,7 @@ def draw_mse_comp_with_gaussian():
     plt.plot(x_axis, mse3, label='NVINT (4.5)', marker='^', markersize=4)
     plt.plot(x_axis, mse4, label='NVESM2 (4.75)', marker='x', markersize=4)
     plt.plot(x_axis, mse5, label='NVINTESM2 (4.75)', marker='D', markersize=6)
-    # plt.plot(x_axis, mse6, label='MXEM (4.5)', marker='v', markersize=4)
+    plt.plot(x_axis, mse6, label='NVESM2_HW (4.75)', marker='v', markersize=4)
     # plt.plot(x_axis, mse7, label='NEW', marker='*', markersize=4)
     # plt.plot(x_axis, mse8, label='NVESEM (4.625)', marker='P', markersize=4)
 
@@ -178,7 +183,7 @@ def draw_mse_comp_with_real_weight():
     files = [f for f in os.listdir(dump_dir) if f.endswith(".pt")]
     print(f"找到 {len(files)} 个文件，准备开始处理...")
 
-    quant_method = [ "nvfp", "nves", "nvesm2", "nvint4", "nvintesm2", "nvesm" ]
+    quant_method = [ "nvfp", "nves", "nvesm2", "nvesm2_hw", "nvint4", "nvintesm2", "nvesm" ]
     # only process the 32th of the files
     files = files[::35]
     block_num = 32
@@ -951,6 +956,7 @@ def grp_entropy_vec(x: torch.Tensor, group_size: int, num_bins: int = 256):
 #         container[lab].append(tensor_value[label == lab])
 #
 #     return tensor_deq
+
 @torch.no_grad()
 def get_quant_nvesm2(tensor_value: torch.Tensor, group_size: int):
 
@@ -987,35 +993,14 @@ def get_quant_nvesm2(tensor_value: torch.Tensor, group_size: int):
     tensor_value = tensor_value.reshape(-1, sub_group_size)
     # ratio = torch.tensor([1.0, 1.5], dtype=tensor_value.dtype, device=tensor_value.device)
     ratio = torch.tensor([1.0, 1.25, 1.5, 1.75], dtype=tensor_value.dtype, device=tensor_value.device)
-    ratio_div = torch.tensor([1.0, 0.78125, 0.65625, 0.5713125], dtype=tensor_value.dtype, device=tensor_value.device)
-    # ratio_div = torch.tensor([1.0, 0.75, 0.625, 0.5625], dtype=tensor_value.dtype, device=tensor_value.device)
     scales = scales.reshape(-1, 1).expand(-1, group_size // sub_group_size).reshape(-1, 1)
     x_expanded = tensor_value.unsqueeze(2)
     scales_expanded = scales.unsqueeze(2)
     cand_scales = scales_expanded * ratio.view(1, 1, -1)
-    scales_expanded_div = 1 / scales_expanded
-    cand_scales_div = scales_expanded_div * ratio_div.view(1, 1, -1)
-    cand_qval = cast_to_fp4(x_expanded * cand_scales_div) * cand_scales
+    cand_qval = cast_to_fp4(x_expanded / cand_scales) * cand_scales
     # mse_per_ratio = (cand_qval - x_expanded).pow(2).mean(dim=1)
-    # mse_per_ratio = (cand_qval - x_expanded).abs().mean(dim=1)
-    # best_ratio_idx = mse_per_ratio.argmin(dim=1)
-
-    # rate: according to err >0.125, >0.25, >0.5, rate 1,2,4 points
-    # pre_scale_val = (tensor_value / scales).unsqueeze(2) * torch.ones(1, 1, len(ratio), device=tensor_value.device)
-    norm_val = x_expanded * cand_scales_div
-    err_per_ratio = (norm_val - cast_to_fp4(norm_val)).abs()
-    # err_per_ratio = (pre_scale_val - cast_to_fp4(norm_val) * ratio.view(1, 1, -1)).abs()
-    # err_per_ratio = (err_per_ratio - torch.round(err_per_ratio)).abs()
-    score_per_elem = torch.zeros_like(err_per_ratio)
-    # score_per_elem = torch.where(err_per_ratio > 0.0625, 0.5, score_per_elem)
-    score_per_elem = torch.where(err_per_ratio > 0.125, 1.0, score_per_elem)
-    score_per_elem = torch.where(err_per_ratio > 0.25,  2.0, score_per_elem)
-    score_per_elem = torch.where(err_per_ratio > 0.375, 3.0, score_per_elem)
-    score_per_elem = torch.where(err_per_ratio > 0.5,   4.0, score_per_elem)
-    score_per_elem = score_per_elem * ratio.view(1, 1, -1)
-    score_per_ratio = score_per_elem.sum(dim=1)   # [N, 4]
-    best_ratio_idx = score_per_ratio.argmin(dim=1)
-
+    mse_per_ratio = (cand_qval - x_expanded).abs().mean(dim=1)
+    best_ratio_idx = mse_per_ratio.argmin(dim=1)
     row_idx = torch.arange(tensor_value.size(0), device=tensor_value.device)
     best_dqval = cand_qval[row_idx, :, best_ratio_idx]
 
@@ -1265,6 +1250,7 @@ QUANT_METHOD_MAP = {
     "nvem": get_quant_nvem,
     "nvesm": get_quant_nvesm,
     "nvesm2": get_quant_nvesm2,
+    "nvesm2_hw": get_quant_nvesm2_hw,
     "nvesem2": get_quant_nvesem2,
     "nvint4": get_quant_nvint4,
     "nvintesm2": get_quant_nvintesm2,
@@ -1280,7 +1266,7 @@ __name__ = "__main__"
 container = {0: [], 1: [], 2: [], 3: []}
 # draw_histogram_for_different_ratio()
 # draw_kurtosis_histogram_for_different_ratio()
-# draw_mse_comp_with_gaussian()
-draw_mse_comp_with_real_weight()
+draw_mse_comp_with_gaussian()
+# draw_mse_comp_with_real_weight()
 
 # compare_quant_err_with_different_sf()

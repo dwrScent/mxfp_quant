@@ -1,6 +1,7 @@
 import torch
 import torch.nn.functional as F
 from .hif4_quant_func import get_quant_hifes, get_quant_hifem, get_quant_hif4
+from .nvesm2_quant_func import get_quant_nvesm2_hw
 from torch import nn
 
 FLOAT4_E2M1_MAX = 6.0
@@ -392,57 +393,6 @@ def get_quant_nvesm(tensor_value: torch.Tensor, group_size: int):
     final_deq = torch.gather(all_deq, dim=0, index=idx_expanded).squeeze(0)
     tensor_deq = final_deq.reshape(org_shape).to(org_dtype)
     return tensor_deq
-# @torch.no_grad()
-# def get_quant_nvesm2(tensor_value: torch.Tensor, group_size: int):
-#
-#     sub_group_size = 8  # extra 2 bit for scale in subgroup
-#     assert group_size % sub_group_size == 0
-#
-#     org_shape = tensor_value.shape
-#     org_dtype = tensor_value.dtype
-#
-#     tensor_value = tensor_value.float()
-#
-#     if group_size > 0:
-#         assert org_shape[-1] % group_size == 0
-#         tensor_value = tensor_value.reshape(-1, group_size)
-#
-#     max_val = tensor_value.abs().amax(dim=1, keepdim=True)
-#     # avoid divide a too small value
-#     max_val = max_val.clamp(min=1e-8)
-#
-#     max_quant_val = torch.tensor(FLOAT4_E2M1_MAX, device=tensor_value.device)
-#
-#     scales = tensor_value.abs().amax(dim=1, keepdim=True) / max_quant_val
-#
-#     tensor_value = tensor_value.reshape(-1, sub_group_size)
-#     # Compute the scaling factor
-#     global_scale = scales.max() / FLOAT8_E4M3_MAX
-#     scales = (
-#         (scales / global_scale)
-#         .clamp(min=FLOAT8_E4M3_EPS)
-#         .to(torch.float8_e4m3fn)
-#         .to(tensor_value.dtype)
-#     ) * global_scale
-#
-#     tensor_value = tensor_value.reshape(-1, sub_group_size)
-#     # ratio = torch.tensor([1.0, 1.5], dtype=tensor_value.dtype, device=tensor_value.device)
-#     ratio = torch.tensor([1.0, 1.25, 1.5, 1.75], dtype=tensor_value.dtype, device=tensor_value.device)
-#     scales = scales.reshape(-1, 1).expand(-1, group_size // sub_group_size).reshape(-1, 1)
-#     x_expanded = tensor_value.unsqueeze(2)
-#     scales_expanded = scales.unsqueeze(2)
-#     cand_scales = scales_expanded * ratio.view(1, 1, -1)
-#     cand_qval = cast_to_fp4(x_expanded / cand_scales) * cand_scales
-#     # mse_per_ratio = (cand_qval - x_expanded).pow(2).mean(dim=1)
-#     mse_per_ratio = (cand_qval - x_expanded).abs().mean(dim=1)
-#     best_ratio_idx = mse_per_ratio.argmin(dim=1)
-#     row_idx = torch.arange(tensor_value.size(0), device=tensor_value.device)
-#     best_dqval = cand_qval[row_idx, :, best_ratio_idx]
-#
-#     tensor_deq = best_dqval.reshape(org_shape).to(org_dtype)
-#     return tensor_deq
-
-# hardware friendly
 @torch.no_grad()
 def get_quant_nvesm2(tensor_value: torch.Tensor, group_size: int):
 
@@ -479,38 +429,20 @@ def get_quant_nvesm2(tensor_value: torch.Tensor, group_size: int):
     tensor_value = tensor_value.reshape(-1, sub_group_size)
     # ratio = torch.tensor([1.0, 1.5], dtype=tensor_value.dtype, device=tensor_value.device)
     ratio = torch.tensor([1.0, 1.25, 1.5, 1.75], dtype=tensor_value.dtype, device=tensor_value.device)
-    ratio_div = torch.tensor([1.0, 0.78125, 0.65625, 0.5713125], dtype=tensor_value.dtype, device=tensor_value.device)
-    # ratio_div = torch.tensor([1.0, 0.75, 0.625, 0.5625], dtype=tensor_value.dtype, device=tensor_value.device)
     scales = scales.reshape(-1, 1).expand(-1, group_size // sub_group_size).reshape(-1, 1)
     x_expanded = tensor_value.unsqueeze(2)
     scales_expanded = scales.unsqueeze(2)
     cand_scales = scales_expanded * ratio.view(1, 1, -1)
-    scales_expanded_div = 1 / scales_expanded
-    cand_scales_div = scales_expanded_div * ratio_div.view(1, 1, -1)
-    cand_qval = cast_to_fp4(x_expanded * cand_scales_div) * cand_scales
+    cand_qval = cast_to_fp4(x_expanded / cand_scales) * cand_scales
     # mse_per_ratio = (cand_qval - x_expanded).pow(2).mean(dim=1)
-    # mse_per_ratio = (cand_qval - x_expanded).abs().mean(dim=1)
-    # best_ratio_idx = mse_per_ratio.argmin(dim=1)
-
-    # rate: according to err >0.125, >0.25, >0.5, rate 1,2,4 points
-    norm_val = x_expanded * cand_scales_div
-    err_per_ratio = (norm_val - cast_to_fp4(norm_val)).abs() * ratio.view(1, 1, -1)
-    score_per_elem = torch.zeros_like(err_per_ratio)
-    # score_per_elem = torch.where(err_per_ratio > 0.03125, 0.25, score_per_elem)
-    # score_per_elem = torch.where(err_per_ratio > 0.0625, 0.5, score_per_elem)
-    score_per_elem = torch.where(err_per_ratio > 0.125, 1.0, score_per_elem)
-    score_per_elem = torch.where(err_per_ratio > 0.25,  2.0, score_per_elem)
-    score_per_elem = torch.where(err_per_ratio > 0.375, 3.0, score_per_elem)
-    score_per_elem = torch.where(err_per_ratio > 0.5,   4.0, score_per_elem)
-    # score_per_elem = score_per_elem * ratio.view(1,1,-1)
-    score_per_ratio = score_per_elem.sum(dim=1)   # [N, 4]
-    best_ratio_idx = score_per_ratio.argmin(dim=1)
-
+    mse_per_ratio = (cand_qval - x_expanded).abs().mean(dim=1)
+    best_ratio_idx = mse_per_ratio.argmin(dim=1)
     row_idx = torch.arange(tensor_value.size(0), device=tensor_value.device)
     best_dqval = cand_qval[row_idx, :, best_ratio_idx]
 
     tensor_deq = best_dqval.reshape(org_shape).to(org_dtype)
     return tensor_deq
+
 
 @torch.no_grad()
 def get_quant_nvesem2(tensor_value: torch.Tensor, group_size: int):
@@ -747,7 +679,7 @@ QUANT_METHOD_MAP = {
     "nves": get_quant_nves,
     "nvem": get_quant_nvem,
     "nvesm": get_quant_nvesm,
-    "nvesm2": get_quant_nvesm2,
+    "nvesm2": get_quant_nvesm2_hw,
     "nvesem2": get_quant_nvesem2,
     "nvint4": get_quant_nvint4,
     "nvintesm2": get_quant_nvintesm2,

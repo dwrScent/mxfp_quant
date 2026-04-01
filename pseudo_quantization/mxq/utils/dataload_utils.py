@@ -3,6 +3,13 @@ import random
 import transformers
 import torch 
 
+def _sample_start(token_count, seqlen):
+    max_start = token_count - seqlen - 1
+    if max_start <= 0:
+        return 0
+    return random.randint(0, max_start)
+
+
 def get_loaders(
     name, nsamples=128, seed=0, seqlen=2048, model=''
 ):
@@ -31,7 +38,7 @@ def get_wikitext2(nsamples, seed, seqlen, model):
     random.seed(seed)
     trainloader = []
     for _ in range(nsamples):
-        i = random.randint(0, trainenc.input_ids.shape[1] - seqlen - 1)
+        i = _sample_start(trainenc.input_ids.shape[1], seqlen)
         j = i + seqlen
         inp = trainenc.input_ids[:, i:j]
         tar = inp.clone()
@@ -41,8 +48,8 @@ def get_wikitext2(nsamples, seed, seqlen, model):
 
 def get_ptb(nsamples, seed, seqlen, model):
     from datasets import load_dataset
-    traindata = load_dataset('ptb_text_only', 'penn_treebank', split='train')
-    valdata = load_dataset('ptb_text_only', 'penn_treebank', split='validation')
+    traindata = load_dataset('ptb_text_only', 'penn_treebank', split='train', trust_remote_code=True)
+    valdata = load_dataset('ptb_text_only', 'penn_treebank', split='validation', trust_remote_code=True)
 
     from transformers import AutoTokenizer 
     tokenizer = AutoTokenizer.from_pretrained(
@@ -55,7 +62,7 @@ def get_ptb(nsamples, seed, seqlen, model):
     random.seed(seed)
     trainloader = []
     for _ in range(nsamples):
-        i = random.randint(0, trainenc.input_ids.shape[1] - seqlen - 1)
+        i = _sample_start(trainenc.input_ids.shape[1], seqlen)
         j = i + seqlen
         inp = trainenc.input_ids[:, i:j]
         tar = inp.clone()
@@ -87,7 +94,7 @@ def get_c4(nsamples, seed, seqlen, model):
             trainenc = tokenizer(traindata[i]['text'], return_tensors='pt')
             if trainenc.input_ids.shape[1] >= seqlen:
                 break
-        i = random.randint(0, trainenc.input_ids.shape[1] - seqlen - 1)
+        i = _sample_start(trainenc.input_ids.shape[1], seqlen)
         j = i + seqlen
         inp = trainenc.input_ids[:, i:j]
         tar = inp.clone()
@@ -103,7 +110,7 @@ def get_c4(nsamples, seed, seqlen, model):
             tmp = tokenizer(valdata[i]['text'], return_tensors='pt')
             if tmp.input_ids.shape[1] >= seqlen:
                 break
-        i = random.randint(0, tmp.input_ids.shape[1] - seqlen - 1)
+        i = _sample_start(tmp.input_ids.shape[1], seqlen)
         j = i + seqlen
         valenc.append(tmp.input_ids[:, i:j])
     valenc = torch.hstack(valenc)

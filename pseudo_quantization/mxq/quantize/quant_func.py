@@ -434,8 +434,8 @@ def get_quant_nvesm2(tensor_value: torch.Tensor, group_size: int):
     scales_expanded = scales.unsqueeze(2)
     cand_scales = scales_expanded * ratio.view(1, 1, -1)
     cand_qval = cast_to_fp4(x_expanded / cand_scales) * cand_scales
-    # mse_per_ratio = (cand_qval - x_expanded).pow(2).mean(dim=1)
-    mse_per_ratio = (cand_qval - x_expanded).abs().mean(dim=1)
+    mse_per_ratio = (cand_qval - x_expanded).pow(2).mean(dim=1)
+    # mse_per_ratio = (cand_qval - x_expanded).abs().mean(dim=1)
     best_ratio_idx = mse_per_ratio.argmin(dim=1)
     row_idx = torch.arange(tensor_value.size(0), device=tensor_value.device)
     best_dqval = cand_qval[row_idx, :, best_ratio_idx]
@@ -679,7 +679,7 @@ QUANT_METHOD_MAP = {
     "nves": get_quant_nves,
     "nvem": get_quant_nvem,
     "nvesm": get_quant_nvesm,
-    "nvesm2": get_quant_nvesm2_hw,
+    "nvesm2": get_quant_nvesm2,
     "nvesem2": get_quant_nvesem2,
     "nvint4": get_quant_nvint4,
     "nvintesm2": get_quant_nvintesm2,

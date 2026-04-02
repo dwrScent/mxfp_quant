@@ -184,6 +184,7 @@ def draw_mse_comp_with_real_weight():
     print(f"找到 {len(files)} 个文件，准备开始处理...")
 
     quant_method = [ "nvfp", "nves", "nvesm2", "nvesm2_hw", "nvint4", "nvintesm2", "nvesm" ]
+    bits = ["(4.5)", "(4.75)", "(4.75)", "(4.75)", "(4.5)", "(4.75)", "(4.625)"]
     # only process the 32th of the files
     files = files[::35]
     block_num = 32
@@ -216,7 +217,8 @@ def draw_mse_comp_with_real_weight():
         plt.figure(figsize=(10, 6))
         x_axis = range(block_num)
         for i, mode in enumerate(quant_method):
-            plt.plot(x_axis, mse_tensor[i].cpu(), label=mode, marker='o', markersize=4)
+            label = mode + " " + bits[i]
+            plt.plot(x_axis, mse_tensor[i].cpu(), label=label, marker='o', markersize=4)
         plt.xlabel('Block Index')
         plt.ylabel('MSE')
         plt.title('MSE Comparison with Real Weights ' + name)
@@ -1266,7 +1268,7 @@ __name__ = "__main__"
 container = {0: [], 1: [], 2: [], 3: []}
 # draw_histogram_for_different_ratio()
 # draw_kurtosis_histogram_for_different_ratio()
-draw_mse_comp_with_gaussian()
-# draw_mse_comp_with_real_weight()
+# draw_mse_comp_with_gaussian()
+draw_mse_comp_with_real_weight()
 
 # compare_quant_err_with_different_sf()

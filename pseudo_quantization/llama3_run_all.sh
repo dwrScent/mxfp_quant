@@ -1,10 +1,11 @@
 #!/bin/bash
 
 TASKS=${1:-"wikitext,c4,ptb,hellaswag,piqa,winogrande,arc_easy,arc_challenge,boolq"}
+# TASKS=${1:-"boolq"}
 WBIT=4
-WMODE="nvint4"
+WMODE="nvesm2"
 ABIT=4
-AMODE="nvint4"
+AMODE="nvesm2"
 GROUP_SIZE=16
 BATCH_SIZE=${BATCH_SIZE:-32}
 MIN_BATCH_SIZE=${MIN_BATCH_SIZE:-1}

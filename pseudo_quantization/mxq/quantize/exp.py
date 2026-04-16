@@ -56,6 +56,7 @@ def draw_mse_comp_with_gaussian():
             res4 = get_quant_nvesm2(b, 16)
             res5 = get_quant_nvintesm2(b, 16)
             res6 = get_quant_nvesm2_hw(b, 16)
+            res7 = get_quant_nvesm2_kur(b, 16)
 
             # 累加 MSE
             m1 += (res1 - b).pow(2).mean().item()
@@ -64,7 +65,7 @@ def draw_mse_comp_with_gaussian():
             m4 += (res4 - b).pow(2).mean().item()
             m5 += (res5 - b).pow(2).mean().item()
             m6 += (res6 - b).pow(2).mean().item()
-            # m7 += (res7 - b).pow(2).mean().item()
+            m7 += (res7 - b).pow(2).mean().item()
             # m8 += (res8 - b).pow(2).mean().item()
             # e1 += entropy(res1, num_bins=512).item()
             # e2 += entropy(res2, num_bins=512).item()
@@ -82,7 +83,7 @@ def draw_mse_comp_with_gaussian():
         mse4.append((m4 / num_samples) / signal_variance)
         mse5.append((m5 / num_samples) / signal_variance)
         mse6.append((m6 / num_samples) / signal_variance)
-        # mse7.append((m7 / num_samples) / signal_variance)
+        mse7.append((m7 / num_samples) / signal_variance)
         # mse8.append((m8 / num_samples) / signal_variance)
         # entropy1.append(e1 / num_samples)
         # entropy2.append(e2 / num_samples)
@@ -104,7 +105,7 @@ def draw_mse_comp_with_gaussian():
     plt.plot(x_axis, mse4, label='NVESM2 (4.75)', marker='x', markersize=4)
     plt.plot(x_axis, mse5, label='NVINTESM2 (4.75)', marker='D', markersize=6)
     plt.plot(x_axis, mse6, label='NVESM2_HW (4.75)', marker='v', markersize=4)
-    # plt.plot(x_axis, mse7, label='NEW', marker='*', markersize=4)
+    plt.plot(x_axis, mse7, label='NEW', marker='*', markersize=4)
     # plt.plot(x_axis, mse8, label='NVESEM (4.625)', marker='P', markersize=4)
 
 
@@ -1009,6 +1010,60 @@ def get_quant_nvesm2(tensor_value: torch.Tensor, group_size: int):
     tensor_deq = best_dqval.reshape(org_shape).to(org_dtype)
     return tensor_deq
 
+
+@torch.no_grad()
+def get_quant_nvesm2_kur(tensor_value: torch.Tensor, group_size: int):
+
+    sub_group_size = 8  # extra 2 bit for scale in subgroup
+    assert group_size % sub_group_size == 0
+
+    org_shape = tensor_value.shape
+    org_dtype = tensor_value.dtype
+
+    tensor_value = tensor_value.float()
+
+    if group_size > 0:
+        assert org_shape[-1] % group_size == 0
+        tensor_value = tensor_value.reshape(-1, group_size)
+
+    max_val = tensor_value.abs().amax(dim=1, keepdim=True)
+    # avoid divide a too small value
+    max_val = max_val.clamp(min=1e-8)
+
+    max_quant_val = torch.tensor(FLOAT4_E2M1_MAX, device=tensor_value.device)
+
+    scales = tensor_value.abs().amax(dim=1, keepdim=True) / max_quant_val
+
+    tensor_value = tensor_value.reshape(-1, sub_group_size)
+    # Compute the scaling factor
+    global_scale = scales.max() / FLOAT8_E4M3_MAX
+    scales = (
+        (scales / global_scale)
+        .clamp(min=FLOAT8_E4M3_EPS)
+        .to(torch.float8_e4m3fn)
+        .to(tensor_value.dtype)
+    ) * global_scale
+
+    tensor_value = tensor_value.reshape(-1, sub_group_size)
+    # ratio = torch.tensor([1.0, 1.5], dtype=tensor_value.dtype, device=tensor_value.device)
+    ratio = torch.tensor([1.0, 1.25, 1.5, 1.75], dtype=tensor_value.dtype, device=tensor_value.device)
+    scales = scales.reshape(-1, 1).expand(-1, group_size // sub_group_size).reshape(-1, 1)
+    x_expanded = tensor_value.unsqueeze(2)
+    scales_expanded = scales.unsqueeze(2)
+    cand_scales = scales_expanded * ratio.view(1, 1, -1)
+    cand_qval = cast_to_fp4(x_expanded / cand_scales) * cand_scales
+    # mse_per_ratio = (cand_qval - x_expanded).pow(2).mean(dim=1)
+    # calculate kurtosis instead
+    kurt_per_ratio = cand_qval - cand_qval.mean(dim=1, keepdim=True)
+    kurt_per_ratio = (kurt_per_ratio.pow(4).mean(dim=1))
+    best_ratio_idx = kurt_per_ratio.argmin(dim=1)
+    # mse_per_ratio = (cand_qval - x_expanded).abs().mean(dim=1)
+    # best_ratio_idx = mse_per_ratio.argmin(dim=1)
+    row_idx = torch.arange(tensor_value.size(0), device=tensor_value.device)
+    best_dqval = cand_qval[row_idx, :, best_ratio_idx]
+
+    tensor_deq = best_dqval.reshape(org_shape).to(org_dtype)
+    return tensor_deq
 
 def draw_histogram(x: torch.Tensor, min_val, max_val, num_bins, method):
     import matplotlib.pyplot as plt

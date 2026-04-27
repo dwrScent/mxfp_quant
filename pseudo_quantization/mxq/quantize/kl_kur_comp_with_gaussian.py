@@ -241,8 +241,8 @@ def main():
 
         tensor_quant = cast_to_fp4(tensor_value / scales) * scales
         mse_per_l1_group = (tensor_quant - tensor_value).pow(2).mean(dim=1)
-        good_threshold = torch.quantile(mse_per_l1_group, 0.1)
-        bad_threshold = torch.quantile(mse_per_l1_group, 0.9)
+        good_threshold = torch.quantile(mse_per_l1_group, 0.4)
+        bad_threshold = torch.quantile(mse_per_l1_group, 0.6)
 
         # also collect mse of good and bad groups
         mse_good = mse_per_l1_group[mse_per_l1_group < good_threshold]

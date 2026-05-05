@@ -21,11 +21,14 @@ module quant_engine32_mx (
     output reg [4*2-1:0]  es_idx_bus
 );
 
-    integer ii;
-    genvar gi;
-    genvar gs;
+    integer ii; // procedural loop index used for lane/subgroup register arrays
+    genvar gi;  // generate loop index for the 32 per-lane RQU instances
+    genvar gs;  // generate loop index for the four 8-lane subgroup accumulators
 
     // -------------------- S0: 16-lane group scales --------------------
+    // g0 covers lanes 0..15, g1 covers lanes 16..31.  Each scale module has
+    // its own internal pipeline; *_valid marks the cycle its E4M3 scale is
+    // aligned with the input block captured in in_fp32_hold.
     wire [7:0] group_scale_e4m3_g0;
     wire [7:0] group_scale_e4m3_g1;
     wire       group_scale_valid_g0;
@@ -50,34 +53,39 @@ module quant_engine32_mx (
     );
 
     // -------------------- Block state held while the four ES candidates run --------------------
-    reg              active;
-    reg              scale_ready;
-    reg [2:0]        issue_count;
-    reg [32*32-1:0] in_fp32_hold;
-    reg [7:0]        group_scale_hold [0:1];
-    reg [2*8-1:0]   group_scale_bus_hold;
+    reg              active;       // one input block is resident in the engine
+    reg              scale_ready;  // pipelined group scales have returned and RQUs may issue
+    reg [2:0]        issue_count;  // ES candidate issue counter: 0,1,2,3 then idle
+    reg [32*32-1:0] in_fp32_hold; // accepted 32-lane FP32 block, stable during all ES trials
+    reg [7:0]        group_scale_hold [0:1]; // group_scale_hold[0]=lanes 0..15, [1]=lanes 16..31
+    reg [2*8-1:0]   group_scale_bus_hold;   // packed copy published with final result
 
+    // Per-lane FP4 result for each ES candidate.  Candidate N corresponds to
+    // es_idx == N and is captured when the pipelined lane output returns.
     reg [3:0]        fp4_cand0 [0:31];
     reg [3:0]        fp4_cand1 [0:31];
     reg [3:0]        fp4_cand2 [0:31];
     reg [3:0]        fp4_cand3 [0:31];
+
+    // Accumulated quantization cost per 8-lane subgroup and ES candidate.
+    // subgroup_costN[s] is the summed cost for subgroup s using es_idx == N.
     reg [35:0]       subgroup_cost0 [0:3];
     reg [35:0]       subgroup_cost1 [0:3];
     reg [35:0]       subgroup_cost2 [0:3];
     reg [35:0]       subgroup_cost3 [0:3];
 
     // -------------------- 32 pipelined RQUs, one ES candidate per lane per cycle --------------------
-    wire        accept_input = in_valid && in_ready;
-    wire        group_scale_valid = group_scale_valid_g0 && group_scale_valid_g1;
-    wire        rqu_issue_valid = active && scale_ready && (issue_count < 3'd4);
-    wire [1:0]  rqu_issue_es    = issue_count[1:0];
-    wire [3:0]  lane_fp4        [0:31];
-    wire [31:0] lane_cost       [0:31];
-    wire        lane_out_valid  [0:31];
-    wire [1:0]  lane_es_out     [0:31];
+    wire        accept_input = in_valid && in_ready; // handshake for one 32-lane block
+    wire        group_scale_valid = group_scale_valid_g0 && group_scale_valid_g1; // both 16-lane scales done
+    wire        rqu_issue_valid = active && scale_ready && (issue_count < 3'd4); // issue one ES candidate this cycle
+    wire [1:0]  rqu_issue_es    = issue_count[1:0]; // ES selector sent to every lane
+    wire [3:0]  lane_fp4        [0:31]; // FP4 result from each lane RQU
+    wire [31:0] lane_cost       [0:31]; // per-lane error cost for the issued ES candidate
+    wire        lane_out_valid  [0:31]; // valid from each lane pipeline, expected cycle-aligned
+    wire [1:0]  lane_es_out     [0:31]; // ES selector delayed through each lane pipeline
 
-    wire        rqu_out_valid = lane_out_valid[0];
-    wire [1:0]  rqu_es_out    = lane_es_out[0];
+    wire        rqu_out_valid = lane_out_valid[0]; // common valid; all lane pipelines have equal latency
+    wire [1:0]  rqu_es_out    = lane_es_out[0];    // common delayed ES selector
 
     assign in_ready = !active;
 
@@ -99,6 +107,9 @@ module quant_engine32_mx (
     endgenerate
 
     // -------------------- Candidate capture at RQU output --------------------
+    // The top level reuses one lane RQU per input lane.  Four consecutive
+    // issue cycles evaluate ES 0..3; this block demultiplexes the returning
+    // FP4 vectors into one candidate array per ES.
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             for (ii=0; ii<32; ii=ii+1) begin
@@ -123,9 +134,9 @@ module quant_engine32_mx (
     end
 
     // -------------------- Pipelined subgroup accumulation trees --------------------
-    wire        accum_valid [0:3];
-    wire [1:0]  accum_es    [0:3];
-    wire [35:0] accum_cost  [0:3];
+    wire        accum_valid [0:3]; // valid for each subgroup accumulator output
+    wire [1:0]  accum_es    [0:3]; // ES selector delayed through the accumulator tree
+    wire [35:0] accum_cost  [0:3]; // summed cost for one 8-lane subgroup
 
     generate
       for (gs=0; gs<4; gs=gs+1) begin: GEN_SUBGROUP_ACCUM
@@ -149,10 +160,14 @@ module quant_engine32_mx (
       end
     endgenerate
 
-    wire        accum_out_valid = accum_valid[0];
-    wire [1:0]  accum_es_out    = accum_es[0];
+    wire        accum_out_valid = accum_valid[0]; // common valid; all subgroup accumulators are aligned
+    wire [1:0]  accum_es_out    = accum_es[0];    // common delayed ES selector
 
     // -------------------- Cost capture after accumulation tree --------------------
+    // Store each subgroup's summed cost into the bank matching its ES
+    // candidate.  The ES==3 cost is still available directly as accum_cost
+    // in the first argmin stage, so subgroup_cost3 is retained for debug and
+    // symmetry with the other candidates.
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             for (ii=0; ii<4; ii=ii+1) begin
@@ -177,12 +192,12 @@ module quant_engine32_mx (
     end
 
     // -------------------- Pipelined argmin tree --------------------
-    reg        cmp_v1, cmp_v2;
-    reg [35:0] cmp01_cost [0:3];
-    reg [35:0] cmp23_cost [0:3];
-    reg [1:0]  cmp01_idx  [0:3];
-    reg [1:0]  cmp23_idx  [0:3];
-    reg [1:0]  es_idx_final [0:3];
+    reg        cmp_v1, cmp_v2;       // valid bits for the two compare stages
+    reg [35:0] cmp01_cost [0:3];     // lower cost of ES0 vs ES1 per subgroup
+    reg [35:0] cmp23_cost [0:3];     // lower cost of ES2 vs ES3 per subgroup
+    reg [1:0]  cmp01_idx  [0:3];     // winning ES index for cmp01_cost
+    reg [1:0]  cmp23_idx  [0:3];     // winning ES index for cmp23_cost
+    reg [1:0]  es_idx_final [0:3];   // final selected ES index per subgroup
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin

@@ -16,9 +16,50 @@ module nvesm2_fp32_abs_diff_pos (
     reg [7:0]  exp_bits;
     reg [23:0] norm_m;
     reg [4:0]  lead_shift;
-    integer jj;
+
+    function [4:0] leading_shift24;
+        input [23:0] value;
+        begin
+            casez (value)
+                24'b1???????????????????????: leading_shift24 = 5'd0;
+                24'b01??????????????????????: leading_shift24 = 5'd1;
+                24'b001?????????????????????: leading_shift24 = 5'd2;
+                24'b0001????????????????????: leading_shift24 = 5'd3;
+                24'b00001???????????????????: leading_shift24 = 5'd4;
+                24'b000001??????????????????: leading_shift24 = 5'd5;
+                24'b0000001?????????????????: leading_shift24 = 5'd6;
+                24'b00000001????????????????: leading_shift24 = 5'd7;
+                24'b000000001???????????????: leading_shift24 = 5'd8;
+                24'b0000000001??????????????: leading_shift24 = 5'd9;
+                24'b00000000001?????????????: leading_shift24 = 5'd10;
+                24'b000000000001????????????: leading_shift24 = 5'd11;
+                24'b0000000000001???????????: leading_shift24 = 5'd12;
+                24'b00000000000001??????????: leading_shift24 = 5'd13;
+                24'b000000000000001?????????: leading_shift24 = 5'd14;
+                24'b0000000000000001????????: leading_shift24 = 5'd15;
+                24'b00000000000000001???????: leading_shift24 = 5'd16;
+                24'b000000000000000001??????: leading_shift24 = 5'd17;
+                24'b0000000000000000001?????: leading_shift24 = 5'd18;
+                24'b00000000000000000001????: leading_shift24 = 5'd19;
+                24'b000000000000000000001???: leading_shift24 = 5'd20;
+                24'b0000000000000000000001??: leading_shift24 = 5'd21;
+                24'b00000000000000000000001?: leading_shift24 = 5'd22;
+                24'b000000000000000000000001: leading_shift24 = 5'd23;
+                default:                       leading_shift24 = 5'd24;
+            endcase
+        end
+    endfunction
 
     always @(*) begin
+        m_small_shifted = 24'd0;
+        diff = 25'd0;
+        exp_unb = 11'sd0;
+        exp_out = 11'sd0;
+        exp_bits = 8'd0;
+        norm_m = 24'd0;
+        lead_shift = 5'd0;
+        z = 32'h00000000;
+
         if (a[30:0] >= b[30:0]) begin
             big = a;
             small = b;
@@ -29,8 +70,8 @@ module nvesm2_fp32_abs_diff_pos (
 
         e_big = big[30:23];
         e_small = small[30:23];
-        m_big = {e_big != 8'd0, big[22:0]};
-        m_small = {e_small != 8'd0, small[22:0]};
+        m_big = {((e_big != 8'd0) ? 1'b1 : 1'b0), big[22:0]};
+        m_small = {((e_small != 8'd0) ? 1'b1 : 1'b0), small[22:0]};
 
         if (e_big == 8'hff) begin
             z = 32'h7f800000;
@@ -43,10 +84,7 @@ module nvesm2_fp32_abs_diff_pos (
                 m_small_shifted = m_small >> (e_big - e_small);
 
             diff = {1'b0, m_big} - {1'b0, m_small_shifted};
-            lead_shift = 5'd24;
-            for (jj=23; jj>=0; jj=jj-1)
-                if ((lead_shift == 5'd24) && diff[jj])
-                    lead_shift = 23 - jj;
+            lead_shift = leading_shift24(diff[23:0]);
 
             exp_unb = (e_big == 8'd0) ? -11'sd126 : ($signed({1'b0, e_big}) - 11'sd127);
             exp_out = exp_unb - $signed({6'd0, lead_shift});

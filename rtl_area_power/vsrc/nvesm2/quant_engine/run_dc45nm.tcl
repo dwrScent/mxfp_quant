@@ -1,4 +1,14 @@
-# Synthesize the NVESM2 quant engine top with its helper modules.
+# Synthesize the NVESM2 quant engine top with Nangate 45 nm cells.
+set target_lib "/home/design/Desktop/pdk45/NangateOpenCellLibrary_typical.db"
+
+if {![file exists $target_lib]} {
+    puts "Error: missing target library: $target_lib"
+    exit 1
+}
+
+set_app_var target_library [list $target_lib]
+set_app_var link_library [list "*" $target_lib]
+
 set rtl_files [list \
     ../baseunit/nvesm2_fp32_mul.v \
     nvesm2_fp32_abs_diff_pos.v \
@@ -16,14 +26,10 @@ foreach rtl_file $rtl_files {
     read_file -format verilog $rtl_file
 }
 
-# top module
 current_design quant_engine32
-
-# Technology library used by the original area/power reports.
-set_app_var target_library "/home/design/Desktop/tcbn16ffcllbwp16p90tt1v85c.db"
-set_app_var link_library "* /home/design/Desktop/tcbn16ffcllbwp16p90tt1v85c.db"
+link
+check_design
 compile
 
-# Emit reports in the working directory used by Design Compiler.
 report_area > area_report.txt
 report_power > power_report.txt

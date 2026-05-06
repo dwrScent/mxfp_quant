@@ -1054,8 +1054,11 @@ def get_quant_nvesm2_kur(tensor_value: torch.Tensor, group_size: int):
     cand_qval = cast_to_fp4(x_expanded / cand_scales) * cand_scales
     # mse_per_ratio = (cand_qval - x_expanded).pow(2).mean(dim=1)
     # calculate kurtosis instead
-    kurt_per_ratio = cand_qval - cand_qval.mean(dim=1, keepdim=True)
-    kurt_per_ratio = (kurt_per_ratio.pow(4).mean(dim=1))
+    mean = cand_qval.mean(dim=1)
+    centered = cand_qval - mean.unsqueeze(1)
+    var = centered.pow(2).mean(dim=1).clamp(min=1e-12)
+    fourth = centered.pow(4).mean(dim=1)
+    kurt_per_ratio = fourth / (var ** 2)
     best_ratio_idx = kurt_per_ratio.argmin(dim=1)
     # mse_per_ratio = (cand_qval - x_expanded).abs().mean(dim=1)
     # best_ratio_idx = mse_per_ratio.argmin(dim=1)
@@ -1323,7 +1326,7 @@ __name__ = "__main__"
 container = {0: [], 1: [], 2: [], 3: []}
 # draw_histogram_for_different_ratio()
 # draw_kurtosis_histogram_for_different_ratio()
-# draw_mse_comp_with_gaussian()
-draw_mse_comp_with_real_weight()
+draw_mse_comp_with_gaussian()
+# draw_mse_comp_with_real_weight()
 
 # compare_quant_err_with_different_sf()

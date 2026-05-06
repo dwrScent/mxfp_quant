@@ -12,21 +12,35 @@ puts "Synthesis for module: $module_name"
 # be standalone Verilog files named ${module_name}.v, except baseunit modules
 # listed below.
 if {$module_name == "quant_engine32_mx"} {
-    read_file -format verilog {
-        ../baseunit/nvesm2_fp32_mul.v
-        nvesm2_fp32_abs_diff_pos.v
-        nvesm2_group_scale.v
-        nvesm2_quant_lane.v
-        nvesm2_subgroup_accum.v
-        quant_engine32_mx.v
+    set rtl_files [list \
+        ../baseunit/nvesm2_fp32_mul.v \
+        nvesm2_fp32_abs_diff_pos.v \
+        nvesm2_group_scale.v \
+        nvesm2_quant_lane.v \
+        nvesm2_subgroup_accum.v \
+        quant_engine32_mx.v \
+    ]
+    foreach rtl_file $rtl_files {
+        if {![file exists $rtl_file]} {
+            puts "Error: missing RTL file: $rtl_file"
+            exit 1
+        }
+        read_file -format verilog $rtl_file
     }
 } elseif {$module_name == "nvesm2_fp32_mul"} {
     read_file -format verilog "../baseunit/${module_name}.v"
 } elseif {$module_name == "nvesm2_quant_lane"} {
-    read_file -format verilog {
-        ../baseunit/nvesm2_fp32_mul.v
-        nvesm2_fp32_abs_diff_pos.v
-        nvesm2_quant_lane.v
+    set rtl_files [list \
+        ../baseunit/nvesm2_fp32_mul.v \
+        nvesm2_fp32_abs_diff_pos.v \
+        nvesm2_quant_lane.v \
+    ]
+    foreach rtl_file $rtl_files {
+        if {![file exists $rtl_file]} {
+            puts "Error: missing RTL file: $rtl_file"
+            exit 1
+        }
+        read_file -format verilog $rtl_file
     }
 } else {
     read_file -format verilog "${module_name}.v"

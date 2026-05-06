@@ -1,0 +1,3 @@
+- combine two multiplier to one
+- reduce cost bitwidth
+- do not use fp32 to calculate err (?)

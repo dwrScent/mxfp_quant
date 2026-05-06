@@ -37,7 +37,7 @@ Warning: Unable to resolve reference 'nvesm2_fp32_abs_diff_pos' in 'nvesm2_quant
 Report : area
 Design : quant_engine32
 Version: O-2018.06-SP1
-Date   : Wed May  6 21:25:30 2026
+Date   : Wed May  6 21:39:35 2026
 ****************************************
 
 Information: Updating design information... (UID-85)

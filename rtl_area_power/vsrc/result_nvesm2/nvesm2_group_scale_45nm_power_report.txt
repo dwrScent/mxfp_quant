@@ -3,14 +3,13 @@ Information: Propagating switching activity (low effort zero delay simulation). 
 Warning: There is no defined clock in the design. (PWR-80)
 Warning: Design has unannotated primary inputs. (PWR-414)
 Warning: Design has unannotated sequential cell outputs. (PWR-415)
-Warning: Design has unannotated black box outputs. (PWR-428)
  
 ****************************************
 Report : power
         -analysis_effort low
-Design : quant_engine32
+Design : nvesm2_group_scale
 Version: O-2018.06-SP1
-Date   : Wed May  6 21:25:41 2026
+Date   : Wed May  6 21:35:27 2026
 ****************************************
 
 
@@ -24,7 +23,7 @@ Wire Load Model Mode: top
 
 Design        Wire Load Model            Library
 ------------------------------------------------
-quant_engine32         5K_hvratio_1_1    NangateOpenCellLibrary
+nvesm2_group_scale     5K_hvratio_1_1    NangateOpenCellLibrary
 
 
 Global Operating Voltage = 1.1  
@@ -36,12 +35,12 @@ Power-specific unit information :
     Leakage Power Units = 1nW
 
 
-  Cell Internal Power  =   6.8381 mW   (61%)
-  Net Switching Power  =   4.3570 mW   (39%)
+  Cell Internal Power  = 733.4487 uW   (67%)
+  Net Switching Power  = 361.2971 uW   (33%)
                          ---------
-Total Dynamic Power    =  11.1951 mW  (100%)
+Total Dynamic Power    =   1.0947 mW  (100%)
 
-Cell Leakage Power     =   4.8458 mW
+Cell Leakage Power     = 100.2579 uW
 
 Information: report_power power group summary does not include estimated clock tree power. (PWR-789)
 
@@ -53,8 +52,8 @@ memory             0.0000            0.0000            0.0000            0.0000 
 black_box          0.0000            0.0000            0.0000            0.0000  (   0.00%)
 clock_network      0.0000            0.0000            0.0000            0.0000  (   0.00%)
 register           0.0000            0.0000            0.0000            0.0000  (   0.00%)
-sequential     4.7283e+03          124.1968        7.4805e+05        5.6005e+03  (  34.91%)
-combinational  2.1100e+03        4.2322e+03        4.0977e+06        1.0441e+04  (  65.09%)
+sequential       514.2764           23.6618        5.1985e+04          589.9234  (  49.37%)
+combinational    219.1719          337.6374        4.8273e+04          605.0762  (  50.63%)
 --------------------------------------------------------------------------------------------------
-Total          6.8383e+03 uW     4.3564e+03 uW     4.8458e+06 nW     1.6042e+04 uW
+Total            733.4482 uW       361.2992 uW     1.0026e+05 nW     1.1950e+03 uW
 1

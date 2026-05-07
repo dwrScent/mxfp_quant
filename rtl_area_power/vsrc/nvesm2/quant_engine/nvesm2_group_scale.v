@@ -33,15 +33,15 @@ module nvesm2_group_scale (
 
     function [23:0] rshift_round_u24;
         input [23:0] value;
-        input integer sh;
+        input [4:0] sh;
         reg [24:0] rounded;
         begin
-            if (sh <= 0) begin
+            if (sh == 5'd0) begin
                 rshift_round_u24 = value;
-            end else if (sh >= 24) begin
+            end else if (sh >= 5'd24) begin
                 rshift_round_u24 = 24'd0;
             end else begin
-                rounded = {1'b0, value} + (25'd1 << (sh-1));
+                rounded = {1'b0, value} + (25'd1 << (sh - 5'd1));
                 rshift_round_u24 = rounded >> sh;
             end
         end
@@ -50,10 +50,10 @@ module nvesm2_group_scale (
     function [7:0] encode_unsigned_e4m3;
         input              is_zero;
         input              is_inf;
-        input signed [10:0] exp_unb;
+        input signed [8:0] exp_unb;
         input [23:0]       sig24;
-        integer sub_shift;
-        reg signed [10:0] exp_r;
+        reg [4:0] sub_shift;
+        reg signed [8:0] exp_r;
         reg [3:0] keep4;
         reg guard;
         reg sticky;
@@ -65,11 +65,11 @@ module nvesm2_group_scale (
         begin
             exp_r = exp_unb;
 
-            if (is_zero || (sig24 == 24'd0) || (exp_r < -11'sd10)) begin
+            if (is_zero || (sig24 == 24'd0) || (exp_r < -9'sd10)) begin
                 encode_unsigned_e4m3 = 8'h00;
-            end else if (is_inf || (exp_r > 11'sd7)) begin
+            end else if (is_inf || (exp_r > 9'sd7)) begin
                 encode_unsigned_e4m3 = 8'h77;
-            end else if (exp_r >= -11'sd6) begin
+            end else if (exp_r >= -9'sd6) begin
                 keep4 = sig24[23:20];
                 guard = sig24[19];
                 sticky = |sig24[18:0];
@@ -77,18 +77,23 @@ module nvesm2_group_scale (
                 rounded4 = {1'b0, keep4} + {4'd0, round_up};
 
                 if (rounded4[4]) begin
-                    exp_r = exp_r + 11'sd1;
+                    exp_r = exp_r + 9'sd1;
                     rounded4 = 5'b01000;
                 end
 
-                if (exp_r > 11'sd7)
+                if (exp_r > 9'sd7)
                     encode_unsigned_e4m3 = 8'h77;
                 else begin
-                    exp4 = exp_r + 11'sd7;
+                    exp4 = exp_r + 9'sd7;
                     encode_unsigned_e4m3 = {1'b0, exp4, rounded4[2:0]};
                 end
             end else begin
-                sub_shift = 14 - exp_r;
+                case (exp_r)
+                    -9'sd10: sub_shift = 5'd24;
+                    -9'sd9:  sub_shift = 5'd23;
+                    -9'sd8:  sub_shift = 5'd22;
+                    default: sub_shift = 5'd21;
+                endcase
                 sub_mag = rshift_round_u24(sig24, sub_shift);
                 sub_mant = sub_mag[3:0];
 
@@ -174,15 +179,15 @@ module nvesm2_group_scale (
     wire [23:0] group_max_sig_s4  = (group_max_exp_s4 == 8'h00) ?
                                     {1'b0, group_max_frac_s4} :
                                     {1'b1, group_max_frac_s4};
-    wire signed [10:0] group_max_exp_unb_s4 = (group_max_exp_s4 == 8'h00) ?
-                                              -11'sd126 :
-                                              ($signed({1'b0, group_max_exp_s4}) - 11'sd127);
+    wire signed [8:0] group_max_exp_unb_s4 = (group_max_exp_s4 == 8'h00) ?
+                                             -9'sd126 :
+                                             ($signed({1'b0, group_max_exp_s4}) - 9'sd127);
     wire [36:0] scale_prod_s4 = group_max_sig_s4 * INV_E2M1_MAX_SIG_Q12;
 
     reg        v5;
     reg        scale_zero_s5;
     reg        scale_inf_s5;
-    reg signed [10:0] max_exp_unb_s5;
+    reg signed [8:0] max_exp_unb_s5;
     reg [36:0] scale_prod_s5;
 
     always @(posedge clk or negedge rst_n) begin
@@ -190,7 +195,7 @@ module nvesm2_group_scale (
             v5 <= 1'b0;
             scale_zero_s5 <= 1'b0;
             scale_inf_s5 <= 1'b0;
-            max_exp_unb_s5 <= 11'sd0;
+            max_exp_unb_s5 <= 9'sd0;
             scale_prod_s5 <= 37'd0;
         end else begin
             v5 <= v4;
@@ -206,14 +211,14 @@ module nvesm2_group_scale (
     wire [23:0] scale_sig_s5 = scale_prod_ge_2_s5 ?
                                scale_prod_s5[36:13] :
                                scale_prod_s5[35:12];
-    wire signed [10:0] scale_exp_unb_s5 = scale_prod_ge_2_s5 ?
-                                          (max_exp_unb_s5 - 11'sd2) :
-                                          (max_exp_unb_s5 - 11'sd3);
+    wire signed [8:0] scale_exp_unb_s5 = scale_prod_ge_2_s5 ?
+                                         (max_exp_unb_s5 - 9'sd2) :
+                                         (max_exp_unb_s5 - 9'sd3);
 
     reg        v6;
     reg        scale_zero_s6;
     reg        scale_inf_s6;
-    reg signed [10:0] scale_exp_unb_s6;
+    reg signed [8:0] scale_exp_unb_s6;
     reg [23:0] scale_sig_s6;
 
     always @(posedge clk or negedge rst_n) begin
@@ -221,7 +226,7 @@ module nvesm2_group_scale (
             v6 <= 1'b0;
             scale_zero_s6 <= 1'b0;
             scale_inf_s6 <= 1'b0;
-            scale_exp_unb_s6 <= 11'sd0;
+            scale_exp_unb_s6 <= 9'sd0;
             scale_sig_s6 <= 24'd0;
         end else begin
             v6 <= v5;

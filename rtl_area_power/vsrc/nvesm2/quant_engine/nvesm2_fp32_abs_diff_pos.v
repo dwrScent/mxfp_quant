@@ -11,8 +11,8 @@ module nvesm2_fp32_abs_diff_pos (
     reg [23:0] m_lo;
     reg [23:0] m_lo_shifted;
     reg [24:0] diff;
-    reg signed [10:0] exp_unb;
-    reg signed [10:0] exp_out;
+    reg signed [8:0] exp_unb;
+    reg signed [8:0] exp_out;
     reg [7:0]  exp_bits;
     reg [23:0] norm_m;
     reg [4:0]  lead_shift;
@@ -53,8 +53,8 @@ module nvesm2_fp32_abs_diff_pos (
     always @(*) begin
         m_lo_shifted = 24'd0;
         diff = 25'd0;
-        exp_unb = 11'sd0;
-        exp_out = 11'sd0;
+        exp_unb = 9'sd0;
+        exp_out = 9'sd0;
         exp_bits = 8'd0;
         norm_m = 24'd0;
         lead_shift = 5'd0;
@@ -86,14 +86,14 @@ module nvesm2_fp32_abs_diff_pos (
             diff = {1'b0, m_big} - {1'b0, m_lo_shifted};
             lead_shift = leading_shift24(diff[23:0]);
 
-            exp_unb = (e_big == 8'd0) ? -11'sd126 : ($signed({1'b0, e_big}) - 11'sd127);
-            exp_out = exp_unb - $signed({6'd0, lead_shift});
-            exp_bits = exp_out + 11'sd127;
+            exp_unb = (e_big == 8'd0) ? -9'sd126 : ($signed({1'b0, e_big}) - 9'sd127);
+            exp_out = exp_unb - $signed({4'd0, lead_shift});
+            exp_bits = exp_out + 9'sd127;
             norm_m = diff[23:0] << lead_shift;
 
             if (diff == 25'd0)
                 z = 32'h00000000;
-            else if (exp_out < -11'sd126)
+            else if (exp_out < -9'sd126)
                 z = 32'h00000000;
             else
                 z = {1'b0, exp_bits, norm_m[22:0]};

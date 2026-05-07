@@ -17,18 +17,18 @@ module nvesm2_quant_lane (
     output reg        out_valid,
     output reg [1:0]  es_idx_out,
     output reg [3:0]  fp4,
-    output reg [31:0] cost
+    output reg [13:0] cost
 );
 
     function [31:0] pack_pos_fp32;
-        input signed [10:0] exp_unb;
+        input signed [4:0] exp_unb;
         input [22:0] frac;
-        reg signed [11:0] exp_biased;
+        reg signed [8:0] exp_biased;
         begin
-            exp_biased = exp_unb + 12'sd127;
-            if (exp_biased >= 12'sd255)
+            exp_biased = exp_unb + 9'sd127;
+            if (exp_biased >= 9'sd255)
                 pack_pos_fp32 = 32'h7f800000;
-            else if (exp_biased <= 12'sd0)
+            else if (exp_biased <= 9'sd0)
                 pack_pos_fp32 = 32'h00000000;
             else
                 pack_pos_fp32 = {1'b0, exp_biased[7:0], frac};
@@ -46,24 +46,24 @@ module nvesm2_quant_lane (
                 e4m3_inv_to_fp32 = 32'h7f800000;
             end else if (exp4 == 4'd0) begin
                 case (mant3)
-                    3'd1: e4m3_inv_to_fp32 = pack_pos_fp32(11'sd9,  23'h000000); // 512
-                    3'd2: e4m3_inv_to_fp32 = pack_pos_fp32(11'sd8,  23'h000000); // 256
-                    3'd3: e4m3_inv_to_fp32 = pack_pos_fp32(11'sd7,  23'h2aaaab); // 512/3
-                    3'd4: e4m3_inv_to_fp32 = pack_pos_fp32(11'sd7,  23'h000000); // 128
-                    3'd5: e4m3_inv_to_fp32 = pack_pos_fp32(11'sd6,  23'h4ccccd); // 512/5
-                    3'd6: e4m3_inv_to_fp32 = pack_pos_fp32(11'sd6,  23'h2aaaab); // 512/6
-                    default: e4m3_inv_to_fp32 = pack_pos_fp32(11'sd6, 23'h124925); // 512/7
+                    3'd1: e4m3_inv_to_fp32 = pack_pos_fp32(5'sd9,  23'h000000); // 512
+                    3'd2: e4m3_inv_to_fp32 = pack_pos_fp32(5'sd8,  23'h000000); // 256
+                    3'd3: e4m3_inv_to_fp32 = pack_pos_fp32(5'sd7,  23'h2aaaab); // 512/3
+                    3'd4: e4m3_inv_to_fp32 = pack_pos_fp32(5'sd7,  23'h000000); // 128
+                    3'd5: e4m3_inv_to_fp32 = pack_pos_fp32(5'sd6,  23'h4ccccd); // 512/5
+                    3'd6: e4m3_inv_to_fp32 = pack_pos_fp32(5'sd6,  23'h2aaaab); // 512/6
+                    default: e4m3_inv_to_fp32 = pack_pos_fp32(5'sd6, 23'h124925); // 512/7
                 endcase
             end else begin
                 case (mant3)
-                    3'd0: e4m3_inv_to_fp32 = pack_pos_fp32(11'sd7 - $signed({1'b0, exp4}), 23'h000000);
-                    3'd1: e4m3_inv_to_fp32 = pack_pos_fp32(11'sd6 - $signed({1'b0, exp4}), 23'h638e39);
-                    3'd2: e4m3_inv_to_fp32 = pack_pos_fp32(11'sd6 - $signed({1'b0, exp4}), 23'h4ccccd);
-                    3'd3: e4m3_inv_to_fp32 = pack_pos_fp32(11'sd6 - $signed({1'b0, exp4}), 23'h3a2e8c);
-                    3'd4: e4m3_inv_to_fp32 = pack_pos_fp32(11'sd6 - $signed({1'b0, exp4}), 23'h2aaaab);
-                    3'd5: e4m3_inv_to_fp32 = pack_pos_fp32(11'sd6 - $signed({1'b0, exp4}), 23'h1d89d9);
-                    3'd6: e4m3_inv_to_fp32 = pack_pos_fp32(11'sd6 - $signed({1'b0, exp4}), 23'h124925);
-                    default: e4m3_inv_to_fp32 = pack_pos_fp32(11'sd6 - $signed({1'b0, exp4}), 23'h088889);
+                    3'd0: e4m3_inv_to_fp32 = pack_pos_fp32(5'sd7 - $signed({1'b0, exp4}), 23'h000000);
+                    3'd1: e4m3_inv_to_fp32 = pack_pos_fp32(5'sd6 - $signed({1'b0, exp4}), 23'h638e39);
+                    3'd2: e4m3_inv_to_fp32 = pack_pos_fp32(5'sd6 - $signed({1'b0, exp4}), 23'h4ccccd);
+                    3'd3: e4m3_inv_to_fp32 = pack_pos_fp32(5'sd6 - $signed({1'b0, exp4}), 23'h3a2e8c);
+                    3'd4: e4m3_inv_to_fp32 = pack_pos_fp32(5'sd6 - $signed({1'b0, exp4}), 23'h2aaaab);
+                    3'd5: e4m3_inv_to_fp32 = pack_pos_fp32(5'sd6 - $signed({1'b0, exp4}), 23'h1d89d9);
+                    3'd6: e4m3_inv_to_fp32 = pack_pos_fp32(5'sd6 - $signed({1'b0, exp4}), 23'h124925);
+                    default: e4m3_inv_to_fp32 = pack_pos_fp32(5'sd6 - $signed({1'b0, exp4}), 23'h088889);
                 endcase
             end
         end
@@ -74,32 +74,32 @@ module nvesm2_quant_lane (
         reg [7:0] exp_bits;
         reg [22:0] frac_bits;
         reg [23:0] sig;
-        reg signed [10:0] exp_unb;
-        reg signed [11:0] shift;
-        integer rshift;
-        reg [47:0] scaled;
+        reg signed [8:0] exp_unb;
+        reg signed [8:0] shift;
+        reg [7:0] rshift;
+        reg [23:0] scaled;
         reg exact;
         begin
             exp_bits = value[30:23];
             frac_bits = value[22:0];
             sig = (exp_bits == 8'd0) ? {1'b0, frac_bits} : {1'b1, frac_bits};
-            exp_unb = (exp_bits == 8'd0) ? -11'sd126 :
-                       ($signed({1'b0, exp_bits}) - 11'sd127);
-            shift = exp_unb + 12'sd7 - 12'sd23;
-            scaled = 48'd0;
+            exp_unb = (exp_bits == 8'd0) ? -9'sd126 :
+                       ($signed({1'b0, exp_bits}) - 9'sd127);
+            shift = exp_unb + 9'sd7 - 9'sd23;
+            scaled = 24'd0;
             exact = 1'b0;
 
             if (value[30:0] == 31'd0) begin
-                scaled = 48'd0;
+                scaled = 24'd0;
                 exact = 1'b1;
             end else if (exp_bits == 8'hff) begin
-                scaled = 48'd4095;
-            end else if (shift >= 12'sd0) begin
-                scaled = 48'd4096;
+                scaled = 24'd4095;
+            end else if (shift >= 9'sd0) begin
+                scaled = 24'd4096;
             end else begin
                 rshift = -shift;
-                if (rshift >= 24) begin
-                    scaled = 48'd0;
+                if (rshift >= 8'd24) begin
+                    scaled = 24'd0;
                     exact = (sig == 24'd0);
                 end else begin
                     scaled = sig >> rshift;
@@ -107,7 +107,7 @@ module nvesm2_quant_lane (
                 end
             end
 
-            if (scaled > 48'd4095)
+            if (scaled > 24'd4095)
                 fp32_to_q7_info = {1'b0, 12'hfff};
             else
                 fp32_to_q7_info = {exact, scaled[11:0]};
@@ -218,95 +218,95 @@ module nvesm2_quant_lane (
         end
     endfunction
 
-    // 4 ES candidates x 17 error buckets.  Values are squared-error weights
-    // used only for relative comparison between ES candidates in a subgroup.
-    function [31:0] error_lut_4x17;
+    // 4 ES candidates x 17 error buckets.  Max value is 12544, so 14 bits
+    // are enough for each per-lane cost.
+    function [13:0] error_lut_4x17;
         input [1:0] es_sel;  // selected ES candidate
         input [4:0] err_idx; // clipped error bucket, 0..16
         begin
             case (es_sel)
                 2'd0: begin
                     case (err_idx)
-                        5'd0:  error_lut_4x17 = 32'd0;
-                        5'd1:  error_lut_4x17 = 32'd16;
-                        5'd2:  error_lut_4x17 = 32'd64;
-                        5'd3:  error_lut_4x17 = 32'd144;
-                        5'd4:  error_lut_4x17 = 32'd256;
-                        5'd5:  error_lut_4x17 = 32'd400;
-                        5'd6:  error_lut_4x17 = 32'd576;
-                        5'd7:  error_lut_4x17 = 32'd784;
-                        5'd8:  error_lut_4x17 = 32'd1024;
-                        5'd9:  error_lut_4x17 = 32'd1296;
-                        5'd10: error_lut_4x17 = 32'd1600;
-                        5'd11: error_lut_4x17 = 32'd1936;
-                        5'd12: error_lut_4x17 = 32'd2304;
-                        5'd13: error_lut_4x17 = 32'd2704;
-                        5'd14: error_lut_4x17 = 32'd3136;
-                        5'd15: error_lut_4x17 = 32'd3600;
-                        default: error_lut_4x17 = 32'd4096;
+                        5'd0:  error_lut_4x17 = 14'd0;
+                        5'd1:  error_lut_4x17 = 14'd16;
+                        5'd2:  error_lut_4x17 = 14'd64;
+                        5'd3:  error_lut_4x17 = 14'd144;
+                        5'd4:  error_lut_4x17 = 14'd256;
+                        5'd5:  error_lut_4x17 = 14'd400;
+                        5'd6:  error_lut_4x17 = 14'd576;
+                        5'd7:  error_lut_4x17 = 14'd784;
+                        5'd8:  error_lut_4x17 = 14'd1024;
+                        5'd9:  error_lut_4x17 = 14'd1296;
+                        5'd10: error_lut_4x17 = 14'd1600;
+                        5'd11: error_lut_4x17 = 14'd1936;
+                        5'd12: error_lut_4x17 = 14'd2304;
+                        5'd13: error_lut_4x17 = 14'd2704;
+                        5'd14: error_lut_4x17 = 14'd3136;
+                        5'd15: error_lut_4x17 = 14'd3600;
+                        default: error_lut_4x17 = 14'd4096;
                     endcase
                 end
                 2'd1: begin
                     case (err_idx)
-                        5'd0:  error_lut_4x17 = 32'd0;
-                        5'd1:  error_lut_4x17 = 32'd25;
-                        5'd2:  error_lut_4x17 = 32'd100;
-                        5'd3:  error_lut_4x17 = 32'd225;
-                        5'd4:  error_lut_4x17 = 32'd400;
-                        5'd5:  error_lut_4x17 = 32'd625;
-                        5'd6:  error_lut_4x17 = 32'd900;
-                        5'd7:  error_lut_4x17 = 32'd1225;
-                        5'd8:  error_lut_4x17 = 32'd1600;
-                        5'd9:  error_lut_4x17 = 32'd2025;
-                        5'd10: error_lut_4x17 = 32'd2500;
-                        5'd11: error_lut_4x17 = 32'd3025;
-                        5'd12: error_lut_4x17 = 32'd3600;
-                        5'd13: error_lut_4x17 = 32'd4225;
-                        5'd14: error_lut_4x17 = 32'd4900;
-                        5'd15: error_lut_4x17 = 32'd5625;
-                        default: error_lut_4x17 = 32'd6400;
+                        5'd0:  error_lut_4x17 = 14'd0;
+                        5'd1:  error_lut_4x17 = 14'd25;
+                        5'd2:  error_lut_4x17 = 14'd100;
+                        5'd3:  error_lut_4x17 = 14'd225;
+                        5'd4:  error_lut_4x17 = 14'd400;
+                        5'd5:  error_lut_4x17 = 14'd625;
+                        5'd6:  error_lut_4x17 = 14'd900;
+                        5'd7:  error_lut_4x17 = 14'd1225;
+                        5'd8:  error_lut_4x17 = 14'd1600;
+                        5'd9:  error_lut_4x17 = 14'd2025;
+                        5'd10: error_lut_4x17 = 14'd2500;
+                        5'd11: error_lut_4x17 = 14'd3025;
+                        5'd12: error_lut_4x17 = 14'd3600;
+                        5'd13: error_lut_4x17 = 14'd4225;
+                        5'd14: error_lut_4x17 = 14'd4900;
+                        5'd15: error_lut_4x17 = 14'd5625;
+                        default: error_lut_4x17 = 14'd6400;
                     endcase
                 end
                 2'd2: begin
                     case (err_idx)
-                        5'd0:  error_lut_4x17 = 32'd0;
-                        5'd1:  error_lut_4x17 = 32'd36;
-                        5'd2:  error_lut_4x17 = 32'd144;
-                        5'd3:  error_lut_4x17 = 32'd324;
-                        5'd4:  error_lut_4x17 = 32'd576;
-                        5'd5:  error_lut_4x17 = 32'd900;
-                        5'd6:  error_lut_4x17 = 32'd1296;
-                        5'd7:  error_lut_4x17 = 32'd1764;
-                        5'd8:  error_lut_4x17 = 32'd2304;
-                        5'd9:  error_lut_4x17 = 32'd2916;
-                        5'd10: error_lut_4x17 = 32'd3600;
-                        5'd11: error_lut_4x17 = 32'd4356;
-                        5'd12: error_lut_4x17 = 32'd5184;
-                        5'd13: error_lut_4x17 = 32'd6084;
-                        5'd14: error_lut_4x17 = 32'd7056;
-                        5'd15: error_lut_4x17 = 32'd8100;
-                        default: error_lut_4x17 = 32'd9216;
+                        5'd0:  error_lut_4x17 = 14'd0;
+                        5'd1:  error_lut_4x17 = 14'd36;
+                        5'd2:  error_lut_4x17 = 14'd144;
+                        5'd3:  error_lut_4x17 = 14'd324;
+                        5'd4:  error_lut_4x17 = 14'd576;
+                        5'd5:  error_lut_4x17 = 14'd900;
+                        5'd6:  error_lut_4x17 = 14'd1296;
+                        5'd7:  error_lut_4x17 = 14'd1764;
+                        5'd8:  error_lut_4x17 = 14'd2304;
+                        5'd9:  error_lut_4x17 = 14'd2916;
+                        5'd10: error_lut_4x17 = 14'd3600;
+                        5'd11: error_lut_4x17 = 14'd4356;
+                        5'd12: error_lut_4x17 = 14'd5184;
+                        5'd13: error_lut_4x17 = 14'd6084;
+                        5'd14: error_lut_4x17 = 14'd7056;
+                        5'd15: error_lut_4x17 = 14'd8100;
+                        default: error_lut_4x17 = 14'd9216;
                     endcase
                 end
                 default: begin
                     case (err_idx)
-                        5'd0:  error_lut_4x17 = 32'd0;
-                        5'd1:  error_lut_4x17 = 32'd49;
-                        5'd2:  error_lut_4x17 = 32'd196;
-                        5'd3:  error_lut_4x17 = 32'd441;
-                        5'd4:  error_lut_4x17 = 32'd784;
-                        5'd5:  error_lut_4x17 = 32'd1225;
-                        5'd6:  error_lut_4x17 = 32'd1764;
-                        5'd7:  error_lut_4x17 = 32'd2401;
-                        5'd8:  error_lut_4x17 = 32'd3136;
-                        5'd9:  error_lut_4x17 = 32'd3969;
-                        5'd10: error_lut_4x17 = 32'd4900;
-                        5'd11: error_lut_4x17 = 32'd5929;
-                        5'd12: error_lut_4x17 = 32'd7056;
-                        5'd13: error_lut_4x17 = 32'd8281;
-                        5'd14: error_lut_4x17 = 32'd9604;
-                        5'd15: error_lut_4x17 = 32'd11025;
-                        default: error_lut_4x17 = 32'd12544;
+                        5'd0:  error_lut_4x17 = 14'd0;
+                        5'd1:  error_lut_4x17 = 14'd49;
+                        5'd2:  error_lut_4x17 = 14'd196;
+                        5'd3:  error_lut_4x17 = 14'd441;
+                        5'd4:  error_lut_4x17 = 14'd784;
+                        5'd5:  error_lut_4x17 = 14'd1225;
+                        5'd6:  error_lut_4x17 = 14'd1764;
+                        5'd7:  error_lut_4x17 = 14'd2401;
+                        5'd8:  error_lut_4x17 = 14'd3136;
+                        5'd9:  error_lut_4x17 = 14'd3969;
+                        5'd10: error_lut_4x17 = 14'd4900;
+                        5'd11: error_lut_4x17 = 14'd5929;
+                        5'd12: error_lut_4x17 = 14'd7056;
+                        5'd13: error_lut_4x17 = 14'd8281;
+                        5'd14: error_lut_4x17 = 14'd9604;
+                        5'd15: error_lut_4x17 = 14'd11025;
+                        default: error_lut_4x17 = 14'd12544;
                     endcase
                 end
             endcase
@@ -432,7 +432,7 @@ module nvesm2_quant_lane (
             out_valid <= 1'b0;
             es_idx_out <= 2'd0;
             fp4 <= 4'd0;
-            cost <= 32'd0;
+            cost <= 14'd0;
         end else begin
             out_valid <= v4;
             es_idx_out <= es_s4;

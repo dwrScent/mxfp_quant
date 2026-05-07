@@ -69,10 +69,10 @@ module quant_engine32_mx (
 
     // Accumulated quantization cost per 8-lane subgroup and ES candidate.
     // subgroup_costN[s] is the summed cost for subgroup s using es_idx == N.
-    reg [35:0]       subgroup_cost0 [0:3];
-    reg [35:0]       subgroup_cost1 [0:3];
-    reg [35:0]       subgroup_cost2 [0:3];
-    reg [35:0]       subgroup_cost3 [0:3];
+    reg [16:0]       subgroup_cost0 [0:3];
+    reg [16:0]       subgroup_cost1 [0:3];
+    reg [16:0]       subgroup_cost2 [0:3];
+    reg [16:0]       subgroup_cost3 [0:3];
 
     // -------------------- 32 pipelined RQUs, one ES candidate per lane per cycle --------------------
     wire        accept_input = in_valid && in_ready; // handshake for one 32-lane block
@@ -80,7 +80,7 @@ module quant_engine32_mx (
     wire        rqu_issue_valid = active && scale_ready && (issue_count < 3'd4); // issue one ES candidate this cycle
     wire [1:0]  rqu_issue_es    = issue_count[1:0]; // ES selector sent to every lane
     wire [3:0]  lane_fp4        [0:31]; // FP4 result from each lane RQU
-    wire [31:0] lane_cost       [0:31]; // per-lane error cost for the issued ES candidate
+    wire [13:0] lane_cost       [0:31]; // per-lane error cost for the issued ES candidate
     wire        lane_out_valid  [0:31]; // valid from each lane pipeline, expected cycle-aligned
     wire [1:0]  lane_es_out     [0:31]; // ES selector delayed through each lane pipeline
 
@@ -136,7 +136,7 @@ module quant_engine32_mx (
     // -------------------- Pipelined subgroup accumulation trees --------------------
     wire        accum_valid [0:3]; // valid for each subgroup accumulator output
     wire [1:0]  accum_es    [0:3]; // ES selector delayed through the accumulator tree
-    wire [35:0] accum_cost  [0:3]; // summed cost for one 8-lane subgroup
+    wire [16:0] accum_cost  [0:3]; // summed cost for one 8-lane subgroup
 
     generate
       for (gs=0; gs<4; gs=gs+1) begin: GEN_SUBGROUP_ACCUM
@@ -171,10 +171,10 @@ module quant_engine32_mx (
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             for (ii=0; ii<4; ii=ii+1) begin
-                subgroup_cost0[ii] <= 36'd0;
-                subgroup_cost1[ii] <= 36'd0;
-                subgroup_cost2[ii] <= 36'd0;
-                subgroup_cost3[ii] <= 36'd0;
+                subgroup_cost0[ii] <= 17'd0;
+                subgroup_cost1[ii] <= 17'd0;
+                subgroup_cost2[ii] <= 17'd0;
+                subgroup_cost3[ii] <= 17'd0;
             end
         end else if (accum_out_valid && (accum_es_out == 2'd0)) begin
             for (ii=0; ii<4; ii=ii+1)
@@ -193,8 +193,8 @@ module quant_engine32_mx (
 
     // -------------------- Pipelined argmin tree --------------------
     reg        cmp_v1, cmp_v2;       // valid bits for the two compare stages
-    reg [35:0] cmp01_cost [0:3];     // lower cost of ES0 vs ES1 per subgroup
-    reg [35:0] cmp23_cost [0:3];     // lower cost of ES2 vs ES3 per subgroup
+    reg [16:0] cmp01_cost [0:3];     // lower cost of ES0 vs ES1 per subgroup
+    reg [16:0] cmp23_cost [0:3];     // lower cost of ES2 vs ES3 per subgroup
     reg [1:0]  cmp01_idx  [0:3];     // winning ES index for cmp01_cost
     reg [1:0]  cmp23_idx  [0:3];     // winning ES index for cmp23_cost
     reg [1:0]  es_idx_final [0:3];   // final selected ES index per subgroup
@@ -203,8 +203,8 @@ module quant_engine32_mx (
         if (!rst_n) begin
             cmp_v1 <= 1'b0;
             for (ii=0; ii<4; ii=ii+1) begin
-                cmp01_cost[ii] <= 36'd0;
-                cmp23_cost[ii] <= 36'd0;
+                cmp01_cost[ii] <= 17'd0;
+                cmp23_cost[ii] <= 17'd0;
                 cmp01_idx[ii] <= 2'd0;
                 cmp23_idx[ii] <= 2'd0;
             end

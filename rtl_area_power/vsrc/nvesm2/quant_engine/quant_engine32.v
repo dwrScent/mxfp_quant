@@ -33,7 +33,7 @@ module quant_engine32 (
     genvar gs;
 
     reg [1:0]        state;
-    reg [2:0]        issue_es;
+    reg [1:0]        issue_es;
     reg [32*32-1:0]  fp32_hold;
     reg [7:0]        group_scale_g0;
     reg [7:0]        group_scale_g1;
@@ -68,11 +68,11 @@ module quant_engine32 (
     );
 
     // -------------------- S1-S5: shared lane RQU pipeline --------------------
-    wire        lane_issue_valid = (state == ST_ISSUE) && (issue_es < 3'd4);
-    wire [1:0]  lane_issue_es    = issue_es[1:0];
+    wire        lane_issue_valid = (state == ST_ISSUE);
+    wire [1:0]  lane_issue_es    = issue_es;
 
     wire [3:0]  lane_fp4       [0:31];
-    wire [31:0] lane_cost      [0:31];
+    wire [13:0] lane_cost      [0:31];
     wire [1:0]  lane_es_out    [0:31];
     wire [31:0] lane_valid_bus;
     wire [32*4-1:0] lane_fp4_bus;
@@ -123,8 +123,8 @@ module quant_engine32 (
     // -------------------- S6-S8: eight-lane subgroup cost accumulation --------------------
     wire [3:0]        accum_valid_bus;
     wire [1:0]        accum_es     [0:3];
-    wire [35:0]       accum_cost   [0:3];
-    wire [4*36-1:0]   accum_cost_bus;
+    wire [16:0]       accum_cost   [0:3];
+    wire [4*17-1:0]   accum_cost_bus;
 
     generate
       for (gs=0; gs<4; gs=gs+1) begin: GEN_SUBGROUP_ACCUM
@@ -146,22 +146,22 @@ module quant_engine32 (
             .subgroup_cost (accum_cost[gs])
         );
 
-        assign accum_cost_bus[gs*36 + 35 -: 36] = accum_cost[gs];
+        assign accum_cost_bus[gs*17 + 16 -: 17] = accum_cost[gs];
       end
     endgenerate
 
     wire       accum_out_valid = &accum_valid_bus;
     wire [1:0] accum_out_es    = accum_es[0];
 
-    reg [4*36-1:0] cost_es0;
-    reg [4*36-1:0] cost_es1;
-    reg [4*36-1:0] cost_es2;
+    reg [4*17-1:0] cost_es0;
+    reg [4*17-1:0] cost_es1;
+    reg [4*17-1:0] cost_es2;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            cost_es0 <= {4*36{1'b0}};
-            cost_es1 <= {4*36{1'b0}};
-            cost_es2 <= {4*36{1'b0}};
+            cost_es0 <= {4*17{1'b0}};
+            cost_es1 <= {4*17{1'b0}};
+            cost_es2 <= {4*17{1'b0}};
         end else if (accum_out_valid) begin
             case (accum_out_es)
                 2'd0: cost_es0 <= accum_cost_bus;
@@ -174,8 +174,8 @@ module quant_engine32 (
 
     // -------------------- S9-S10: per-subgroup argmin --------------------
     reg        argmin_v1;
-    reg [35:0] win01_cost [0:3];
-    reg [35:0] win23_cost [0:3];
+    reg [16:0] win01_cost [0:3];
+    reg [16:0] win23_cost [0:3];
     reg [1:0]  win01_es   [0:3];
     reg [1:0]  win23_es   [0:3];
 
@@ -183,8 +183,8 @@ module quant_engine32 (
         if (!rst_n) begin
             argmin_v1 <= 1'b0;
             for (ii=0; ii<4; ii=ii+1) begin
-                win01_cost[ii] <= 36'd0;
-                win23_cost[ii] <= 36'd0;
+                win01_cost[ii] <= 17'd0;
+                win23_cost[ii] <= 17'd0;
                 win01_es[ii] <= 2'd0;
                 win23_es[ii] <= 2'd0;
             end
@@ -193,19 +193,19 @@ module quant_engine32 (
 
             if (accum_out_valid && (accum_out_es == 2'd3)) begin
                 for (ii=0; ii<4; ii=ii+1) begin
-                    if (cost_es1[ii*36 + 35 -: 36] < cost_es0[ii*36 + 35 -: 36]) begin
-                        win01_cost[ii] <= cost_es1[ii*36 + 35 -: 36];
+                    if (cost_es1[ii*17 + 16 -: 17] < cost_es0[ii*17 + 16 -: 17]) begin
+                        win01_cost[ii] <= cost_es1[ii*17 + 16 -: 17];
                         win01_es[ii] <= 2'd1;
                     end else begin
-                        win01_cost[ii] <= cost_es0[ii*36 + 35 -: 36];
+                        win01_cost[ii] <= cost_es0[ii*17 + 16 -: 17];
                         win01_es[ii] <= 2'd0;
                     end
 
-                    if (accum_cost_bus[ii*36 + 35 -: 36] < cost_es2[ii*36 + 35 -: 36]) begin
-                        win23_cost[ii] <= accum_cost_bus[ii*36 + 35 -: 36];
+                    if (accum_cost_bus[ii*17 + 16 -: 17] < cost_es2[ii*17 + 16 -: 17]) begin
+                        win23_cost[ii] <= accum_cost_bus[ii*17 + 16 -: 17];
                         win23_es[ii] <= 2'd3;
                     end else begin
-                        win23_cost[ii] <= cost_es2[ii*36 + 35 -: 36];
+                        win23_cost[ii] <= cost_es2[ii*17 + 16 -: 17];
                         win23_es[ii] <= 2'd2;
                     end
                 end
@@ -228,7 +228,7 @@ module quant_engine32 (
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             state <= ST_IDLE;
-            issue_es <= 3'd0;
+            issue_es <= 2'd0;
             fp32_hold <= {32*32{1'b0}};
             group_scale_g0 <= 8'h00;
             group_scale_g1 <= 8'h00;
@@ -244,7 +244,7 @@ module quant_engine32 (
                 ST_IDLE: begin
                     if (accept_input) begin
                         state <= ST_WAIT_SCALE;
-                        issue_es <= 3'd0;
+                        issue_es <= 2'd0;
                         fp32_hold <= in_fp32_bus;
                     end
                 end
@@ -252,7 +252,7 @@ module quant_engine32 (
                 ST_WAIT_SCALE: begin
                     if (group_scale_done) begin
                         state <= ST_ISSUE;
-                        issue_es <= 3'd0;
+                        issue_es <= 2'd0;
                         group_scale_g0 <= group_scale_e4m3_g0;
                         group_scale_g1 <= group_scale_e4m3_g1;
                         group_scale_hold <= {group_scale_e4m3_g1, group_scale_e4m3_g0};
@@ -260,15 +260,15 @@ module quant_engine32 (
                 end
 
                 ST_ISSUE: begin
-                    issue_es <= issue_es + 3'd1;
-                    if (issue_es == 3'd3)
+                    issue_es <= issue_es + 2'd1;
+                    if (issue_es == 2'd3)
                         state <= ST_DRAIN;
                 end
 
                 default: begin
                     if (argmin_v1) begin
                         state <= ST_IDLE;
-                        issue_es <= 3'd0;
+                        issue_es <= 2'd0;
                         out_valid <= 1'b1;
                         group_scale_bus <= group_scale_hold;
 

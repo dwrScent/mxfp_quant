@@ -4,7 +4,6 @@ set report_suffix ""
 
 set default_modules [list \
     nvesm2_fp32_mul \
-    nvesm2_fp32_abs_diff_pos \
     nvesm2_group_scale \
     nvesm2_quant_lane \
     nvesm2_subgroup_accum \
@@ -32,7 +31,6 @@ proc rtl_files_for_module {module_name} {
         quant_engine32 {
             return [list \
                 ../baseunit/nvesm2_fp32_mul.v \
-                nvesm2_fp32_abs_diff_pos.v \
                 nvesm2_group_scale.v \
                 nvesm2_quant_lane.v \
                 nvesm2_subgroup_accum.v \
@@ -42,7 +40,6 @@ proc rtl_files_for_module {module_name} {
         nvesm2_quant_lane {
             return [list \
                 ../baseunit/nvesm2_fp32_mul.v \
-                nvesm2_fp32_abs_diff_pos.v \
                 nvesm2_quant_lane.v \
             ]
         }

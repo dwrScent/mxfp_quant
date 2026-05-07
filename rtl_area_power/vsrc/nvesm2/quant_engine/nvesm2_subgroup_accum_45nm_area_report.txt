@@ -1,0 +1,31 @@
+ 
+****************************************
+Report : area
+Design : nvesm2_subgroup_accum
+Version: O-2018.06-SP1
+Date   : Thu May  7 12:15:20 2026
+****************************************
+
+Information: Updating design information... (UID-85)
+Library(s) Used:
+
+    NangateOpenCellLibrary (File: /home/design/Desktop/pdk45/NangateOpenCellLibrary_typical.db)
+
+Number of ports:                         1022
+Number of nets:                          1718
+Number of cells:                          552
+Number of combinational cells:            291
+Number of sequential cells:               254
+Number of macros/black boxes:               0
+Number of buf/inv:                         56
+Number of references:                      10
+
+Combinational area:               1003.884008
+Buf/Inv area:                       44.687999
+Noncombinational area:            1298.080042
+Macro/Black Box area:                0.000000
+Net Interconnect area:      undefined  (Wire load has zero net area)
+
+Total cell area:                  2301.964050
+Total area:                 undefined
+1

@@ -4,6 +4,8 @@
 // FP4 format is E2M1: {sign, exp[1:0], mant[0]} with exponent bias 1.
 // One instance evaluates one ES candidate at a time; the top level time-
 // multiplexes four metadata candidates through the same per-lane hardware.
+// ES scaling is folded into integer Q7 thresholds, so each lane only needs one
+// FP32 multiply for abs(x) / group_scale.
 // =============================================================
 module nvesm2_quant_lane (
     input             clk,
@@ -67,76 +69,152 @@ module nvesm2_quant_lane (
         end
     endfunction
 
-    function [31:0] inv_es_to_fp32;
-        input [1:0] es_idx;
+    function [12:0] fp32_to_q7_info;
+        input [31:0] value;
+        reg [7:0] exp_bits;
+        reg [22:0] frac_bits;
+        reg [23:0] sig;
+        reg signed [10:0] exp_unb;
+        reg signed [11:0] shift;
+        integer rshift;
+        reg [47:0] scaled;
+        reg exact;
         begin
-            case (es_idx)
-                2'd0: inv_es_to_fp32 = 32'h3f800000; // 1 / 1.00
-                2'd1: inv_es_to_fp32 = 32'h3f4ccccd; // 1 / 1.25
-                2'd2: inv_es_to_fp32 = 32'h3f2aaaab; // 1 / 1.50
-                default: inv_es_to_fp32 = 32'h3f124925; // 1 / 1.75
-            endcase
+            exp_bits = value[30:23];
+            frac_bits = value[22:0];
+            sig = (exp_bits == 8'd0) ? {1'b0, frac_bits} : {1'b1, frac_bits};
+            exp_unb = (exp_bits == 8'd0) ? -11'sd126 :
+                       ($signed({1'b0, exp_bits}) - 11'sd127);
+            shift = exp_unb + 12'sd7 - 12'sd23;
+            scaled = 48'd0;
+            exact = 1'b0;
+
+            if (value[30:0] == 31'd0) begin
+                scaled = 48'd0;
+                exact = 1'b1;
+            end else if (exp_bits == 8'hff) begin
+                scaled = 48'd4095;
+            end else if (shift >= 12'sd0) begin
+                scaled = 48'd4096;
+            end else begin
+                rshift = -shift;
+                if (rshift >= 24) begin
+                    scaled = 48'd0;
+                    exact = (sig == 24'd0);
+                end else begin
+                    scaled = sig >> rshift;
+                    exact = ((sig & ((24'd1 << rshift) - 24'd1)) == 24'd0);
+                end
+            end
+
+            if (scaled > 48'd4095)
+                fp32_to_q7_info = {1'b0, 12'hfff};
+            else
+                fp32_to_q7_info = {exact, scaled[11:0]};
         end
     endfunction
 
-    function fp32_lt_pos;
-        input [31:0] a;
-        input [31:0] b;
-        begin
-            fp32_lt_pos = (a[30:0] < b[30:0]);
-        end
-    endfunction
-
-    function [2:0] quant_mag_fp4_e2m1_fp32;
-        input [31:0] mag_fp32;
-        begin
-            if      (fp32_lt_pos(mag_fp32, 32'h3ec00000)) quant_mag_fp4_e2m1_fp32 = 3'b000; // 0
-            else if (fp32_lt_pos(mag_fp32, 32'h3f600000)) quant_mag_fp4_e2m1_fp32 = 3'b001; // 0.75
-            else if (fp32_lt_pos(mag_fp32, 32'h3fa00000)) quant_mag_fp4_e2m1_fp32 = 3'b010; // 1.0
-            else if (fp32_lt_pos(mag_fp32, 32'h3fe00000)) quant_mag_fp4_e2m1_fp32 = 3'b011; // 1.5
-            else if (fp32_lt_pos(mag_fp32, 32'h40200000)) quant_mag_fp4_e2m1_fp32 = 3'b100; // 2.0
-            else if (fp32_lt_pos(mag_fp32, 32'h40600000)) quant_mag_fp4_e2m1_fp32 = 3'b101; // 3.0
-            else if (fp32_lt_pos(mag_fp32, 32'h40a00000)) quant_mag_fp4_e2m1_fp32 = 3'b110; // 4.0
-            else                                          quant_mag_fp4_e2m1_fp32 = 3'b111; // 6.0
-        end
-    endfunction
-
-    function [31:0] fp4_abs_to_fp32;
+    function [7:0] fp4_base_q5;
         input [2:0] mag_code;
         begin
             case (mag_code)
-                3'b000: fp4_abs_to_fp32 = 32'h00000000;
-                3'b001: fp4_abs_to_fp32 = 32'h3f400000;
-                3'b010: fp4_abs_to_fp32 = 32'h3f800000;
-                3'b011: fp4_abs_to_fp32 = 32'h3fc00000;
-                3'b100: fp4_abs_to_fp32 = 32'h40000000;
-                3'b101: fp4_abs_to_fp32 = 32'h40400000;
-                3'b110: fp4_abs_to_fp32 = 32'h40800000;
-                default: fp4_abs_to_fp32 = 32'h40c00000;
+                3'b000: fp4_base_q5 = 8'd0;
+                3'b001: fp4_base_q5 = 8'd24;  // 0.75 * 32
+                3'b010: fp4_base_q5 = 8'd32;  // 1.00 * 32
+                3'b011: fp4_base_q5 = 8'd48;  // 1.50 * 32
+                3'b100: fp4_base_q5 = 8'd64;  // 2.00 * 32
+                3'b101: fp4_base_q5 = 8'd96;  // 3.00 * 32
+                3'b110: fp4_base_q5 = 8'd128; // 4.00 * 32
+                default: fp4_base_q5 = 8'd192; // 6.00 * 32
             endcase
         end
     endfunction
 
-    function [4:0] abs_err_to_lut_idx_fp32;
-        input [31:0] abs_err_fp32;
+    function [7:0] quant_bound_base_q5;
+        input [2:0] bound_idx;
         begin
-            if      (fp32_lt_pos(abs_err_fp32, 32'h3d000000)) abs_err_to_lut_idx_fp32 = 5'd0;
-            else if (fp32_lt_pos(abs_err_fp32, 32'h3dc00000)) abs_err_to_lut_idx_fp32 = 5'd1;
-            else if (fp32_lt_pos(abs_err_fp32, 32'h3e200000)) abs_err_to_lut_idx_fp32 = 5'd2;
-            else if (fp32_lt_pos(abs_err_fp32, 32'h3e600000)) abs_err_to_lut_idx_fp32 = 5'd3;
-            else if (fp32_lt_pos(abs_err_fp32, 32'h3e900000)) abs_err_to_lut_idx_fp32 = 5'd4;
-            else if (fp32_lt_pos(abs_err_fp32, 32'h3eb00000)) abs_err_to_lut_idx_fp32 = 5'd5;
-            else if (fp32_lt_pos(abs_err_fp32, 32'h3ed00000)) abs_err_to_lut_idx_fp32 = 5'd6;
-            else if (fp32_lt_pos(abs_err_fp32, 32'h3ef00000)) abs_err_to_lut_idx_fp32 = 5'd7;
-            else if (fp32_lt_pos(abs_err_fp32, 32'h3f080000)) abs_err_to_lut_idx_fp32 = 5'd8;
-            else if (fp32_lt_pos(abs_err_fp32, 32'h3f180000)) abs_err_to_lut_idx_fp32 = 5'd9;
-            else if (fp32_lt_pos(abs_err_fp32, 32'h3f280000)) abs_err_to_lut_idx_fp32 = 5'd10;
-            else if (fp32_lt_pos(abs_err_fp32, 32'h3f380000)) abs_err_to_lut_idx_fp32 = 5'd11;
-            else if (fp32_lt_pos(abs_err_fp32, 32'h3f480000)) abs_err_to_lut_idx_fp32 = 5'd12;
-            else if (fp32_lt_pos(abs_err_fp32, 32'h3f580000)) abs_err_to_lut_idx_fp32 = 5'd13;
-            else if (fp32_lt_pos(abs_err_fp32, 32'h3f680000)) abs_err_to_lut_idx_fp32 = 5'd14;
-            else if (fp32_lt_pos(abs_err_fp32, 32'h3f780000)) abs_err_to_lut_idx_fp32 = 5'd15;
-            else                                              abs_err_to_lut_idx_fp32 = 5'd16;
+            case (bound_idx)
+                3'd0: quant_bound_base_q5 = 8'd12;  // 0.375 * 32
+                3'd1: quant_bound_base_q5 = 8'd28;  // 0.875 * 32
+                3'd2: quant_bound_base_q5 = 8'd40;  // 1.250 * 32
+                3'd3: quant_bound_base_q5 = 8'd56;  // 1.750 * 32
+                3'd4: quant_bound_base_q5 = 8'd80;  // 2.500 * 32
+                3'd5: quant_bound_base_q5 = 8'd112; // 3.500 * 32
+                default: quant_bound_base_q5 = 8'd160; // 5.000 * 32
+            endcase
+        end
+    endfunction
+
+    function [11:0] scaled_q7;
+        input [7:0] base_q5;
+        input [1:0] es_idx;
+        reg [11:0] base;
+        begin
+            base = {4'd0, base_q5};
+            case (es_idx)
+                2'd0: scaled_q7 = base << 2;
+                2'd1: scaled_q7 = (base << 2) + base;
+                2'd2: scaled_q7 = (base << 2) + (base << 1);
+                default: scaled_q7 = (base << 3) - base;
+            endcase
+        end
+    endfunction
+
+    function [2:0] quant_mag_fp4_e2m1_q7;
+        input [11:0] mag_q7;
+        input [1:0]  es_idx;
+        begin
+            if      (mag_q7 < scaled_q7(quant_bound_base_q5(3'd0), es_idx)) quant_mag_fp4_e2m1_q7 = 3'b000;
+            else if (mag_q7 < scaled_q7(quant_bound_base_q5(3'd1), es_idx)) quant_mag_fp4_e2m1_q7 = 3'b001;
+            else if (mag_q7 < scaled_q7(quant_bound_base_q5(3'd2), es_idx)) quant_mag_fp4_e2m1_q7 = 3'b010;
+            else if (mag_q7 < scaled_q7(quant_bound_base_q5(3'd3), es_idx)) quant_mag_fp4_e2m1_q7 = 3'b011;
+            else if (mag_q7 < scaled_q7(quant_bound_base_q5(3'd4), es_idx)) quant_mag_fp4_e2m1_q7 = 3'b100;
+            else if (mag_q7 < scaled_q7(quant_bound_base_q5(3'd5), es_idx)) quant_mag_fp4_e2m1_q7 = 3'b101;
+            else if (mag_q7 < scaled_q7(quant_bound_base_q5(3'd6), es_idx)) quant_mag_fp4_e2m1_q7 = 3'b110;
+            else                                                            quant_mag_fp4_e2m1_q7 = 3'b111;
+        end
+    endfunction
+
+    function [11:0] fp4_es_q7;
+        input [2:0] mag_code;
+        input [1:0] es_idx;
+        begin
+            fp4_es_q7 = scaled_q7(fp4_base_q5(mag_code), es_idx);
+        end
+    endfunction
+
+    function [4:0] abs_err_to_lut_idx_q7;
+        input [11:0] mag_q7;
+        input        mag_q7_exact;
+        input [1:0]  es_idx;
+        input [2:0]  mag_code;
+        integer idx;
+        reg [11:0] q_q7;
+        reg [11:0] err_q7;
+        reg [11:0] lo_q7;
+        reg [11:0] hi_q7;
+        reg lo_ok;
+        reg hi_ok;
+        reg found;
+        begin
+            q_q7 = fp4_es_q7(mag_code, es_idx);
+            found = 1'b0;
+            abs_err_to_lut_idx_q7 = 5'd16;
+
+            for (idx=0; idx<16; idx=idx+1) begin
+                err_q7 = scaled_q7((idx << 1) + 1, es_idx);
+                lo_q7 = (q_q7 > err_q7) ? (q_q7 - err_q7) : 12'd0;
+                hi_q7 = q_q7 + err_q7;
+                lo_ok = (q_q7 <= err_q7) ||
+                        (mag_q7 > lo_q7) ||
+                        ((mag_q7 == lo_q7) && !mag_q7_exact);
+                hi_ok = (mag_q7 < hi_q7);
+
+                if (!found && lo_ok && hi_ok) begin
+                    abs_err_to_lut_idx_q7 = idx[4:0];
+                    found = 1'b1;
+                end
+            end
         end
     endfunction
 
@@ -270,68 +348,58 @@ module nvesm2_quant_lane (
         end
     end
 
-    wire [31:0] inv_es_fp32_s1 = inv_es_to_fp32(es_s1);
-    wire [31:0] norm_es_fp32_comb;
+    wire [12:0] norm_q7_info_s1 = fp32_to_q7_info(norm_fp32_s1);
 
-    nvesm2_fp32_mul U_APPLY_ES (
-        .a(norm_fp32_s1),
-        .b(inv_es_fp32_s1),
-        .z(norm_es_fp32_comb)
-    );
-
-    // -------------------- S2: apply inverse metadata scale --------------------
-    reg        v2;             // valid bit for stage S2 payload
-    reg        sign_s2;        // sign delayed from S1
-    reg [1:0]  es_s2;          // ES candidate delayed from S1
-    reg [31:0] norm_es_fp32_s2; // norm * LUT[1 / ES], still FP32
+    // -------------------- S2: convert norm to Q7 threshold domain --------------------
+    reg        v2;
+    reg        sign_s2;
+    reg [1:0]  es_s2;
+    reg [11:0] norm_q7_s2;
+    reg        norm_q7_exact_s2;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             v2 <= 1'b0;
             sign_s2 <= 1'b0;
             es_s2 <= 2'd0;
-            norm_es_fp32_s2 <= 32'h00000000;
+            norm_q7_s2 <= 12'd0;
+            norm_q7_exact_s2 <= 1'b1;
         end else begin
             v2 <= v1;
             sign_s2 <= sign_s1;
             es_s2 <= es_s1;
-            norm_es_fp32_s2 <= norm_es_fp32_comb;
+            norm_q7_s2 <= norm_q7_info_s1[11:0];
+            norm_q7_exact_s2 <= norm_q7_info_s1[12];
         end
     end
 
     // -------------------- S3: quantize to FP4 magnitude --------------------
-    reg        v3;             // valid bit for stage S3 payload
-    reg        sign_s3;        // sign delayed from S2
-    reg [1:0]  es_s3;          // ES candidate delayed from S2
-    reg [31:0] norm_es_fp32_s3; // pre-quantization magnitude kept for error calculation
-    reg [2:0]  fp4_mag_s3;     // unsigned E2M1 magnitude code chosen by threshold compare
+    reg        v3;
+    reg        sign_s3;
+    reg [1:0]  es_s3;
+    reg [11:0] norm_q7_s3;
+    reg        norm_q7_exact_s3;
+    reg [2:0]  fp4_mag_s3;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             v3 <= 1'b0;
             sign_s3 <= 1'b0;
             es_s3 <= 2'd0;
-            norm_es_fp32_s3 <= 32'h00000000;
+            norm_q7_s3 <= 12'd0;
+            norm_q7_exact_s3 <= 1'b1;
             fp4_mag_s3 <= 3'd0;
         end else begin
             v3 <= v2;
             sign_s3 <= sign_s2;
             es_s3 <= es_s2;
-            norm_es_fp32_s3 <= norm_es_fp32_s2;
-            fp4_mag_s3 <= quant_mag_fp4_e2m1_fp32(norm_es_fp32_s2);
+            norm_q7_s3 <= norm_q7_s2;
+            norm_q7_exact_s3 <= norm_q7_exact_s2;
+            fp4_mag_s3 <= quant_mag_fp4_e2m1_q7(norm_q7_s2, es_s2);
         end
     end
 
-    // -------------------- S4: Calculate quantization err and convert to 0~16 --------------------
-    wire [31:0] fp4_fp32_s3 = fp4_abs_to_fp32(fp4_mag_s3);
-    wire [31:0] abs_err_fp32_s3;
-
-    nvesm2_fp32_abs_diff_pos U_ERR_DIFF (
-        .a(norm_es_fp32_s3),
-        .b(fp4_fp32_s3),
-        .z(abs_err_fp32_s3)
-    );
-
+    // -------------------- S4: bucket absolute error in Q7 threshold domain --------------------
     reg        v4;         // valid bit for stage S4 payload
     reg [1:0]  es_s4;      // ES candidate delayed from S3
     reg [3:0]  fp4_s4;     // signed FP4 code; zero is forced positive
@@ -347,7 +415,12 @@ module nvesm2_quant_lane (
             v4 <= v3;
             es_s4 <= es_s3;
             fp4_s4 <= (fp4_mag_s3 == 3'b000) ? 4'b0000 : {sign_s3, fp4_mag_s3};
-            err_idx_s4 <= abs_err_to_lut_idx_fp32(abs_err_fp32_s3);
+            err_idx_s4 <= abs_err_to_lut_idx_q7(
+                norm_q7_s3,
+                norm_q7_exact_s3,
+                es_s3,
+                fp4_mag_s3
+            );
         end
     end
 

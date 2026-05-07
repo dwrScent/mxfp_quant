@@ -6,9 +6,9 @@ Warning: Design has unannotated primary inputs. (PWR-414)
 ****************************************
 Report : power
         -analysis_effort low
-Design : nvesm2_fp32_mul
+Design : nvesm2_fp32_abs_diff_pos
 Version: O-2018.06-SP1
-Date   : Wed May  6 21:35:22 2026
+Date   : Thu May  7 09:25:28 2026
 ****************************************
 
 
@@ -22,7 +22,8 @@ Wire Load Model Mode: top
 
 Design        Wire Load Model            Library
 ------------------------------------------------
-nvesm2_fp32_mul        5K_hvratio_1_1    NangateOpenCellLibrary
+nvesm2_fp32_abs_diff_pos
+                       5K_hvratio_1_1    NangateOpenCellLibrary
 
 
 Global Operating Voltage = 1.1  
@@ -34,12 +35,12 @@ Power-specific unit information :
     Leakage Power Units = 1nW
 
 
-  Cell Internal Power  =   2.0203 mW   (57%)
-  Net Switching Power  =   1.5014 mW   (43%)
+  Cell Internal Power  = 342.2531 uW   (50%)
+  Net Switching Power  = 346.5045 uW   (50%)
                          ---------
-Total Dynamic Power    =   3.5217 mW  (100%)
+Total Dynamic Power    = 688.7575 uW  (100%)
 
-Cell Leakage Power     =  59.0710 uW
+Cell Leakage Power     =  23.3400 uW
 
 Information: report_power power group summary does not include estimated clock tree power. (PWR-789)
 
@@ -52,7 +53,7 @@ black_box          0.0000            0.0000            0.0000            0.0000 
 clock_network      0.0000            0.0000            0.0000            0.0000  (   0.00%)
 register           0.0000            0.0000            0.0000            0.0000  (   0.00%)
 sequential         0.0000            0.0000            0.0000            0.0000  (   0.00%)
-combinational  2.0203e+03        1.5014e+03        5.9071e+04        3.5807e+03  ( 100.00%)
+combinational    342.2529          346.5046        2.3340e+04          712.0981  ( 100.00%)
 --------------------------------------------------------------------------------------------------
-Total          2.0203e+03 uW     1.5014e+03 uW     5.9071e+04 nW     3.5807e+03 uW
+Total            342.2529 uW       346.5046 uW     2.3340e+04 nW       712.0981 uW
 1

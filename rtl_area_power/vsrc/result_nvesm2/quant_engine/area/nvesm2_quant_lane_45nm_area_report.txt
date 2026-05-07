@@ -1,0 +1,31 @@
+ 
+****************************************
+Report : area
+Design : nvesm2_quant_lane
+Version: O-2018.06-SP1
+Date   : Thu May  7 09:25:40 2026
+****************************************
+
+Information: Updating design information... (UID-85)
+Library(s) Used:
+
+    NangateOpenCellLibrary (File: /home/design/Desktop/pdk45/NangateOpenCellLibrary_typical.db)
+
+Number of ports:                         1309
+Number of nets:                          6856
+Number of cells:                         4692
+Number of combinational cells:           4496
+Number of sequential cells:               181
+Number of macros/black boxes:               0
+Number of buf/inv:                        573
+Number of references:                      33
+
+Combinational area:               7900.732012
+Buf/Inv area:                      314.412002
+Noncombinational area:             760.760025
+Macro/Black Box area:                0.000000
+Net Interconnect area:      undefined  (Wire load has zero net area)
+
+Total cell area:                  8661.492037
+Total area:                 undefined
+1

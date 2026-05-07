@@ -1,3 +1,5 @@
-- combine two multiplier to one
+- two mutiplier
+    - turn to threshold
+    - combine two multiplier to one
 - reduce cost bitwidth
 - do not use fp32 to calculate err (how to garantee precisian if not using dfp32?)

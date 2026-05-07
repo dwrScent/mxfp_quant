@@ -1,0 +1,343 @@
+ 
+****************************************
+Report : area
+Design : quant_engine32
+Version: O-2018.06-SP1
+Date   : Thu May  7 10:25:31 2026
+****************************************
+
+Library(s) Used:
+
+    NangateOpenCellLibrary (File: /home/design/Desktop/pdk45/NangateOpenCellLibrary_typical.db)
+
+Number of ports:                        17491
+Number of nets:                        114091
+Number of cells:                        82853
+Number of combinational cells:          79620
+Number of sequential cells:              3061
+Number of macros/black boxes:               0
+Number of buf/inv:                      12201
+Number of references:                      53
+
+Combinational area:             127949.457989
+Buf/Inv area:                     7418.740007
+Noncombinational area:           16507.428415
+Macro/Black Box area:                0.000000
+Net Interconnect area:      undefined  (Wire load has zero net area)
+
+Total cell area:                144456.886404
+Total area:                 undefined
+
+Hierarchical area distribution
+------------------------------
+
+                                  Global cell area              Local cell area
+                                  --------------------  ------------------------------- 
+Hierarchical cell                 Absolute     Percent  Combi-       Noncombi-   Black-
+                                  Total        Total    national     national    boxes   Design
+--------------------------------  -----------  -------  -----------  ----------  ------  ------------------------------
+quant_engine32                    144456.8864    100.0    2382.8280   6378.6802  0.0000  quant_engine32
+GEN_LANE[0].U_LANE                  3892.1120      2.7     160.3980     90.4400  0.0000  nvfp_quant_lane_0
+GEN_LANE[0].U_LANE/U_DIV_GROUP_SCALE
+                                    3641.2740      2.5     451.9340      0.0000  0.0000  nvfp_fp32_mul_0
+GEN_LANE[0].U_LANE/U_DIV_GROUP_SCALE/add_31
+                                      93.8980      0.1      93.8980      0.0000  0.0000  nvfp_fp32_mul_0_DW01_add_6
+GEN_LANE[0].U_LANE/U_DIV_GROUP_SCALE/mult_23
+                                    3095.4420      2.1    2878.1200      0.0000  0.0000  nvfp_fp32_mul_0_DW02_mult_0
+GEN_LANE[0].U_LANE/U_DIV_GROUP_SCALE/mult_23/FS_1
+                                     217.3220      0.2     217.3220      0.0000  0.0000  nvfp_fp32_mul_0_DW01_add_5
+GEN_LANE[10].U_LANE                 3913.6580      2.7     159.8660     90.4400  0.0000  nvfp_quant_lane_22
+GEN_LANE[10].U_LANE/U_DIV_GROUP_SCALE
+                                    3663.3520      2.5     440.7620      0.0000  0.0000  nvfp_fp32_mul_22
+GEN_LANE[10].U_LANE/U_DIV_GROUP_SCALE/add_31
+                                      93.6320      0.1      93.6320      0.0000  0.0000  nvfp_fp32_mul_22_DW01_add_6
+GEN_LANE[10].U_LANE/U_DIV_GROUP_SCALE/mult_23
+                                    3128.9580      2.2    2911.1040      0.0000  0.0000  nvfp_fp32_mul_22_DW02_mult_0
+GEN_LANE[10].U_LANE/U_DIV_GROUP_SCALE/mult_23/FS_1
+                                     217.8540      0.2     217.8540      0.0000  0.0000  nvfp_fp32_mul_22_DW01_add_5
+GEN_LANE[11].U_LANE                 3899.2940      2.7     163.3240     93.1000  0.0000  nvfp_quant_lane_21
+GEN_LANE[11].U_LANE/U_DIV_GROUP_SCALE
+                                    3642.8700      2.5     441.8260      0.0000  0.0000  nvfp_fp32_mul_21
+GEN_LANE[11].U_LANE/U_DIV_GROUP_SCALE/add_31
+                                      99.4840      0.1      99.4840      0.0000  0.0000  nvfp_fp32_mul_21_DW01_add_6
+GEN_LANE[11].U_LANE/U_DIV_GROUP_SCALE/mult_23
+                                    3101.5600      2.1    2885.8340      0.0000  0.0000  nvfp_fp32_mul_21_DW02_mult_0
+GEN_LANE[11].U_LANE/U_DIV_GROUP_SCALE/mult_23/FS_1
+                                     215.7260      0.1     215.7260      0.0000  0.0000  nvfp_fp32_mul_21_DW01_add_5
+GEN_LANE[12].U_LANE                 3812.0460      2.6     155.8760     90.4400  0.0000  nvfp_quant_lane_20
+GEN_LANE[12].U_LANE/U_DIV_GROUP_SCALE
+                                    3565.7300      2.5     444.2200      0.0000  0.0000  nvfp_fp32_mul_20
+GEN_LANE[12].U_LANE/U_DIV_GROUP_SCALE/add_31
+                                      93.8980      0.1      93.8980      0.0000  0.0000  nvfp_fp32_mul_20_DW01_add_6
+GEN_LANE[12].U_LANE/U_DIV_GROUP_SCALE/mult_23
+                                    3027.6120      2.1    2819.6000      0.0000  0.0000  nvfp_fp32_mul_20_DW02_mult_0
+GEN_LANE[12].U_LANE/U_DIV_GROUP_SCALE/mult_23/FS_1
+                                     208.0120      0.1     208.0120      0.0000  0.0000  nvfp_fp32_mul_20_DW01_add_5
+GEN_LANE[13].U_LANE                 3921.9040      2.7     154.8120     90.9720  0.0000  nvfp_quant_lane_19
+GEN_LANE[13].U_LANE/U_DIV_GROUP_SCALE
+                                    3676.1200      2.5     430.3880      0.0000  0.0000  nvfp_fp32_mul_19
+GEN_LANE[13].U_LANE/U_DIV_GROUP_SCALE/add_31
+                                      94.9620      0.1      94.9620      0.0000  0.0000  nvfp_fp32_mul_19_DW01_add_6
+GEN_LANE[13].U_LANE/U_DIV_GROUP_SCALE/mult_23
+                                    3150.7700      2.2    2928.3940      0.0000  0.0000  nvfp_fp32_mul_19_DW02_mult_0
+GEN_LANE[13].U_LANE/U_DIV_GROUP_SCALE/mult_23/FS_1
+                                     222.3760      0.2     222.3760      0.0000  0.0000  nvfp_fp32_mul_19_DW01_add_5
+GEN_LANE[14].U_LANE                 3877.7480      2.7     152.6840     90.9720  0.0000  nvfp_quant_lane_18
+GEN_LANE[14].U_LANE/U_DIV_GROUP_SCALE
+                                    3634.0920      2.5     446.0820      0.0000  0.0000  nvfp_fp32_mul_18
+GEN_LANE[14].U_LANE/U_DIV_GROUP_SCALE/add_31
+                                      95.4940      0.1      95.4940      0.0000  0.0000  nvfp_fp32_mul_18_DW01_add_6
+GEN_LANE[14].U_LANE/U_DIV_GROUP_SCALE/mult_23
+                                    3092.5160      2.1    2880.5140      0.0000  0.0000  nvfp_fp32_mul_18_DW02_mult_0
+GEN_LANE[14].U_LANE/U_DIV_GROUP_SCALE/mult_23/FS_1
+                                     212.0020      0.1     212.0020      0.0000  0.0000  nvfp_fp32_mul_18_DW01_add_5
+GEN_LANE[15].U_LANE                 3854.3400      2.7     158.8020     90.9720  0.0000  nvfp_quant_lane_17
+GEN_LANE[15].U_LANE/U_DIV_GROUP_SCALE
+                                    3604.5660      2.5     440.4960      0.0000  0.0000  nvfp_fp32_mul_17
+GEN_LANE[15].U_LANE/U_DIV_GROUP_SCALE/add_31
+                                      92.3020      0.1      92.3020      0.0000  0.0000  nvfp_fp32_mul_17_DW01_add_6
+GEN_LANE[15].U_LANE/U_DIV_GROUP_SCALE/mult_23
+                                    3071.7680      2.1    2852.0520      0.0000  0.0000  nvfp_fp32_mul_17_DW02_mult_0
+GEN_LANE[15].U_LANE/U_DIV_GROUP_SCALE/mult_23/FS_1
+                                     219.7160      0.2     219.7160      0.0000  0.0000  nvfp_fp32_mul_17_DW01_add_5
+GEN_LANE[16].U_LANE                 3872.9600      2.7     158.2700     93.6320  0.0000  nvfp_quant_lane_16
+GEN_LANE[16].U_LANE/U_DIV_GROUP_SCALE
+                                    3621.0580      2.5     440.7620      0.0000  0.0000  nvfp_fp32_mul_16
+GEN_LANE[16].U_LANE/U_DIV_GROUP_SCALE/add_31
+                                      93.8980      0.1      93.8980      0.0000  0.0000  nvfp_fp32_mul_16_DW01_add_6
+GEN_LANE[16].U_LANE/U_DIV_GROUP_SCALE/mult_23
+                                    3086.3980      2.1    2864.0220      0.0000  0.0000  nvfp_fp32_mul_16_DW02_mult_0
+GEN_LANE[16].U_LANE/U_DIV_GROUP_SCALE/mult_23/FS_1
+                                     222.3760      0.2     222.3760      0.0000  0.0000  nvfp_fp32_mul_16_DW01_add_5
+GEN_LANE[17].U_LANE                 3902.4860      2.7     156.6740     90.4400  0.0000  nvfp_quant_lane_15
+GEN_LANE[17].U_LANE/U_DIV_GROUP_SCALE
+                                    3655.3720      2.5     435.9740      0.0000  0.0000  nvfp_fp32_mul_15
+GEN_LANE[17].U_LANE/U_DIV_GROUP_SCALE/add_31
+                                      96.0260      0.1      96.0260      0.0000  0.0000  nvfp_fp32_mul_15_DW01_add_6
+GEN_LANE[17].U_LANE/U_DIV_GROUP_SCALE/mult_23
+                                    3123.3720      2.2    2907.9120      0.0000  0.0000  nvfp_fp32_mul_15_DW02_mult_0
+GEN_LANE[17].U_LANE/U_DIV_GROUP_SCALE/mult_23/FS_1
+                                     215.4600      0.1     215.4600      0.0000  0.0000  nvfp_fp32_mul_15_DW01_add_5
+GEN_LANE[18].U_LANE                 3880.9400      2.7     149.7580     90.4400  0.0000  nvfp_quant_lane_14
+GEN_LANE[18].U_LANE/U_DIV_GROUP_SCALE
+                                    3640.7420      2.5     452.9980      0.0000  0.0000  nvfp_fp32_mul_14
+GEN_LANE[18].U_LANE/U_DIV_GROUP_SCALE/add_31
+                                      93.1000      0.1      93.1000      0.0000  0.0000  nvfp_fp32_mul_14_DW01_add_6
+GEN_LANE[18].U_LANE/U_DIV_GROUP_SCALE/mult_23
+                                    3094.6440      2.1    2875.7260      0.0000  0.0000  nvfp_fp32_mul_14_DW02_mult_0
+GEN_LANE[18].U_LANE/U_DIV_GROUP_SCALE/mult_23/FS_1
+                                     218.9180      0.2     218.9180      0.0000  0.0000  nvfp_fp32_mul_14_DW01_add_5
+GEN_LANE[19].U_LANE                 3883.6000      2.7     156.4080     90.4400  0.0000  nvfp_quant_lane_13
+GEN_LANE[19].U_LANE/U_DIV_GROUP_SCALE
+                                    3636.7520      2.5     442.0920      0.0000  0.0000  nvfp_fp32_mul_13
+GEN_LANE[19].U_LANE/U_DIV_GROUP_SCALE/add_31
+                                      97.0900      0.1      97.0900      0.0000  0.0000  nvfp_fp32_mul_13_DW01_add_6
+GEN_LANE[19].U_LANE/U_DIV_GROUP_SCALE/mult_23
+                                    3097.5700      2.1    2886.8980      0.0000  0.0000  nvfp_fp32_mul_13_DW02_mult_0
+GEN_LANE[19].U_LANE/U_DIV_GROUP_SCALE/mult_23/FS_1
+                                     210.6720      0.1     210.6720      0.0000  0.0000  nvfp_fp32_mul_13_DW01_add_5
+GEN_LANE[1].U_LANE                  3900.0920      2.7     159.8660     90.4400  0.0000  nvfp_quant_lane_31
+GEN_LANE[1].U_LANE/U_DIV_GROUP_SCALE
+                                    3649.7860      2.5     434.6440      0.0000  0.0000  nvfp_fp32_mul_31
+GEN_LANE[1].U_LANE/U_DIV_GROUP_SCALE/add_31
+                                      88.8440      0.1      88.8440      0.0000  0.0000  nvfp_fp32_mul_31_DW01_add_6
+GEN_LANE[1].U_LANE/U_DIV_GROUP_SCALE/mult_23
+                                    3126.2980      2.2    2907.1140      0.0000  0.0000  nvfp_fp32_mul_31_DW02_mult_0
+GEN_LANE[1].U_LANE/U_DIV_GROUP_SCALE/mult_23/FS_1
+                                     219.1840      0.2     219.1840      0.0000  0.0000  nvfp_fp32_mul_31_DW01_add_5
+GEN_LANE[20].U_LANE                 3932.5440      2.7     159.6000     91.5040  0.0000  nvfp_quant_lane_12
+GEN_LANE[20].U_LANE/U_DIV_GROUP_SCALE
+                                    3681.4400      2.5     425.0680      0.0000  0.0000  nvfp_fp32_mul_12
+GEN_LANE[20].U_LANE/U_DIV_GROUP_SCALE/add_31
+                                      96.0260      0.1      96.0260      0.0000  0.0000  nvfp_fp32_mul_12_DW01_add_6
+GEN_LANE[20].U_LANE/U_DIV_GROUP_SCALE/mult_23
+                                    3160.3460      2.2    2937.9700      0.0000  0.0000  nvfp_fp32_mul_12_DW02_mult_0
+GEN_LANE[20].U_LANE/U_DIV_GROUP_SCALE/mult_23/FS_1
+                                     222.3760      0.2     222.3760      0.0000  0.0000  nvfp_fp32_mul_12_DW01_add_5
+GEN_LANE[21].U_LANE                 3870.8320      2.7     161.9940     90.4400  0.0000  nvfp_quant_lane_11
+GEN_LANE[21].U_LANE/U_DIV_GROUP_SCALE
+                                    3618.3980      2.5     444.7520      0.0000  0.0000  nvfp_fp32_mul_11
+GEN_LANE[21].U_LANE/U_DIV_GROUP_SCALE/add_31
+                                      88.5780      0.1      88.5780      0.0000  0.0000  nvfp_fp32_mul_11_DW01_add_6
+GEN_LANE[21].U_LANE/U_DIV_GROUP_SCALE/mult_23
+                                    3085.0680      2.1    2873.5980      0.0000  0.0000  nvfp_fp32_mul_11_DW02_mult_0
+GEN_LANE[21].U_LANE/U_DIV_GROUP_SCALE/mult_23/FS_1
+                                     211.4700      0.1     211.4700      0.0000  0.0000  nvfp_fp32_mul_11_DW01_add_5
+GEN_LANE[22].U_LANE                 3885.4620      2.7     154.5460     90.4400  0.0000  nvfp_quant_lane_10
+GEN_LANE[22].U_LANE/U_DIV_GROUP_SCALE
+                                    3640.4760      2.5     447.9440      0.0000  0.0000  nvfp_fp32_mul_10
+GEN_LANE[22].U_LANE/U_DIV_GROUP_SCALE/add_31
+                                     100.8140      0.1     100.8140      0.0000  0.0000  nvfp_fp32_mul_10_DW01_add_6
+GEN_LANE[22].U_LANE/U_DIV_GROUP_SCALE/mult_23
+                                    3091.7180      2.1    2869.3420      0.0000  0.0000  nvfp_fp32_mul_10_DW02_mult_0
+GEN_LANE[22].U_LANE/U_DIV_GROUP_SCALE/mult_23/FS_1
+                                     222.3760      0.2     222.3760      0.0000  0.0000  nvfp_fp32_mul_10_DW01_add_5
+GEN_LANE[23].U_LANE                 3845.8280      2.7     158.5360     90.4400  0.0000  nvfp_quant_lane_9
+GEN_LANE[23].U_LANE/U_DIV_GROUP_SCALE
+                                    3596.8520      2.5     437.8360      0.0000  0.0000  nvfp_fp32_mul_9
+GEN_LANE[23].U_LANE/U_DIV_GROUP_SCALE/add_31
+                                      85.6520      0.1      85.6520      0.0000  0.0000  nvfp_fp32_mul_9_DW01_add_6
+GEN_LANE[23].U_LANE/U_DIV_GROUP_SCALE/mult_23
+                                    3073.3640      2.1    2868.8100      0.0000  0.0000  nvfp_fp32_mul_9_DW02_mult_0
+GEN_LANE[23].U_LANE/U_DIV_GROUP_SCALE/mult_23/FS_1
+                                     204.5540      0.1     204.5540      0.0000  0.0000  nvfp_fp32_mul_9_DW01_add_5
+GEN_LANE[24].U_LANE                 3886.5260      2.7     151.3540     90.9720  0.0000  nvfp_quant_lane_8
+GEN_LANE[24].U_LANE/U_DIV_GROUP_SCALE
+                                    3644.2000      2.5     436.7720      0.0000  0.0000  nvfp_fp32_mul_8
+GEN_LANE[24].U_LANE/U_DIV_GROUP_SCALE/add_31
+                                      90.7060      0.1      90.7060      0.0000  0.0000  nvfp_fp32_mul_8_DW01_add_6
+GEN_LANE[24].U_LANE/U_DIV_GROUP_SCALE/mult_23
+                                    3116.7220      2.2    2909.2420      0.0000  0.0000  nvfp_fp32_mul_8_DW02_mult_0
+GEN_LANE[24].U_LANE/U_DIV_GROUP_SCALE/mult_23/FS_1
+                                     207.4800      0.1     207.4800      0.0000  0.0000  nvfp_fp32_mul_8_DW01_add_5
+GEN_LANE[25].U_LANE                 3901.1560      2.7     160.1320     90.9720  0.0000  nvfp_quant_lane_7
+GEN_LANE[25].U_LANE/U_DIV_GROUP_SCALE
+                                    3650.0520      2.5     453.7960      0.0000  0.0000  nvfp_fp32_mul_7
+GEN_LANE[25].U_LANE/U_DIV_GROUP_SCALE/add_31
+                                      93.1000      0.1      93.1000      0.0000  0.0000  nvfp_fp32_mul_7_DW01_add_6
+GEN_LANE[25].U_LANE/U_DIV_GROUP_SCALE/mult_23
+                                    3103.1560      2.1    2886.3660      0.0000  0.0000  nvfp_fp32_mul_7_DW02_mult_0
+GEN_LANE[25].U_LANE/U_DIV_GROUP_SCALE/mult_23/FS_1
+                                     216.7900      0.2     216.7900      0.0000  0.0000  nvfp_fp32_mul_7_DW01_add_5
+GEN_LANE[26].U_LANE                 3874.5560      2.7     155.0780     90.4400  0.0000  nvfp_quant_lane_6
+GEN_LANE[26].U_LANE/U_DIV_GROUP_SCALE
+                                    3629.0380      2.5     443.4220      0.0000  0.0000  nvfp_fp32_mul_6
+GEN_LANE[26].U_LANE/U_DIV_GROUP_SCALE/add_31
+                                      95.4940      0.1      95.4940      0.0000  0.0000  nvfp_fp32_mul_6_DW01_add_6
+GEN_LANE[26].U_LANE/U_DIV_GROUP_SCALE/mult_23
+                                    3090.1220      2.1    2874.9280      0.0000  0.0000  nvfp_fp32_mul_6_DW02_mult_0
+GEN_LANE[26].U_LANE/U_DIV_GROUP_SCALE/mult_23/FS_1
+                                     215.1940      0.1     215.1940      0.0000  0.0000  nvfp_fp32_mul_6_DW01_add_5
+GEN_LANE[27].U_LANE                 3823.2180      2.6     152.6840     90.4400  0.0000  nvfp_quant_lane_5
+GEN_LANE[27].U_LANE/U_DIV_GROUP_SCALE
+                                    3580.0940      2.5     453.7960      0.0000  0.0000  nvfp_fp32_mul_5
+GEN_LANE[27].U_LANE/U_DIV_GROUP_SCALE/add_31
+                                      90.1740      0.1      90.1740      0.0000  0.0000  nvfp_fp32_mul_5_DW01_add_6
+GEN_LANE[27].U_LANE/U_DIV_GROUP_SCALE/mult_23
+                                    3036.1240      2.1    2820.9300      0.0000  0.0000  nvfp_fp32_mul_5_DW02_mult_0
+GEN_LANE[27].U_LANE/U_DIV_GROUP_SCALE/mult_23/FS_1
+                                     215.1940      0.1     215.1940      0.0000  0.0000  nvfp_fp32_mul_5_DW01_add_5
+GEN_LANE[28].U_LANE                 3852.7440      2.7     152.1520     90.4400  0.0000  nvfp_quant_lane_4
+GEN_LANE[28].U_LANE/U_DIV_GROUP_SCALE
+                                    3610.1520      2.5     445.8160      0.0000  0.0000  nvfp_fp32_mul_4
+GEN_LANE[28].U_LANE/U_DIV_GROUP_SCALE/add_31
+                                      88.8440      0.1      88.8440      0.0000  0.0000  nvfp_fp32_mul_4_DW01_add_6
+GEN_LANE[28].U_LANE/U_DIV_GROUP_SCALE/mult_23
+                                    3075.4920      2.1    2861.0960      0.0000  0.0000  nvfp_fp32_mul_4_DW02_mult_0
+GEN_LANE[28].U_LANE/U_DIV_GROUP_SCALE/mult_23/FS_1
+                                     214.3960      0.1     214.3960      0.0000  0.0000  nvfp_fp32_mul_4_DW01_add_5
+GEN_LANE[29].U_LANE                 3864.7140      2.7     154.8120     93.6320  0.0000  nvfp_quant_lane_3
+GEN_LANE[29].U_LANE/U_DIV_GROUP_SCALE
+                                    3616.2700      2.5     450.8700      0.0000  0.0000  nvfp_fp32_mul_3
+GEN_LANE[29].U_LANE/U_DIV_GROUP_SCALE/add_31
+                                      94.6960      0.1      94.6960      0.0000  0.0000  nvfp_fp32_mul_3_DW01_add_6
+GEN_LANE[29].U_LANE/U_DIV_GROUP_SCALE/mult_23
+                                    3070.7040      2.1    2846.4660      0.0000  0.0000  nvfp_fp32_mul_3_DW02_mult_0
+GEN_LANE[29].U_LANE/U_DIV_GROUP_SCALE/mult_23/FS_1
+                                     224.2380      0.2     224.2380      0.0000  0.0000  nvfp_fp32_mul_3_DW01_add_5
+GEN_LANE[2].U_LANE                  3829.8680      2.7     156.6740     90.4400  0.0000  nvfp_quant_lane_30
+GEN_LANE[2].U_LANE/U_DIV_GROUP_SCALE
+                                    3582.7540      2.5     451.6680      0.0000  0.0000  nvfp_fp32_mul_30
+GEN_LANE[2].U_LANE/U_DIV_GROUP_SCALE/add_31
+                                      85.6520      0.1      85.6520      0.0000  0.0000  nvfp_fp32_mul_30_DW01_add_6
+GEN_LANE[2].U_LANE/U_DIV_GROUP_SCALE/mult_23
+                                    3045.4340      2.1    2818.8020      0.0000  0.0000  nvfp_fp32_mul_30_DW02_mult_0
+GEN_LANE[2].U_LANE/U_DIV_GROUP_SCALE/mult_23/FS_1
+                                     226.6320      0.2     226.6320      0.0000  0.0000  nvfp_fp32_mul_30_DW01_add_5
+GEN_LANE[30].U_LANE                 3854.8720      2.7     158.0040     90.4400  0.0000  nvfp_quant_lane_2
+GEN_LANE[30].U_LANE/U_DIV_GROUP_SCALE
+                                    3606.4280      2.5     448.4760      0.0000  0.0000  nvfp_fp32_mul_2
+GEN_LANE[30].U_LANE/U_DIV_GROUP_SCALE/add_31
+                                      93.1000      0.1      93.1000      0.0000  0.0000  nvfp_fp32_mul_2_DW01_add_6
+GEN_LANE[30].U_LANE/U_DIV_GROUP_SCALE/mult_23
+                                    3064.8520      2.1    2847.7960      0.0000  0.0000  nvfp_fp32_mul_2_DW02_mult_0
+GEN_LANE[30].U_LANE/U_DIV_GROUP_SCALE/mult_23/FS_1
+                                     217.0560      0.2     217.0560      0.0000  0.0000  nvfp_fp32_mul_2_DW01_add_5
+GEN_LANE[31].U_LANE                 3886.7920      2.7     154.5460     90.4400  0.0000  nvfp_quant_lane_1
+GEN_LANE[31].U_LANE/U_DIV_GROUP_SCALE
+                                    3641.8060      2.5     438.6340      0.0000  0.0000  nvfp_fp32_mul_1
+GEN_LANE[31].U_LANE/U_DIV_GROUP_SCALE/add_31
+                                      94.4300      0.1      94.4300      0.0000  0.0000  nvfp_fp32_mul_1_DW01_add_6
+GEN_LANE[31].U_LANE/U_DIV_GROUP_SCALE/mult_23
+                                    3108.7420      2.2    2891.9520      0.0000  0.0000  nvfp_fp32_mul_1_DW02_mult_0
+GEN_LANE[31].U_LANE/U_DIV_GROUP_SCALE/mult_23/FS_1
+                                     216.7900      0.2     216.7900      0.0000  0.0000  nvfp_fp32_mul_1_DW01_add_5
+GEN_LANE[3].U_LANE                  3862.3200      2.7     155.0780     90.4400  0.0000  nvfp_quant_lane_29
+GEN_LANE[3].U_LANE/U_DIV_GROUP_SCALE
+                                    3616.8020      2.5     443.9540      0.0000  0.0000  nvfp_fp32_mul_29
+GEN_LANE[3].U_LANE/U_DIV_GROUP_SCALE/add_31
+                                      94.4300      0.1      94.4300      0.0000  0.0000  nvfp_fp32_mul_29_DW01_add_6
+GEN_LANE[3].U_LANE/U_DIV_GROUP_SCALE/mult_23
+                                    3078.4180      2.1    2864.0220      0.0000  0.0000  nvfp_fp32_mul_29_DW02_mult_0
+GEN_LANE[3].U_LANE/U_DIV_GROUP_SCALE/mult_23/FS_1
+                                     214.3960      0.1     214.3960      0.0000  0.0000  nvfp_fp32_mul_29_DW01_add_5
+GEN_LANE[4].U_LANE                  3903.0180      2.7     160.1320     90.4400  0.0000  nvfp_quant_lane_28
+GEN_LANE[4].U_LANE/U_DIV_GROUP_SCALE
+                                    3652.4460      2.5     470.2880      0.0000  0.0000  nvfp_fp32_mul_28
+GEN_LANE[4].U_LANE/U_DIV_GROUP_SCALE/add_31
+                                      91.2380      0.1      91.2380      0.0000  0.0000  nvfp_fp32_mul_28_DW01_add_6
+GEN_LANE[4].U_LANE/U_DIV_GROUP_SCALE/mult_23
+                                    3090.9200      2.1    2873.8640      0.0000  0.0000  nvfp_fp32_mul_28_DW02_mult_0
+GEN_LANE[4].U_LANE/U_DIV_GROUP_SCALE/mult_23/FS_1
+                                     217.0560      0.2     217.0560      0.0000  0.0000  nvfp_fp32_mul_28_DW01_add_5
+GEN_LANE[5].U_LANE                  3927.7560      2.7     159.8660     90.4400  0.0000  nvfp_quant_lane_27
+GEN_LANE[5].U_LANE/U_DIV_GROUP_SCALE
+                                    3677.4500      2.5     439.4320      0.0000  0.0000  nvfp_fp32_mul_27
+GEN_LANE[5].U_LANE/U_DIV_GROUP_SCALE/add_31
+                                      92.8340      0.1      92.8340      0.0000  0.0000  nvfp_fp32_mul_27_DW01_add_6
+GEN_LANE[5].U_LANE/U_DIV_GROUP_SCALE/mult_23
+                                    3145.1840      2.2    2920.1480      0.0000  0.0000  nvfp_fp32_mul_27_DW02_mult_0
+GEN_LANE[5].U_LANE/U_DIV_GROUP_SCALE/mult_23/FS_1
+                                     225.0360      0.2     225.0360      0.0000  0.0000  nvfp_fp32_mul_27_DW01_add_5
+GEN_LANE[6].U_LANE                  3878.5460      2.7     151.0880     90.4400  0.0000  nvfp_quant_lane_26
+GEN_LANE[6].U_LANE/U_DIV_GROUP_SCALE
+                                    3637.0180      2.5     438.6340      0.0000  0.0000  nvfp_fp32_mul_26
+GEN_LANE[6].U_LANE/U_DIV_GROUP_SCALE/add_31
+                                      92.0360      0.1      92.0360      0.0000  0.0000  nvfp_fp32_mul_26_DW01_add_6
+GEN_LANE[6].U_LANE/U_DIV_GROUP_SCALE/mult_23
+                                    3106.3480      2.2    2895.4100      0.0000  0.0000  nvfp_fp32_mul_26_DW02_mult_0
+GEN_LANE[6].U_LANE/U_DIV_GROUP_SCALE/mult_23/FS_1
+                                     210.9380      0.1     210.9380      0.0000  0.0000  nvfp_fp32_mul_26_DW01_add_5
+GEN_LANE[7].U_LANE                  3851.6800      2.7     160.9300     90.4400  0.0000  nvfp_quant_lane_25
+GEN_LANE[7].U_LANE/U_DIV_GROUP_SCALE
+                                    3600.3100      2.5     449.8060      0.0000  0.0000  nvfp_fp32_mul_25
+GEN_LANE[7].U_LANE/U_DIV_GROUP_SCALE/add_31
+                                      87.5140      0.1      87.5140      0.0000  0.0000  nvfp_fp32_mul_25_DW01_add_6
+GEN_LANE[7].U_LANE/U_DIV_GROUP_SCALE/mult_23
+                                    3062.9900      2.1    2846.9980      0.0000  0.0000  nvfp_fp32_mul_25_DW02_mult_0
+GEN_LANE[7].U_LANE/U_DIV_GROUP_SCALE/mult_23/FS_1
+                                     215.9920      0.1     215.9920      0.0000  0.0000  nvfp_fp32_mul_25_DW01_add_5
+GEN_LANE[8].U_LANE                  3845.0300      2.7     154.5460     90.4400  0.0000  nvfp_quant_lane_24
+GEN_LANE[8].U_LANE/U_DIV_GROUP_SCALE
+                                    3600.0440      2.5     434.6440      0.0000  0.0000  nvfp_fp32_mul_24
+GEN_LANE[8].U_LANE/U_DIV_GROUP_SCALE/add_31
+                                      88.8440      0.1      88.8440      0.0000  0.0000  nvfp_fp32_mul_24_DW01_add_6
+GEN_LANE[8].U_LANE/U_DIV_GROUP_SCALE/mult_23
+                                    3076.5560      2.1    2868.8100      0.0000  0.0000  nvfp_fp32_mul_24_DW02_mult_0
+GEN_LANE[8].U_LANE/U_DIV_GROUP_SCALE/mult_23/FS_1
+                                     207.7460      0.1     207.7460      0.0000  0.0000  nvfp_fp32_mul_24_DW01_add_5
+GEN_LANE[9].U_LANE                  3925.0960      2.7     164.6540     90.4400  0.0000  nvfp_quant_lane_23
+GEN_LANE[9].U_LANE/U_DIV_GROUP_SCALE
+                                    3670.0020      2.5     435.4420      0.0000  0.0000  nvfp_fp32_mul_23
+GEN_LANE[9].U_LANE/U_DIV_GROUP_SCALE/add_31
+                                      97.3560      0.1      97.3560      0.0000  0.0000  nvfp_fp32_mul_23_DW01_add_6
+GEN_LANE[9].U_LANE/U_DIV_GROUP_SCALE/mult_23
+                                    3137.2040      2.2    2912.9660      0.0000  0.0000  nvfp_fp32_mul_23_DW02_mult_0
+GEN_LANE[9].U_LANE/U_DIV_GROUP_SCALE/mult_23/FS_1
+                                     224.2380      0.2     224.2380      0.0000  0.0000  nvfp_fp32_mul_23_DW01_add_5
+U_GROUP_SCALE_G0                    5792.4160      4.0    1405.0120   3610.9501  0.0000  nvfp_group_scale_0
+U_GROUP_SCALE_G0/add_44_C92_C242     102.1440      0.1     102.1440      0.0000  0.0000  nvfp_group_scale_0_DW01_add_0
+U_GROUP_SCALE_G0/add_80_C242          26.0680      0.0      26.0680      0.0000  0.0000  nvfp_group_scale_0_DW01_inc_0
+U_GROUP_SCALE_G0/mult_180            617.9180      0.4     566.5800      0.0000  0.0000  nvfp_group_scale_0_DW02_mult_0
+U_GROUP_SCALE_G0/mult_180/FS_1        51.3380      0.0      51.3380      0.0000  0.0000  nvfp_group_scale_0_DW01_add_2
+U_GROUP_SCALE_G0/sub_44_C92_C242      30.3240      0.0      30.3240      0.0000  0.0000  nvfp_group_scale_0_DW01_dec_0
+U_GROUP_SCALE_G1                    5789.2240      4.0    1401.8200   3610.9501  0.0000  nvfp_group_scale_1
+U_GROUP_SCALE_G1/add_44_C92_C242     102.1440      0.1     102.1440      0.0000  0.0000  nvfp_group_scale_1_DW01_add_0
+U_GROUP_SCALE_G1/add_80_C242          26.0680      0.0      26.0680      0.0000  0.0000  nvfp_group_scale_1_DW01_inc_0
+U_GROUP_SCALE_G1/mult_180            617.9180      0.4     566.5800      0.0000  0.0000  nvfp_group_scale_1_DW02_mult_0
+U_GROUP_SCALE_G1/mult_180/FS_1        51.3380      0.0      51.3380      0.0000  0.0000  nvfp_group_scale_1_DW01_add_2
+U_GROUP_SCALE_G1/sub_44_C92_C242      30.3240      0.0      30.3240      0.0000  0.0000  nvfp_group_scale_1_DW01_dec_0
+--------------------------------  -----------  -------  -----------  ----------  ------  ------------------------------
+Total                                                   127949.4580  16507.4284  0.0000
+
+1

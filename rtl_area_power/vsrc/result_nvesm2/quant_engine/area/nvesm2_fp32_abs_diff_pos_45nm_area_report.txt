@@ -1,0 +1,31 @@
+ 
+****************************************
+Report : area
+Design : nvesm2_fp32_abs_diff_pos
+Version: O-2018.06-SP1
+Date   : Thu May  7 09:25:27 2026
+****************************************
+
+Information: Updating design information... (UID-85)
+Library(s) Used:
+
+    NangateOpenCellLibrary (File: /home/design/Desktop/pdk45/NangateOpenCellLibrary_typical.db)
+
+Number of ports:                          405
+Number of nets:                          1164
+Number of cells:                          787
+Number of combinational cells:            774
+Number of sequential cells:                 7
+Number of macros/black boxes:               0
+Number of buf/inv:                        211
+Number of references:                      33
+
+Combinational area:               1026.227999
+Buf/Inv area:                      113.050001
+Noncombinational area:               0.000000
+Macro/Black Box area:                0.000000
+Net Interconnect area:      undefined  (Wire load has zero net area)
+
+Total cell area:                  1026.227999
+Total area:                 undefined
+1

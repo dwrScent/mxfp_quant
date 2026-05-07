@@ -1,6 +1,21 @@
-# Synthesize the baseline NVFP quant engine top with Nangate 45 nm cells.
+# Synthesize baseline NVFP quant engine modules with Nangate 45 nm cells.
 set target_lib "/home/design/Desktop/pdk45/NangateOpenCellLibrary_typical.db"
-set top_design quant_engine32
+set report_suffix "_45nm"
+
+set default_modules [list \
+    nvfp_fp32_mul \
+    nvfp_group_scale \
+    nvfp_quant_lane \
+    quant_engine32 \
+]
+
+if {[info exists module_name]} {
+    set synth_modules [list $module_name]
+} elseif {[info exists argv] && [llength $argv] > 0} {
+    set synth_modules $argv
+} else {
+    set synth_modules $default_modules
+}
 
 if {![file exists $target_lib]} {
     puts "Error: missing target library: $target_lib"
@@ -10,42 +25,54 @@ if {![file exists $target_lib]} {
 set_app_var target_library [list $target_lib]
 set_app_var link_library [list "*" $target_lib]
 
-set rtl_files [list \
-    nvfp_fp32_mul.v \
-    nvfp_group_scale.v \
-    nvfp_quant_lane.v \
-    quant_engine32.v \
-]
-
-foreach rtl_file $rtl_files {
-    if {![file exists $rtl_file]} {
-        puts "Error: missing RTL file: $rtl_file"
-        exit 1
+proc rtl_files_for_module {module_name} {
+    switch -- $module_name {
+        quant_engine32 {
+            return [list \
+                nvfp_fp32_mul.v \
+                nvfp_group_scale.v \
+                nvfp_quant_lane.v \
+                quant_engine32.v \
+            ]
+        }
+        nvfp_quant_lane {
+            return [list \
+                nvfp_fp32_mul.v \
+                nvfp_quant_lane.v \
+            ]
+        }
+        default {
+            return [list "${module_name}.v"]
+        }
     }
-    read_file -format verilog $rtl_file
 }
 
-current_design $top_design
-link
-check_design
+proc read_rtl_files {rtl_files} {
+    foreach rtl_file $rtl_files {
+        if {![file exists $rtl_file]} {
+            puts "Error: missing RTL file: $rtl_file"
+            exit 1
+        }
+        read_file -format verilog $rtl_file
+    }
+}
 
-if {![info exists clock_period]} { set clock_period 5.0 }
-if {![info exists input_delay]}  { set input_delay  [expr {$clock_period * 0.20}] }
-if {![info exists output_delay]} { set output_delay [expr {$clock_period * 0.20}] }
-if {![info exists input_toggle_rate]} { set input_toggle_rate 0.02 }
+proc synthesize_module {module_name report_suffix} {
+    puts "Synthesis for module: $module_name"
 
-create_clock -name clk -period $clock_period [get_ports clk]
-set_clock_uncertainty [expr {$clock_period * 0.05}] [get_clocks clk]
-set_input_delay  $input_delay  -clock clk [remove_from_collection [all_inputs]  [get_ports {clk rst_n}]]
-set_output_delay $output_delay -clock clk [all_outputs]
-set_switching_activity -toggle_rate $input_toggle_rate [remove_from_collection [all_inputs] [get_ports {clk rst_n}]]
+    read_rtl_files [rtl_files_for_module $module_name]
+    current_design $module_name
+    link
+    check_design
+    compile
 
-set_max_area 0
-compile -map_effort medium -area_effort high
+    report_area > "${module_name}${report_suffix}_area_report.txt"
+    report_power > "${module_name}${report_suffix}_power_report.txt"
 
-report_area > area_report.txt
-report_area -hierarchy > area_hierarchy_report.txt
-report_power > power_report.txt
-report_power -hierarchy > power_hierarchy_report.txt
+    puts "Synthesis for $module_name completed."
+    remove_design -all
+}
 
-puts "Synthesis for $top_design completed."
+foreach module_name $synth_modules {
+    synthesize_module $module_name $report_suffix
+}

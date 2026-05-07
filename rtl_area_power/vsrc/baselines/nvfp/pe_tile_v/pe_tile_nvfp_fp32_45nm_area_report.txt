@@ -1,0 +1,37 @@
+Information: Building the design 'fxp_to_fp32' instantiated from design 'pe_tile_nvfp_fp32' with
+	the parameters "W=36,FRAC=2". (HDL-193)
+Warning: Cannot find the design 'fxp_to_fp32' in the library 'WORK'. (LBR-1)
+Warning: Unable to resolve reference 'fxp_to_fp32' in 'pe_tile_nvfp_fp32'. (LINK-5)
+ 
+****************************************
+Report : area
+Design : pe_tile_nvfp_fp32
+Version: O-2018.06-SP1
+Date   : Thu May  7 22:01:45 2026
+****************************************
+
+Information: Updating design information... (UID-85)
+Library(s) Used:
+
+    NangateOpenCellLibrary (File: /home/design/Desktop/pdk45/NangateOpenCellLibrary_typical.db)
+
+Number of ports:                         2738
+Number of nets:                          7210
+Number of cells:                         4334
+Number of combinational cells:           3748
+Number of sequential cells:               546
+Number of macros/black boxes:               0
+Number of buf/inv:                        888
+Number of references:                      50
+
+Combinational area:               5567.380007
+Buf/Inv area:                      507.794001
+Noncombinational area:            2730.224088
+Macro/Black Box area:                0.000000
+Net Interconnect area:      undefined  (Wire load has zero net area)
+
+Total cell area:                  8297.604096
+Total area:                 undefined
+
+Information: This design contains black box (unknown) components. (RPT-8)
+1

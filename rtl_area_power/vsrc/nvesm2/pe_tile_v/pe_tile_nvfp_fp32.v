@@ -81,9 +81,6 @@ module pe_tile_nvfp_fp32
 
     reg v1;
     reg signed [QW-1:0] p1 [0:7];
-    // Pipeline registers for passing data to the next stage
-    reg [3:0] x1 [0:7];
-    reg [3:0] w1 [0:7];
     reg [2:0] idx1;
     reg [1:0] es_w1, es_a1;
     reg signed [7:0] k1;
@@ -93,8 +90,6 @@ module pe_tile_nvfp_fp32
             v1 <= 1'b0;
             for (si=0; si<8; si=si+1) begin
                 p1[si] <= {QW{1'b0}};
-                x1[si] <= 4'b0;
-                w1[si] <= 4'b0;
             end
             idx1 <= 3'b0;
             es_a1 <= 2'b0;
@@ -104,8 +99,6 @@ module pe_tile_nvfp_fp32
             v1 <= v0;
             for (si=0; si<8; si=si+1) begin
                 p1[si] <= p1_comb[si];
-                x1[si] <= x0[si];
-                w1[si] <= w0[si];
             end
             idx1 <= idx0;
             es_a1 <= es_a0;
@@ -119,6 +112,7 @@ module pe_tile_nvfp_fp32
     reg signed [QW-1:0] s2 [0:3];
     reg signed [QW-1:0] s3 [0:1];
     reg signed [QW-1:0] q_base;
+    reg signed [QW-1:0] p_top2, p_top3, p_top4;
     reg [1:0] es_w2, es_a2, es_w3, es_a3, es_w4, es_a4;
     reg signed [7:0] k2, k3, k_base;
 
@@ -126,6 +120,7 @@ module pe_tile_nvfp_fp32
       if (!rst_n) begin
         v2 <= 1'b0;
         for (si=0; si<4; si=si+1) s2[si] <= {QW{1'b0}};
+        p_top2 <= {QW{1'b0}};
         es_w2 <= 2'b0;
         es_a2 <= 2'b0;
         k2 <= 8'b0;
@@ -135,6 +130,7 @@ module pe_tile_nvfp_fp32
         s2[1] <= p1[2] + p1[3];
         s2[2] <= p1[4] + p1[5];
         s2[3] <= p1[6] + p1[7];
+        p_top2 <= p1[idx1];
         es_w2 <= es_w1;
         es_a2 <= es_a1;
         k2 <= k1;
@@ -146,6 +142,7 @@ module pe_tile_nvfp_fp32
         v3 <= 1'b0;
         s3[0] <= {QW{1'b0}};
         s3[1] <= {QW{1'b0}};
+        p_top3 <= {QW{1'b0}};
         es_w3 <= 2'b0;
         es_a3 <= 2'b0;
         k3 <= 8'b0;
@@ -153,6 +150,7 @@ module pe_tile_nvfp_fp32
         v3    <= v2;
         s3[0] <= s2[0] + s2[1];
         s3[1] <= s2[2] + s2[3];
+        p_top3 <= p_top2;
         es_w3 <= es_w2;
         es_a3 <= es_a2;
         k3 <= k2;
@@ -163,23 +161,30 @@ module pe_tile_nvfp_fp32
       if (!rst_n) begin
         v4 <= 1'b0;
         q_base <= {QW{1'b0}};
+        p_top4 <= {QW{1'b0}};
         es_w4 <= 2'b0;
         es_a4 <= 2'b0;
         k_base <= 8'b0;
       end else begin
         v4 <= v3;
         q_base <= s3[0] + s3[1];
+        p_top4 <= p_top3;
         es_w4 <= es_w3;
         es_a4 <= es_a3;
         k_base <= k3;
       end
     end
 
-    // -------------------- S4: Subgroup Scale --------------------
-    wire signed [QW-1:0] q4_comb_0 = q_base + (es_w4[1] ? (q_base >>> 1) : {QW{1'b0}})
-                                  + (es_w4[0] ? (q_base >>> 2) : {QW{1'b0}});
-    wire signed [QW-1:0] q4_comb = q4_comb_0 + (es_a4[1] ? (q4_comb_0 >>> 1) : {QW{1'b0}})
-                                  + (es_a4[0] ? (q4_comb_0 >>> 2) : {QW{1'b0}});
+    // -------------------- S4: selected-lane extra scale --------------------
+    wire signed [QW-1:0] p_top_w_scaled =
+          p_top4
+        + (es_w4[1] ? (p_top4 >>> 1) : {QW{1'b0}})
+        + (es_w4[0] ? (p_top4 >>> 2) : {QW{1'b0}});
+    wire signed [QW-1:0] p_top_aw_scaled =
+          p_top_w_scaled
+        + (es_a4[1] ? (p_top_w_scaled >>> 1) : {QW{1'b0}})
+        + (es_a4[0] ? (p_top_w_scaled >>> 2) : {QW{1'b0}});
+    wire signed [QW-1:0] q4_comb = q_base - p_top4 + p_top_aw_scaled;
     reg v4p;
     reg signed [QW-1:0] q4;
     reg signed [7:0] k4;

@@ -15,7 +15,7 @@ set rtl_files [list \
     fp32_add.v \
     fxp_to_fp32.v \
     mul_base_q2_comb.v \
-    pe_tile_mxfp_fp32.v \
+    pe_tile_nvfp_fp32.v \
 ]
 
 foreach rtl_file $rtl_files {

@@ -1,0 +1,31 @@
+ 
+****************************************
+Report : area
+Design : nvfp_quant_lane
+Version: O-2018.06-SP1
+Date   : Thu May  7 22:02:22 2026
+****************************************
+
+Information: Updating design information... (UID-85)
+Library(s) Used:
+
+    NangateOpenCellLibrary (File: /home/design/Desktop/pdk45/NangateOpenCellLibrary_typical.db)
+
+Number of ports:                          458
+Number of nets:                          2708
+Number of cells:                         1829
+Number of combinational cells:           1802
+Number of sequential cells:                23
+Number of macros/black boxes:               0
+Number of buf/inv:                        168
+Number of references:                      20
+
+Combinational area:               3377.402007
+Buf/Inv area:                       89.642001
+Noncombinational area:              90.440003
+Macro/Black Box area:                0.000000
+Net Interconnect area:      undefined  (Wire load has zero net area)
+
+Total cell area:                  3467.842010
+Total area:                 undefined
+1

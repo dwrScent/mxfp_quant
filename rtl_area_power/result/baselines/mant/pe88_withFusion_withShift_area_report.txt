@@ -3,29 +3,29 @@
 Report : area
 Design : pe88
 Version: O-2018.06-SP1
-Date   : Sun Aug 17 23:45:00 2025
+Date   : Mon May 11 16:26:22 2026
 ****************************************
 
 Information: Updating design information... (UID-85)
 Library(s) Used:
 
-    tcbn28hpcplusbwp7t40p140tt0p8v25c (File: /home/design/Desktop/tcbn28hpcplusbwp7t40p140tt0p8v25c.db)
+    NangateOpenCellLibrary (File: /home/design/Desktop/pdk45/NangateOpenCellLibrary_typical.db)
 
-Number of ports:                          706
-Number of nets:                          1944
-Number of cells:                         1188
-Number of combinational cells:           1124
-Number of sequential cells:                48
+Number of ports:                          705
+Number of nets:                          2041
+Number of cells:                         1276
+Number of combinational cells:           1193
+Number of sequential cells:                67
 Number of macros/black boxes:               0
-Number of buf/inv:                        116
-Number of references:                      48
+Number of buf/inv:                        185
+Number of references:                      35
 
-Combinational area:                707.657997
-Buf/Inv area:                       22.735999
-Noncombinational area:              79.968000
+Combinational area:               1844.975999
+Buf/Inv area:                      100.016001
+Noncombinational area:             217.055992
 Macro/Black Box area:                0.000000
 Net Interconnect area:      undefined  (Wire load has zero net area)
 
-Total cell area:                   787.625997
+Total cell area:                  2062.031992
 Total area:                 undefined
 1

@@ -1,4 +1,4 @@
-Loading db file '/home/design/Desktop/tcbn28hpcplusbwp7t40p140tt0p8v25c.db'
+Loading db file '/home/design/Desktop/pdk45/NangateOpenCellLibrary_typical.db'
 Information: Propagating switching activity (low effort zero delay simulation). (PWR-6)
 Warning: There is no defined clock in the design. (PWR-80)
 Warning: Design has unannotated primary inputs. (PWR-414)
@@ -9,48 +9,38 @@ Report : power
         -analysis_effort low
 Design : pe_mac_baseline
 Version: O-2018.06-SP1
-Date   : Sun Aug 17 23:41:30 2025
+Date   : Mon May 11 16:26:37 2026
 ****************************************
 
 
 Library(s) Used:
 
-    tcbn28hpcplusbwp7t40p140tt0p8v25c (File: /home/design/Desktop/tcbn28hpcplusbwp7t40p140tt0p8v25c.db)
+    NangateOpenCellLibrary (File: /home/design/Desktop/pdk45/NangateOpenCellLibrary_typical.db)
 
 
-Operating Conditions: tt0p8v25c   Library: tcbn28hpcplusbwp7t40p140tt0p8v25c
-Wire Load Model Mode: segmented
+Operating Conditions: typical   Library: NangateOpenCellLibrary
+Wire Load Model Mode: top
 
 Design        Wire Load Model            Library
 ------------------------------------------------
-pe_mac_baseline        ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
-pe_mac_baseline_DW01_add_0
-                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
-pe_mac_baseline_DW01_add_1
-                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
-pe_mac_baseline_DW02_mult_0
-                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
-pe_mac_baseline_DW02_mult_1
-                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
-pe_mac_baseline_DW01_add_3
-                       ZeroWireload      tcbn28hpcplusbwp7t40p140tt0p8v25c
+pe_mac_baseline        5K_hvratio_1_1    NangateOpenCellLibrary
 
 
-Global Operating Voltage = 0.8  
+Global Operating Voltage = 1.1  
 Power-specific unit information :
     Voltage Units = 1V
-    Capacitance Units = 1.000000pf
+    Capacitance Units = 1.000000ff
     Time Units = 1ns
-    Dynamic Power Units = 1mW    (derived from V,C,T units)
+    Dynamic Power Units = 1uW    (derived from V,C,T units)
     Leakage Power Units = 1nW
 
 
-  Cell Internal Power  =  36.3902 uW   (71%)
-  Net Switching Power  =  14.6753 uW   (29%)
+  Cell Internal Power  = 148.1763 uW   (61%)
+  Net Switching Power  =  96.1315 uW   (39%)
                          ---------
-Total Dynamic Power    =  51.0655 uW  (100%)
+Total Dynamic Power    = 244.3078 uW  (100%)
 
-Cell Leakage Power     = 141.2186 nW
+Cell Leakage Power     =  13.2252 uW
 
 Information: report_power power group summary does not include estimated clock tree power. (PWR-789)
 
@@ -62,8 +52,8 @@ memory             0.0000            0.0000            0.0000            0.0000 
 black_box          0.0000            0.0000            0.0000            0.0000  (   0.00%)
 clock_network      0.0000            0.0000            0.0000            0.0000  (   0.00%)
 register           0.0000            0.0000            0.0000            0.0000  (   0.00%)
-sequential     6.6545e-03        6.6457e-05           29.4354        6.7503e-03  (  13.18%)
-combinational  2.9736e-02        1.4609e-02          111.7739        4.4456e-02  (  86.82%)
+sequential        13.3778            0.5440        2.5312e+03           16.4530  (   6.39%)
+combinational    134.7985           95.5875        1.0694e+04          241.0800  (  93.61%)
 --------------------------------------------------------------------------------------------------
-Total          3.6390e-02 mW     1.4675e-02 mW       141.2093 nW     5.1207e-02 mW
+Total            148.1763 uW        96.1315 uW     1.3225e+04 nW       257.5330 uW
 1

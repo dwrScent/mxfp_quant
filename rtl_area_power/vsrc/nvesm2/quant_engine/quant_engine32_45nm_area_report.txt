@@ -1,0 +1,31 @@
+ 
+****************************************
+Report : area
+Design : quant_engine32
+Version: O-2018.06-SP1
+Date   : Fri May  8 20:28:09 2026
+****************************************
+
+Information: Updating design information... (UID-85)
+Library(s) Used:
+
+    NangateOpenCellLibrary (File: /home/design/Desktop/pdk45/NangateOpenCellLibrary_typical.db)
+
+Number of ports:                        25289
+Number of nets:                        175018
+Number of cells:                       134052
+Number of combinational cells:         125980
+Number of sequential cells:              7772
+Number of macros/black boxes:               0
+Number of buf/inv:                      19411
+Number of references:                      67
+
+Combinational area:             184151.267912
+Buf/Inv area:                    10801.994061
+Noncombinational area:           39044.013108
+Macro/Black Box area:                0.000000
+Net Interconnect area:      undefined  (Wire load has zero net area)
+
+Total cell area:                223195.281020
+Total area:                 undefined
+1

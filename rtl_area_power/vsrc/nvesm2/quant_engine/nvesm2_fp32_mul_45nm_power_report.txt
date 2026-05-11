@@ -2,14 +2,13 @@ Loading db file '/home/design/Desktop/pdk45/NangateOpenCellLibrary_typical.db'
 Information: Propagating switching activity (low effort zero delay simulation). (PWR-6)
 Warning: There is no defined clock in the design. (PWR-80)
 Warning: Design has unannotated primary inputs. (PWR-414)
-Warning: Design has unannotated sequential cell outputs. (PWR-415)
  
 ****************************************
 Report : power
         -analysis_effort low
-Design : pe88
+Design : nvesm2_fp32_mul
 Version: O-2018.06-SP1
-Date   : Mon May 11 16:26:22 2026
+Date   : Fri May  8 20:19:23 2026
 ****************************************
 
 
@@ -23,7 +22,7 @@ Wire Load Model Mode: top
 
 Design        Wire Load Model            Library
 ------------------------------------------------
-pe88                   5K_hvratio_1_1    NangateOpenCellLibrary
+nvesm2_fp32_mul        5K_hvratio_1_1    NangateOpenCellLibrary
 
 
 Global Operating Voltage = 1.1  
@@ -35,12 +34,12 @@ Power-specific unit information :
     Leakage Power Units = 1nW
 
 
-  Cell Internal Power  = 228.1357 uW   (53%)
-  Net Switching Power  = 205.4248 uW   (47%)
+  Cell Internal Power  =   2.0203 mW   (57%)
+  Net Switching Power  =   1.5014 mW   (43%)
                          ---------
-Total Dynamic Power    = 433.5605 uW  (100%)
+Total Dynamic Power    =   3.5217 mW  (100%)
 
-Cell Leakage Power     =  40.1977 uW
+Cell Leakage Power     =  59.0710 uW
 
 Information: report_power power group summary does not include estimated clock tree power. (PWR-789)
 
@@ -52,8 +51,8 @@ memory             0.0000            0.0000            0.0000            0.0000 
 black_box          0.0000            0.0000            0.0000            0.0000  (   0.00%)
 clock_network      0.0000            0.0000            0.0000            0.0000  (   0.00%)
 register           0.0000            0.0000            0.0000            0.0000  (   0.00%)
-sequential        18.3151            5.2098        3.7985e+03           27.3234  (   5.77%)
-combinational    209.8207          200.2148        3.6399e+04          446.4343  (  94.23%)
+sequential         0.0000            0.0000            0.0000            0.0000  (   0.00%)
+combinational  2.0203e+03        1.5014e+03        5.9071e+04        3.5807e+03  ( 100.00%)
 --------------------------------------------------------------------------------------------------
-Total            228.1358 uW       205.4247 uW     4.0198e+04 nW       473.7578 uW
+Total          2.0203e+03 uW     1.5014e+03 uW     5.9071e+04 nW     3.5807e+03 uW
 1

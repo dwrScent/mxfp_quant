@@ -7,9 +7,9 @@ Warning: Design has unannotated sequential cell outputs. (PWR-415)
 ****************************************
 Report : power
         -analysis_effort low
-Design : pe88
+Design : nvesm2_quant_lane
 Version: O-2018.06-SP1
-Date   : Mon May 11 16:26:22 2026
+Date   : Fri May  8 20:19:38 2026
 ****************************************
 
 
@@ -23,7 +23,7 @@ Wire Load Model Mode: top
 
 Design        Wire Load Model            Library
 ------------------------------------------------
-pe88                   5K_hvratio_1_1    NangateOpenCellLibrary
+nvesm2_quant_lane      5K_hvratio_1_1    NangateOpenCellLibrary
 
 
 Global Operating Voltage = 1.1  
@@ -35,12 +35,12 @@ Power-specific unit information :
     Leakage Power Units = 1nW
 
 
-  Cell Internal Power  = 228.1357 uW   (53%)
-  Net Switching Power  = 205.4248 uW   (47%)
+  Cell Internal Power  =   1.7718 mW   (56%)
+  Net Switching Power  =   1.3813 mW   (44%)
                          ---------
-Total Dynamic Power    = 433.5605 uW  (100%)
+Total Dynamic Power    =   3.1532 mW  (100%)
 
-Cell Leakage Power     =  40.1977 uW
+Cell Leakage Power     = 121.4102 uW
 
 Information: report_power power group summary does not include estimated clock tree power. (PWR-789)
 
@@ -52,8 +52,8 @@ memory             0.0000            0.0000            0.0000            0.0000 
 black_box          0.0000            0.0000            0.0000            0.0000  (   0.00%)
 clock_network      0.0000            0.0000            0.0000            0.0000  (   0.00%)
 register           0.0000            0.0000            0.0000            0.0000  (   0.00%)
-sequential        18.3151            5.2098        3.7985e+03           27.3234  (   5.77%)
-combinational    209.8207          200.2148        3.6399e+04          446.4343  (  94.23%)
+sequential        74.1838            5.0421        8.9619e+03           88.1879  (   2.69%)
+combinational  1.6977e+03        1.3763e+03        1.1245e+05        3.1864e+03  (  97.31%)
 --------------------------------------------------------------------------------------------------
-Total            228.1358 uW       205.4247 uW     4.0198e+04 nW       473.7578 uW
+Total          1.7718e+03 uW     1.3813e+03 uW     1.2141e+05 nW     3.2746e+03 uW
 1

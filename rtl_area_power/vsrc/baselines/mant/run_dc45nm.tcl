@@ -1,8 +1,8 @@
-# Synthesize the ANT/OLiVE PE used by m2xfp_simulator PPA CSVs.
+# Synthesize the MANT PE used by m2xfp_simulator PPA CSVs.
 
-set top_design pe_mac_baseline
-set report_prefix ant_pe_fusion
-set report_dir "../../../result/baselines/ant_olive"
+set top_design pe88
+set report_prefix pe88_withFusion_withShift
+set report_dir "../../../result/baselines/mant"
 set target_lib "/home/design/Desktop/pdk45/NangateOpenCellLibrary_typical.db"
 
 if {![file exists $target_lib]} {
@@ -13,7 +13,7 @@ if {![file exists $target_lib]} {
 set_app_var target_library [list $target_lib]
 set_app_var link_library [list "*" $target_lib]
 
-read_file -format verilog ant_pe_fusion.v
+read_file -format verilog pe88_withFusion_withShift.v
 
 current_design $top_design
 link

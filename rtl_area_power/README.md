@@ -22,6 +22,27 @@ make # get the executable cacti
 # gather the area and power statistics from the output file in *.cfg.out
 ```
 
+NVESM2 45 nm buffer configs are in `sram_stats/nvesm2_45nm_WBUF_IBUF.cfg`
+and `sram_stats/nvesm2_45nm_OBUF.cfg`. They use CACTI's 45 nm technology
+point for comparison with the FreePDK45/Nangate synthesis reports.
+
+```shell
+cd sram_stats
+cd cacti
+
+# NVESM2 weight/input buffer configuration
+./cacti -infile ../nvesm2_45nm_WBUF_IBUF.cfg
+
+# NVESM2 output buffer configuration
+./cacti -infile ../nvesm2_45nm_OBUF.cfg
+```
+
+`nvesm2_45nm_WBUF_IBUF.cfg` models one quantized operand buffer, matching the
+single-buffer capacity style of `sram_28nm_WBUF_IBUF.cfg`. Use the result for
+either WBUF or IBUF; when accounting for both, use `2 * WBUF_IBUF + OBUF`.
+`nvesm2_45nm_OBUF.cfg` models the pre-quantization FP32/data output buffer:
+512 entries, 64 B per entry, 512-bit data path, and no quant metadata.
+
 ## M2XFP units
 
 + Top-1 Decode Unit: `vsrc/asplos26/decode_unit_v`

@@ -55,9 +55,18 @@ def run_sim(accelerator):
     # Get the configuration file for the given benchmark type
     config_file = f'configs/accelerator/conf_{accelerator}.ini'
 
-    default_core_csv = 'configs/ppa/systolic_array_synth.csv'
-    mant_core_csv = 'configs/ppa/systolic_array_synth_mant.csv' 
-    core_csv_path = mant_core_csv if accelerator == 'mant' else default_core_csv
+    core_csv_paths = {
+        'ant': 'configs/ppa/systolic_array_synth_ant.csv',
+        'olive': 'configs/ppa/systolic_array_synth_olive.csv',
+        'mant': 'configs/ppa/systolic_array_synth_mant.csv',
+        'microscopiq': 'configs/ppa/systolic_array_synth_microscopiq.csv',
+        'm2xfp': 'configs/ppa/systolic_array_synth_m2xfp.csv',
+        'nvesm2': 'configs/ppa/systolic_array_synth_nvesm2.csv',
+        'nvfp': 'configs/ppa/systolic_array_synth_nvfp.csv',
+    }
+    if accelerator not in core_csv_paths:
+        raise ValueError(f"No core PPA CSV configured for accelerator: {accelerator}")
+    core_csv_path = core_csv_paths[accelerator]
 
 
     # Create simulator object
@@ -198,8 +207,8 @@ def main():
     parser.add_argument(
         "--accelerators",
         type=str,
-        default="olive,ant,microscopiq,m2xfp",
-        help="Comma-separated list of accelerator schemes (e.g., 'olive,ant,microscopiq,m2xfp')."
+        default="olive,ant,mant,microscopiq,m2xfp,nvesm2,nvfp",
+        help="Comma-separated list of accelerator schemes (e.g., 'olive,ant,mant,microscopiq,m2xfp,nvesm2,nvfp')."
     )
     parser.add_argument(
         "--batch-size",

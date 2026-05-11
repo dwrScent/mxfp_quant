@@ -85,6 +85,26 @@ m2xfp_cfg = AcceleratorConfig("m2xfp", {
     "opt6b7":     [4,4,4,4,4,4] * 8,
 })
 
+# NVESM2 Accelerator (All 4 bits, same model coverage as M2XFP)
+nvesm2_cfg = AcceleratorConfig("nvesm2", {
+    "llama2_7b":  [4,4,4,4,4,4,4] * 8,
+    "falcon_7b":  [4,4,4,4] * 8,
+    "llama3_8b":  [4,4,4,4,4,4,4],
+    "llama3_70b": [4,4,4,4,4,4,4] * 2,
+    "mistral_7b": [4,4,4,4,4,4,4] * 7,
+    "opt6b7":     [4,4,4,4,4,4] * 8,
+})
+
+# NVFP Accelerator (All 4 bits, same model coverage as M2XFP)
+nvfp_cfg = AcceleratorConfig("nvfp", {
+    "llama2_7b":  [4,4,4,4,4,4,4] * 8,
+    "falcon_7b":  [4,4,4,4] * 8,
+    "llama3_8b":  [4,4,4,4,4,4,4],
+    "llama3_70b": [4,4,4,4,4,4,4] * 2,
+    "mistral_7b": [4,4,4,4,4,4,4] * 7,
+    "opt6b7":     [4,4,4,4,4,4] * 8,
+})
+
 
 # Microscopiq Accelerator
 microscopiq_cfg = AcceleratorConfig("microscopiq", {
@@ -123,6 +143,8 @@ accelerators = {
     "ant": ant_cfg,
     "mant": mant_cfg,
     "m2xfp": m2xfp_cfg,
+    "nvesm2": nvesm2_cfg,
+    "nvfp": nvfp_cfg,
     "microscopiq": microscopiq_cfg,
     "olive": olive_cfg,
 }
@@ -204,7 +226,7 @@ def generate_config(model_key: str, accelerator_key: str, seq_len: int = 2048, r
 #    These variables match the structure of your original file.
 # ==============================================================================
 
-SCHEMES = ["ant", "mant", "m2xfp", "microscopiq", "olive"]
+SCHEMES = ["ant", "mant", "m2xfp", "nvesm2", "nvfp", "microscopiq", "olive"]
 MODELS  = ["llama2_7b", "falcon_7b", "llama3_8b", "llama3_70b", "mistral_7b", "opt6b7"]
 
 # Store configs for each scheme, e.g., scheme_configs["ant"]["llama2_7b"]
@@ -228,6 +250,8 @@ for scheme in SCHEMES:
 ant_cfgigs         = scheme_configs["ant"]
 mant_cfgigs        = scheme_configs["mant"]
 m2xfp_cfgigs       = scheme_configs["m2xfp"]
+nvesm2_cfgigs      = scheme_configs["nvesm2"]
+nvfp_cfgigs        = scheme_configs["nvfp"]
 microscopiq_cfgigs = scheme_configs["microscopiq"]
 olive_cfgigs       = scheme_configs["olive"]
 

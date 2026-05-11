@@ -54,14 +54,21 @@ Core (PE array) power/area comes from:
 + Used by most accelerators (ant, olive, microscopiq, m2xfp).
 configs/ppa/systolic_array_synth_mant.csv
 + Used only for mant, whose PE tile implementation differs.
+configs/ppa/systolic_array_synth_nvesm2.csv
++ Used only for nvesm2.
+configs/ppa/systolic_array_synth_nvfp.csv
++ Used only for nvfp.
 
-To ensure accurate power estimation, we use synthesis data based on 45nm FreePDK:
+To ensure accurate power estimation, we use 45nm synthesis data:
 + MicroscopiQ: `rtl_area_power/vsrc/baselines/microscopiq/pe_microscopiq_o32.v`
 + M2XFP: `rtl_area_power/vsrc/asplos26/microscopiq/pe_tile_mxfp_fp32.v`
++ NVESM2: `rtl_area_power/vsrc/nvesm2/pe_tile_v/pe_tile_nvfp_fp32.v`
++ NVFP: `rtl_area_power/vsrc/baselines/nvfp/pe_tile_v/pe_tile_nvfp_fp32.v`
 
 The power of PE
 + Baselines (ANT, OliVe, MANT, MicroscopiQ): Derived from their synthesized 8-bit x 8-bit PE.
 + M2XFP: Derived by synthesizing a PE tile composed of eight 4x4 units and normalizing the results to a single PE.
++ NVESM2/NVFP: Derived by synthesizing their FP4 PE tile and normalizing the eight-lane tile to a single PE.
 
 ## Running the Simulator
 
@@ -69,7 +76,7 @@ How to run:
 ```shell
 python run_simulator.py \
   --models llama3_8b \
-  --accelerators olive,ant,mant,microscopiq,m2xfp \
+  --accelerators olive,ant,mant,microscopiq,m2xfp,nvesm2,nvfp \
   --normalized-bench olive \
   --batch-size 1
 ```
@@ -77,4 +84,3 @@ python run_simulator.py \
 Aggregated, normalized summary in `results/m2xfp_res.csv`.
 
 This file includes the normalized data of accelerators across several LLMs.
-

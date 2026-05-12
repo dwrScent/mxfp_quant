@@ -28,6 +28,7 @@ parser.add_argument("--model_path", type=str, help="path of the hf model")
 parser.add_argument("--batch_size", type=int, default=32, help="batch size")
 parser.add_argument("--tasks", default=None, type=str)
 parser.add_argument("--num_fewshot", type=int, default=0)
+parser.add_argument("--limit_samples", type=int, default=None)
 
 # quantization config
 parser.add_argument("--w_bit", type=int, default=16)
@@ -42,6 +43,8 @@ parser.add_argument("--group_size", type=int, default=-1)
 parser.add_argument("--awq", action="store_true", help="Whether to use AWQ")
 
 args = parser.parse_args()
+if args.limit_samples is not None and args.limit_samples <= 0:
+    raise ValueError("--limit_samples must be a positive integer")
 
 
 # build model and tokenizer
@@ -134,6 +137,8 @@ def main():
 
             testenc = testenc.input_ids.to(model.device)
             nsamples = testenc.numel() // model.seqlen
+            if args.limit_samples is not None:
+                nsamples = min(nsamples, args.limit_samples)
             model = model.eval()
             nlls = []
             for i in tqdm.tqdm(range(nsamples), desc="evaluating..."):
@@ -172,6 +177,7 @@ def main():
                 tasks=task_names,
                 batch_size=args.batch_size,
                 num_fewshot=args.num_fewshot,
+                limit=args.limit_samples,
             )
             print_time("Task finish!")
             print(make_table(results))

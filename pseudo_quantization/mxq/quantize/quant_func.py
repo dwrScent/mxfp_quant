@@ -680,6 +680,7 @@ QUANT_METHOD_MAP = {
     "nvem": get_quant_nvem,
     "nvesm": get_quant_nvesm,
     "nvesm2": get_quant_nvesm2,
+    "nvesm2_hw": get_quant_nvesm2_hw,
     "nvesem2": get_quant_nvesem2,
     "nvint4": get_quant_nvint4,
     "nvintesm2": get_quant_nvintesm2,

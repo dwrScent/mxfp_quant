@@ -7,14 +7,18 @@ cd "$SCRIPT_DIR" || exit 1
 
 # Edit all experiment configuration here.
 METHODS=("nvfp" "nves" "nvint4" "nvesm2_hw" "nvintesm2")
-MODEL_NAMES=("llama2-7b" "qwen-7b" "mistral-7b" "opt-6.7b" "falcon-7b" "llama3-8b")
+# MODEL_NAMES=("llama2-7b" "qwen-7b" "mistral-7b" "opt-6.7b" "falcon-7b" "llama3-8b")
+# MODEL_PATHS=(
+#     "/cephfs/shared/model/llama-2-7b-hf"
+#     "/cephfs/shared/model/Qwen-7B"
+#     "/cephfs/shared/model/mistral-7b"
+#     "/cephfs/shared/model/opt-6.7b"
+#     "/cephfs/shared/model/falcon-7b"
+#     "/cephfs/shared/model/llama-3-8b-hf"
+# )
+MODEL_NAMES=( "qwen-7b")
 MODEL_PATHS=(
-    "/cephfs/shared/model/llama-2-7b-hf"
     "/cephfs/shared/model/Qwen-7B"
-    "/cephfs/shared/model/mistral-7b"
-    "/cephfs/shared/model/opt-6.7b"
-    "/cephfs/shared/model/falcon-7b"
-    "/cephfs/shared/model/llama-3-8b-hf"
 )
 TASKS=("wikitext" "c4" "ptb" "hellaswag" "piqa" "winogrande" "arc_easy" "arc_challenge" "boolq")
 

@@ -5,17 +5,19 @@ set -uo pipefail
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 cd "$SCRIPT_DIR" || exit 1
 
+RUN_PRESET="${1:-quant}"
+
 # Edit all experiment configuration here.
 METHODS=("nvfp" "nves" "nvint4" "nvesm2_hw" "nvintesm2")
-# MODEL_NAMES=("llama2-7b" "qwen-7b" "mistral-7b" "opt-6.7b" "falcon-7b" "llama3-8b")
-# MODEL_PATHS=(
-#     "/cephfs/shared/model/llama-2-7b-hf"
-#     "/cephfs/shared/model/Qwen-7B"
-#     "/cephfs/shared/model/mistral-7b"
-#     "/cephfs/shared/model/opt-6.7b"
-#     "/cephfs/shared/model/falcon-7b"
-#     "/cephfs/shared/model/llama-3-8b-hf"
-# )
+ALL_MODEL_NAMES=("llama2-7b" "qwen-7b" "mistral-7b" "opt-6.7b" "falcon-7b" "llama3-8b")
+ALL_MODEL_PATHS=(
+    "/cephfs/shared/model/llama-2-7b-hf"
+    "/cephfs/shared/model/Qwen-7B"
+    "/cephfs/shared/model/mistral-7b"
+    "/cephfs/shared/model/opt-6.7b"
+    "/cephfs/shared/model/falcon-7b"
+    "/cephfs/shared/model/llama-3-8b-hf"
+)
 MODEL_NAMES=( "qwen-7b")
 MODEL_PATHS=(
     "/cephfs/shared/model/Qwen-7B"
@@ -32,6 +34,22 @@ LOG_DIR="$SCRIPT_DIR/logs"
 RESULT_FILE="$SCRIPT_DIR/result.md"
 UPLOAD_URL="https://filebox.expectopatronum.cc/api/file?path="
 UPLOAD_TOKEN="lxy666"
+
+case "$RUN_PRESET" in
+    quant)
+        ;;
+    fp16)
+        METHODS=("fp16")
+        MODEL_NAMES=("${ALL_MODEL_NAMES[@]}")
+        MODEL_PATHS=("${ALL_MODEL_PATHS[@]}")
+        WBIT=16
+        ABIT=16
+        ;;
+    *)
+        echo "Usage: $0 [quant|fp16]" >&2
+        exit 1
+        ;;
+esac
 
 RUN_ID=$(date +"%Y%m%d_%H%M%S")
 SUMMARY_FILE="$LOG_DIR/summary_${RUN_ID}.txt"
@@ -346,11 +364,16 @@ run_one_task() {
         --tasks "$task"
         --batch_size "$current_batch_size"
         --w_bit "$WBIT"
-        --w_mode "$method"
         --a_bit "$ABIT"
-        --a_mode "$method"
         --group_size "$GROUP_SIZE"
     )
+
+    if [ "$WBIT" -ne 16 ]; then
+        cmd+=(--w_mode "$method")
+    fi
+    if [ "$ABIT" -ne 16 ]; then
+        cmd+=(--a_mode "$method")
+    fi
 
     if [ "$TIMEOUT_SECONDS" -gt 0 ]; then
         timeout "$TIMEOUT_SECONDS" "${cmd[@]}" >"$log_file" 2>&1

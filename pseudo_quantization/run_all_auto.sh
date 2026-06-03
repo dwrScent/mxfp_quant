@@ -34,14 +34,13 @@ LOG_DIR="$SCRIPT_DIR/logs"
 RESULT_FILE="$SCRIPT_DIR/result.md"
 UPLOAD_URL="https://filebox.expectopatronum.cc/api/file?path="
 UPLOAD_TOKEN="lxy666"
+UPLOAD_RESULT="${UPLOAD_RESULT:-0}"
 
 case "$RUN_PRESET" in
     quant)
         ;;
     fp16)
         METHODS=("fp16")
-        MODEL_NAMES=("${ALL_MODEL_NAMES[@]}")
-        MODEL_PATHS=("${ALL_MODEL_PATHS[@]}")
         WBIT=16
         ABIT=16
         ;;
@@ -447,8 +446,10 @@ for model_index in "${!MODEL_NAMES[@]}"; do
         done
 
         render_result_file
-        if ! upload_result; then
-            echo "Upload failed after model=$model_name method=$method; result.md is still available at $RESULT_FILE" >&2
+        if [ "$UPLOAD_RESULT" = "1" ]; then
+            if ! upload_result; then
+                echo "Upload failed after model=$model_name method=$method; result.md is still available at $RESULT_FILE" >&2
+            fi
         fi
     done
 done

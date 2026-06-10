@@ -62,7 +62,6 @@ def run_sim(accelerator):
         'microscopiq': 'configs/ppa/systolic_array_synth_microscopiq.csv',
         'm2xfp': 'configs/ppa/systolic_array_synth_m2xfp.csv',
         'nvesm2': 'configs/ppa/systolic_array_synth_nvesm2.csv',
-        'nvfp': 'configs/ppa/systolic_array_synth_nvfp.csv',
     }
     if accelerator not in core_csv_paths:
         raise ValueError(f"No core PPA CSV configured for accelerator: {accelerator}")
@@ -207,8 +206,8 @@ def main():
     parser.add_argument(
         "--accelerators",
         type=str,
-        default="olive,ant,mant,microscopiq,m2xfp,nvesm2,nvfp",
-        help="Comma-separated list of accelerator schemes (e.g., 'olive,ant,mant,microscopiq,m2xfp,nvesm2,nvfp')."
+        default="olive,ant,mant,microscopiq,m2xfp,nvesm2",
+        help="Comma-separated list of accelerator schemes (e.g., 'olive,ant,mant,microscopiq,m2xfp,nvesm2')."
     )
     parser.add_argument(
         "--batch-size",

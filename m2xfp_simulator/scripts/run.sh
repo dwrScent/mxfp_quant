@@ -1,6 +1,6 @@
 python run_simulator.py \
   --models llama3_8b \
-  --accelerators olive,ant,mant,nvesm2,nvfp \
+  --accelerators olive,ant,mant,nvesm2 \
   --normalized-bench olive \
   --batch-size 1
 

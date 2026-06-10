@@ -136,15 +136,6 @@ def main():
         )
     ]
 
-    nvfp_rows = [
-        make_row(
-            4,
-            4,
-            "result/baselines/nvfp/pe_tile_v/pe_tile_nvfp_fp32_45nm_area_report.txt",
-            "result/baselines/nvfp/pe_tile_v/pe_tile_nvfp_fp32_45nm_power_report.txt",
-            normalize=8,
-        )
-    ]
 
     write_csv(PPA_DIR / "systolic_array_synth_ant.csv", ant_olive_rows)
     write_csv(PPA_DIR / "systolic_array_synth_olive.csv", ant_olive_rows)
@@ -152,7 +143,6 @@ def main():
     write_csv(PPA_DIR / "systolic_array_synth_microscopiq.csv", microscopiq_rows)
     write_csv(PPA_DIR / "systolic_array_synth_m2xfp.csv", m2xfp_rows)
     write_csv(PPA_DIR / "systolic_array_synth_nvesm2.csv", nvesm2_rows)
-    write_csv(PPA_DIR / "systolic_array_synth_nvfp.csv", nvfp_rows)
 
 
 if __name__ == "__main__":

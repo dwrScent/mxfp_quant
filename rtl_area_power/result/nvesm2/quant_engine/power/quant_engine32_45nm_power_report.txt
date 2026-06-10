@@ -9,7 +9,7 @@ Report : power
         -analysis_effort low
 Design : quant_engine32
 Version: O-2018.06-SP1
-Date   : Thu May  7 12:24:57 2026
+Date   : Fri May  8 20:28:19 2026
 ****************************************
 
 
@@ -35,12 +35,12 @@ Power-specific unit information :
     Leakage Power Units = 1nW
 
 
-  Cell Internal Power  =   5.6933 mW   (62%)
-  Net Switching Power  =   3.5256 mW   (38%)
+  Cell Internal Power  =   5.2850 mW   (62%)
+  Net Switching Power  =   3.2774 mW   (38%)
                          ---------
-Total Dynamic Power    =   9.2189 mW  (100%)
+Total Dynamic Power    =   8.5624 mW  (100%)
 
-Cell Leakage Power     =   4.3374 mW
+Cell Leakage Power     =   4.2864 mW
 
 Information: report_power power group summary does not include estimated clock tree power. (PWR-789)
 
@@ -52,8 +52,8 @@ memory             0.0000            0.0000            0.0000            0.0000 
 black_box          0.0000            0.0000            0.0000            0.0000  (   0.00%)
 clock_network      0.0000            0.0000            0.0000            0.0000  (   0.00%)
 register           0.0000            0.0000            0.0000            0.0000  (   0.00%)
-sequential     3.9511e+03          132.5478        6.5947e+05        4.7432e+03  (  34.99%)
-combinational  1.7421e+03        3.3928e+03        3.6779e+06        8.8130e+03  (  65.01%)
+sequential     3.6038e+03          127.3336        5.8951e+05        4.3207e+03  (  33.63%)
+combinational  1.6812e+03        3.1500e+03        3.6968e+06        8.5280e+03  (  66.37%)
 --------------------------------------------------------------------------------------------------
-Total          5.6931e+03 uW     3.5254e+03 uW     4.3374e+06 nW     1.3556e+04 uW
+Total          5.2850e+03 uW     3.2774e+03 uW     4.2864e+06 nW     1.2849e+04 uW
 1

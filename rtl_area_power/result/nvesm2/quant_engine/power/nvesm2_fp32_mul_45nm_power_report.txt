@@ -8,7 +8,7 @@ Report : power
         -analysis_effort low
 Design : nvesm2_fp32_mul
 Version: O-2018.06-SP1
-Date   : Thu May  7 12:15:03 2026
+Date   : Fri May  8 20:19:23 2026
 ****************************************
 
 

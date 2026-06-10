@@ -9,7 +9,7 @@ Report : power
         -analysis_effort low
 Design : nvesm2_group_scale
 Version: O-2018.06-SP1
-Date   : Thu May  7 12:15:09 2026
+Date   : Fri May  8 20:19:29 2026
 ****************************************
 
 
@@ -35,12 +35,12 @@ Power-specific unit information :
     Leakage Power Units = 1nW
 
 
-  Cell Internal Power  = 733.4487 uW   (67%)
-  Net Switching Power  = 361.2971 uW   (33%)
+  Cell Internal Power  = 721.2192 uW   (67%)
+  Net Switching Power  = 351.1524 uW   (33%)
                          ---------
-Total Dynamic Power    =   1.0947 mW  (100%)
+Total Dynamic Power    =   1.0724 mW  (100%)
 
-Cell Leakage Power     = 100.2579 uW
+Cell Leakage Power     =  95.0130 uW
 
 Information: report_power power group summary does not include estimated clock tree power. (PWR-789)
 
@@ -52,8 +52,8 @@ memory             0.0000            0.0000            0.0000            0.0000 
 black_box          0.0000            0.0000            0.0000            0.0000  (   0.00%)
 clock_network      0.0000            0.0000            0.0000            0.0000  (   0.00%)
 register           0.0000            0.0000            0.0000            0.0000  (   0.00%)
-sequential       514.2764           23.6618        5.1985e+04          589.9234  (  49.37%)
-combinational    219.1719          337.6374        4.8273e+04          605.0762  (  50.63%)
+sequential       507.2891           23.8790        5.1653e+04          582.8209  (  49.93%)
+combinational    213.9298          327.2758        4.3360e+04          584.5608  (  50.07%)
 --------------------------------------------------------------------------------------------------
-Total            733.4482 uW       361.2992 uW     1.0026e+05 nW     1.1950e+03 uW
+Total            721.2189 uW       351.1548 uW     9.5013e+04 nW     1.1674e+03 uW
 1
